@@ -361,3 +361,26 @@ test('hosted mode (behind a proxy): per-visitor lockouts, PIN-protected teacher 
     child.kill();
   }
 });
+
+test('public mode: no "this computer" shortcut, even from localhost', async () => {
+  const { spawn } = await import('node:child_process');
+  const port = 3800 + Math.floor(Math.random() * 500);
+  const run = async (extraEnv, check) => {
+    const child = spawn(process.execPath, [new URL('../server.js', import.meta.url).pathname], {
+      env: { ...process.env, PORT: String(port), CHOIR_DATA: join(dir, `pub-${Math.random()}`, 'db.json'), CHOIR_PUBLIC: '1', ...extraEnv }, stdio: 'ignore',
+    });
+    try {
+      const url = `http://localhost:${port}`;
+      for (let i = 0; i < 40; i += 1) { try { if ((await fetch(`${url}/healthz`)).ok) break; } catch { /* starting */ } await new Promise((r) => setTimeout(r, 100)); }
+      await check(url);
+    } finally { child.kill(); await new Promise((r) => setTimeout(r, 200)); }
+  };
+  await run({}, async (url) => { // no PIN configured: locked for everybody
+    assert.equal((await fetch(`${url}/api/teacher/children`)).status, 403);
+    assert.equal((await (await fetch(`${url}/api/meta`)).json()).teacherAllowed, false);
+  });
+  await run({ CHOIR_PIN: 'my-secret-pin' }, async (url) => { // PIN configured: needed even on localhost
+    assert.equal((await fetch(`${url}/api/teacher/children`)).status, 401);
+    assert.equal((await fetch(`${url}/api/teacher/children`, { headers: { 'x-pin': 'my-secret-pin' } })).status, 200);
+  });
+});

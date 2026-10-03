@@ -75,8 +75,13 @@ function clientIp(req) {
   return req.socket.remoteAddress || '?';
 }
 
+// Public mode (CHOIR_PUBLIC=1): use this whenever the app is shared through a tunnel or hosting.
+// The "this computer is the teacher" shortcut is switched off, so the teacher area always needs CHOIR_PIN.
+const PUBLIC_MODE = process.env.CHOIR_PUBLIC === '1';
+
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 function isLocal(req) {
+  if (PUBLIC_MODE) return false;
   const host = String(req.headers.host || '').replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
   const proxied = ['x-forwarded-for', 'x-forwarded-host', 'x-real-ip', 'forwarded', 'cf-connecting-ip'].some((h) => req.headers[h]);
   return LOOPBACK.has(req.socket.remoteAddress) && ['localhost', '127.0.0.1', '::1'].includes(host) && !proxied;
@@ -825,6 +830,8 @@ export const server = createServer(async (req, res) => {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   server.listen(PORT, () => {
     console.log(`Choir attendance running on http://localhost:${PORT}  (teacher: /teacher)`);
-    console.log('Teacher area: open it on this computer only. Other devices cannot reach it.');
+    console.log(PUBLIC_MODE
+      ? `Public mode: the teacher pages need your PIN${PIN_ENV ? '' : ' (CHOIR_PIN is not set, so they are locked)'}.`
+      : 'Teacher area: open it on this computer only. Other devices cannot reach it.');
   });
 }

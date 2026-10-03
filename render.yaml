@@ -16,6 +16,8 @@ services:
     envVars:
       - key: CHOIR_DATA
         value: /data/db.json
+      - key: CHOIR_PUBLIC
+        value: "1"
       - key: CHOIR_TRUST_PROXY
         value: "1"
       - key: NODE_VERSION
