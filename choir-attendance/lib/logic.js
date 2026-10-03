@@ -13,6 +13,9 @@ export const REMARKS = [
 
 export const STATUSES = ['present', 'absent', 'excused'];
 
+// 'excused' = medical. It never counts as a leave, whatever the reason.
+export const EXCUSE_REASONS = ['Sick', 'Hospitalised', 'Medical emergency'];
+
 // saturday = regular practice, sunday = regular mass,
 // practice = rehearsal for a feast, feast = the feast mass itself.
 export const TYPES = ['saturday', 'sunday', 'practice', 'feast'];
@@ -156,14 +159,21 @@ export function childStats(db, childId, season, from, to) {
       if (entry.remarks?.includes('Late')) stats.late += 1;
     } else stats[entry.status] += 1;
   }
+  // Going over the limit only flags the child: the teacher decides (keep / not continuing).
   stats.exceeded = stats.leaves > s.maxLeaves;
   stats.leftOn = stats.exceeded ? stats.leaveDates[s.maxLeaves] : null;
+  stats.decision = db.children.find((c) => c.id === childId)?.leaveDecisions?.[season] ?? null;
   stats.leavesLeft = Math.max(0, s.maxLeaves - stats.leaves);
   return stats;
 }
 
-// Ranked board for [from, to]. A child counts as "out" once the leave limit was
-// passed on or before `to`. Ties share a rank.
+// A child is out only if the teacher decided "not continuing" on or before `to`.
+export function isOut(child, season, to) {
+  const d = child.leaveDecisions?.[season];
+  return d?.status === 'out' && d.on <= to;
+}
+
+// Ranked board for [from, to]. Ties share a rank.
 //   hideOut: drop children who are out (parent-facing boards)
 //   includeInactive: also rank children who have left the choir (history)
 export function scoreboard(db, season, from, to, { hideOut = false, includeInactive = false } = {}) {
@@ -173,7 +183,8 @@ export function scoreboard(db, season, from, to, { hideOut = false, includeInact
       const st = childStats(db, c.id, season, from, to);
       return {
         id: c.id, name: c.name, photo: photoUrl(c), points: st.points, leaves: st.leaves,
-        present: st.present, late: st.late, eligible: !(st.leftOn && st.leftOn <= to),
+        present: st.present, late: st.late, eligible: !isOut(c, season, to),
+        over: st.exceeded, decision: st.decision?.status ?? null,
       };
     });
   if (hideOut) rows = rows.filter((r) => r.eligible);

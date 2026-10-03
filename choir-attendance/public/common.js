@@ -149,14 +149,14 @@ export function leaveBadge(leaves, max, exceeded) {
   return `<span class="badge ${cls}">${leaves}/${max} leaves</span>`;
 }
 
-const STATUS_LABEL = { present: 'Present', absent: 'Absent', excused: 'Excused (sick)' };
+const statusLabel = (h) => (h.status === 'excused' ? `Excused – ${h.reason ? h.reason.toLowerCase() : 'medical'}` : h.status === 'present' ? 'Present' : 'Absent');
 
 export function historyHtml(history) {
   if (!history.length) return '<div class="empty">No attendance recorded yet.</div>';
   return `<table><tbody>${history.map((h) => `
     <tr>
       <td>${fmtDate(h.date)}<div class="muted">${esc(typeLabel(h.type, h.event))}</div></td>
-      <td><span class="badge ${h.status === 'present' ? 'ok' : h.status === 'absent' ? 'bad' : 'info'}">${STATUS_LABEL[h.status]}</span>
+      <td><span class="badge ${h.status === 'present' ? 'ok' : h.status === 'absent' ? 'bad' : 'info'}">${esc(statusLabel(h))}</span>
         ${h.remarks.map((r) => `<span class="badge ${r === 'Well behaved' || r === 'Helped others' ? 'ok' : 'warn'}">${esc(r)}</span>`).join(' ')}
         ${h.note ? `<div class="muted">📝 ${esc(h.note)}</div>` : ''}</td>
       <td class="num">${h.points ? `+${fmtPts(h.points)}` : '0'}</td>
@@ -175,14 +175,19 @@ export function statsHtml(d) {
     </div>`;
 }
 
-export function leaveAlertHtml(d) {
+export function leaveAlertHtml(d, { teacher = false } = {}) {
   const { stats: st, settings: s } = d;
+  const decision = st.decision?.status;
+  if (decision === 'out') {
+    return `<div class="alert bad"><b>Not continuing this year.</b> ${esc(d.name)} went over ${s.maxLeaves} leaves. They are welcome to rejoin next April.</div>`;
+  }
   if (st.exceeded) {
-    return `<div class="alert bad"><b>Not continuing this year.</b> ${esc(d.name)} went over ${s.maxLeaves} leaves (from ${fmtDate(st.leftOn)}). They are welcome to rejoin next April.</div>`;
+    if (teacher || decision === 'keep') return ''; // teacher sees the decision panel instead
+    return `<div class="alert warn"><b>Leave limit passed.</b> ${esc(d.name)} has used more than ${s.maxLeaves} leaves this year. Your choir teacher will be in touch.</div>`;
   }
   if (st.leavesLeft <= 1) {
     const left = st.leavesLeft ? `only ${st.leavesLeft} leave left` : 'no leaves left';
-    return `<div class="alert warn"><b>Careful:</b> ${left} this year — one more unexcused absence and ${esc(d.name)} can't continue.</div>`;
+    return `<div class="alert warn"><b>Careful:</b> ${left} this year. Please try to attend every practice.</div>`;
   }
   return '';
 }

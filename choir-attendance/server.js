@@ -4,7 +4,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  REMARKS, STATUSES, TYPES, EVENTS, OCCASION_TYPES, isValidDate, defaultType, seasonOf, seasonRange,
+  REMARKS, STATUSES, EXCUSE_REASONS, TYPES, EVENTS, OCCASION_TYPES, isValidDate, defaultType, seasonOf, seasonRange,
   seasonLabel, prizeInfo, firstSeason, childStats, scoreboard, monthRange, monthLabel, pointsFor,
   isLeave, sessionKey, photoUrl, monthlyAchievers, yearlyAchievers, occasions, seasonsWithData,
 } from './lib/logic.js';
@@ -108,7 +108,7 @@ function childDetail(child, season, { teacher = false } = {}) {
     .map((s) => {
       const e = s.entries[child.id];
       return {
-        date: s.date, type: s.type, event: s.event, status: e.status, remarks: e.remarks || [],
+        date: s.date, type: s.type, event: s.event, status: e.status, reason: e.reason || '', remarks: e.remarks || [],
         points: pointsFor(e, s.type, db.settings), leave: isLeave(e, s.type, db.settings),
         ...(teacher ? { note: e.note || '' } : {}),
       };
@@ -178,19 +178,29 @@ function checkSessionKey(date, type, event) {
   return checkOccasion(type, event);
 }
 
+// Children over the leave limit whom the teacher has not decided about yet.
+function pendingDecisions(season) {
+  const { db } = store;
+  return db.children.filter((c) => c.active).flatMap((c) => {
+    const st = childStats(db, c.id, season);
+    return st.exceeded && !st.decision ? [{ id: c.id, name: c.name, leaves: st.leaves }] : [];
+  });
+}
+
 function sessionView(date, type, event) {
   const { db } = store;
   const season = seasonOf(date);
   const sess = db.sessions[sessionKey(date, type, event)];
   return {
-    date, type, event, season, settings: db.settings, remarkOptions: REMARKS, events: EVENTS,
+    date, type, event, season, settings: db.settings, remarkOptions: REMARKS, events: EVENTS, excuseReasons: EXCUSE_REASONS,
+    pending: pendingDecisions(season),
     children: db.children.filter((c) => c.active).map((c) => {
       const e = sess?.entries[c.id] || {};
       const st = childStats(db, c.id, season);
       return {
         id: c.id, name: c.name, photo: photoUrl(c), standard: c.standard,
-        status: e.status || null, remarks: e.remarks || [], note: e.note || '',
-        leaves: st.leaves, exceeded: st.exceeded,
+        status: e.status || null, reason: e.reason || '', remarks: e.remarks || [], note: e.note || '',
+        leaves: st.leaves, exceeded: st.exceeded, decision: st.decision?.status ?? null,
       };
     }).sort((a, b) => a.name.localeCompare(b.name)),
   };
@@ -209,10 +219,11 @@ function mark(body) {
   const status = body.status ?? null;
   if (status !== null && !STATUSES.includes(status)) throw new HttpError(400, 'Invalid status');
   const remarks = Array.isArray(body.remarks) ? body.remarks.filter((r) => REMARKS.includes(r)) : [];
+  const reason = status === 'excused' && EXCUSE_REASONS.includes(body.reason) ? body.reason : '';
   const note = typeof body.note === 'string' ? body.note.trim().slice(0, 500) : '';
   const sess = getOrCreateSession(body.date, body.type, event);
   if (status === null && !remarks.length && !note) delete sess.entries[body.childId];
-  else sess.entries[body.childId] = { status, remarks: [...new Set(remarks)], note };
+  else sess.entries[body.childId] = { status, reason, remarks: [...new Set(remarks)], note };
   if (!Object.keys(sess.entries).length) delete db.sessions[sessionKey(body.date, body.type, event)];
   store.save();
 }
@@ -266,6 +277,7 @@ function teacherBoard() {
     prizeBoard: scoreboard(db, season, range.start, prize.date < range.end ? prize.date : range.end),
     monthBoard: scoreboard(db, season, mr.start, mr.end),
     yearBoard: scoreboard(db, season, range.start, range.end),
+    pending: pendingDecisions(season),
   };
 }
 
@@ -284,6 +296,7 @@ async function teacherApi(req, res, q, parts) {
       return send(res, 200, {
         children: store.db.children.map((c) => ({ ...profileOf(c), code: c.code, active: c.active })),
         settings: store.db.settings, firstSeason: firstSeason(store.db, today()),
+        pending: pendingDecisions(seasonOf(today())),
       });
     }
     if (b === 'child' && id) return send(res, 200, { ...childDetail(child, seasonFromQuery(q), { teacher: true }), code: child.code, active: child.active });
@@ -304,7 +317,7 @@ async function teacherApi(req, res, q, parts) {
       const c = {
         id: randomUUID().slice(0, 8), name: '', active: true, joinedOn: today(), code: newCode(store.db),
         standard: '', joinedYear: Number(today().slice(0, 4)), contact: '', address: '',
-        emergencyName: '', emergencyPhone: '', photoVersion: 0,
+        emergencyName: '', emergencyPhone: '', photoVersion: 0, leaveDecisions: {},
       };
       applyProfile(c, body, { teacher: true });
       if (!c.name) throw new HttpError(400, 'Name is required');
@@ -321,6 +334,14 @@ async function teacherApi(req, res, q, parts) {
     if (req.method === 'POST' && id && action === 'photo') {
       await savePhoto(child, body.image);
       return send(res, 200, { photo: photoUrl(child) });
+    }
+    if (req.method === 'PUT' && id && action === 'decision') {
+      const season = Number.isInteger(body.season) ? body.season : seasonOf(today());
+      if (body.status === null) delete child.leaveDecisions[season];
+      else if (body.status === 'keep' || body.status === 'out') child.leaveDecisions[season] = { status: body.status, on: today() };
+      else throw new HttpError(400, 'Decision must be keep, out or null');
+      store.save();
+      return send(res, 200, { decision: child.leaveDecisions[season] ?? null });
     }
     if (req.method === 'POST' && id && action === 'new-code') {
       child.code = newCode(store.db);

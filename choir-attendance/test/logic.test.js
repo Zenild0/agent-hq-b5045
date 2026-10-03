@@ -57,22 +57,32 @@ test('leaves: only unexcused Saturday absences; sick is exempt', () => {
   assert.equal(childStats(db, 'a', 2026).leaves, 2);
 });
 
-test('sixth leave puts the child out; fifth does not; next April resets', () => {
+test('sixth leave only flags the child; nothing is removed automatically', () => {
   const dates = ['2026-05-02', '2026-05-09', '2026-05-16', '2026-05-23', '2026-05-30', '2026-06-06'];
-  const db = mkDb(dates.map((d) => [d, 'saturday', { a: e('absent') }]));
-  const at = (n) => {
-    const d = mkDb(dates.slice(0, n).map((x) => [x, 'saturday', { a: e('absent') }]));
-    return childStats(d, 'a', 2026);
-  };
+  const at = (n) => childStats(mkDb(dates.slice(0, n).map((x) => [x, 'saturday', { a: e('absent') }])), 'a', 2026);
   assert.equal(at(5).exceeded, false);
   assert.equal(at(5).leavesLeft, 0);
-  const six = childStats(db, 'a', 2026);
+  const six = at(6);
   assert.equal(six.exceeded, true);
   assert.equal(six.leftOn, '2026-06-06');
-  assert.equal(childStats(db, 'a', 2027).leaves, 0);
+  assert.equal(six.decision, null);
+  const db = mkDb(dates.map((x) => [x, 'saturday', { a: e('absent'), b: e('present') }]));
+  const board = scoreboard(db, 2026, '2026-04-01', '2027-03-31', { hideOut: true });
+  assert.ok(board.some((r) => r.name === 'Anna'), 'still on the board');
+  assert.equal(board.find((r) => r.name === 'Anna').over, true);
+  assert.equal(childStats(db, 'a', 2027).leaves, 0); // next April resets
 });
 
-test('scoreboard ranks by points, shares ties, excludes children who are out', () => {
+test('medical (excused) absences never count as leaves, whatever the count', () => {
+  const dates = ['05-02', '05-09', '05-16', '05-23', '05-30', '06-06', '06-13'];
+  const db = mkDb(dates.map((d) => [`2026-${d}`, 'saturday', { a: { status: 'excused', reason: 'Hospitalised', remarks: [], note: '' } }]));
+  const st = childStats(db, 'a', 2026);
+  assert.equal(st.leaves, 0);
+  assert.equal(st.excused, 7);
+  assert.equal(st.exceeded, false);
+});
+
+test('scoreboard ranks by points and shares ties', () => {
   const sessions = [
     ['2026-05-02', 'saturday', { a: e('present'), b: e('present') }],
     ['2026-05-03', 'sunday', { a: e('present'), b: e('absent') }],
@@ -83,12 +93,14 @@ test('scoreboard ranks by points, shares ties, excludes children who are out', (
   const tie = scoreboard(mkDb([['2026-05-02', 'saturday', { a: e('present'), b: e('present') }]]), 2026, '2026-04-01', '2027-03-31');
   assert.deepEqual(tie.map((r) => r.rank), [1, 1]);
 
-  const out = mkDb(['05-02', '05-09', '05-16', '05-23', '05-30', '06-06'].map((d) => [`2026-${d}`, 'saturday', { a: e('absent'), b: e('present') }]));
-  out.sessions['2026-06-07|sunday'] = { date: '2026-06-07', type: 'sunday', entries: { a: e('present') } };
-  const r = scoreboard(out, 2026, '2026-04-01', '2027-03-31');
+  // over the leave limit: still ranked on points, just flagged for the teacher
+  const over = mkDb(['05-02', '05-09', '05-16', '05-23', '05-30', '06-06'].map((d) => [`2026-${d}`, 'saturday', { a: e('absent'), b: e('present') }]));
+  over.sessions['2026-06-07|sunday'] = { date: '2026-06-07', type: 'sunday', entries: { a: e('present') } };
+  const r = scoreboard(over, 2026, '2026-04-01', '2027-03-31');
   assert.equal(r[0].name, 'Ben');
-  assert.equal(r[1].eligible, false);
-  assert.equal(r[1].rank, null);
+  assert.equal(r[1].over, true);
+  assert.equal(r[1].eligible, true);
+  assert.equal(r[1].rank, 2);
 });
 
 import {
@@ -129,16 +141,20 @@ test('a child who left the choir still keeps their past achievement', () => {
   assert.equal(monthlyAchievers(db, 2026, '2026-10-03')[0].winners[0].name, 'Anna');
 });
 
-test('out status applies only from the sixth leave onwards', () => {
-  const dates = ['05-02', '05-09', '05-16', '05-23', '05-30', '06-06'];
-  const entries = dates.map((d) => [`2026-${d}`, 'saturday', { a: e('absent'), b: e('present') }]);
-  entries.push(['2026-05-03', 'sunday', { a: e('present') }]);
-  const db = mkDb(entries);
+test('"out" applies only once the teacher decides, and only from that date', () => {
+  const db = mkDb([
+    ['2026-05-02', 'saturday', { a: e('present'), b: e('present') }],
+    ['2026-07-04', 'saturday', { a: e('present'), b: e('absent') }],
+  ]);
+  db.children[0].leaveDecisions = { 2026: { status: 'keep', on: '2026-08-01' } };
+  assert.ok(scoreboard(db, 2026, '2026-04-01', '2027-03-31', { hideOut: true }).some((r) => r.name === 'Anna'));
+  db.children[0].leaveDecisions = { 2026: { status: 'out', on: '2026-08-01' } };
   const may = scoreboard(db, 2026, '2026-05-01', '2026-05-31', { hideOut: true });
-  assert.ok(may.some((r) => r.name === 'Anna'), 'still in the choir in May');
-  const june = scoreboard(db, 2026, '2026-06-01', '2026-06-30', { hideOut: true });
-  assert.ok(!june.some((r) => r.name === 'Anna'), 'out once the 6th leave happens');
+  assert.ok(may.some((r) => r.name === 'Anna'), 'May achievements are kept');
+  const year = scoreboard(db, 2026, '2026-04-01', '2027-03-31', { hideOut: true });
+  assert.ok(!year.some((r) => r.name === 'Anna'), 'hidden for the year once marked out');
   assert.equal(yearlyAchievers(db, '2026-10-03')[0].winners[0].name, 'Ben');
+  assert.equal(childStats(db, 'a', 2026).decision.status, 'out');
 });
 
 test('occasions list who attended each practice', () => {

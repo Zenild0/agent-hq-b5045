@@ -71,6 +71,16 @@ let view;
 
 const isOccasion = (t) => t === 'practice' || t === 'feast';
 
+// Children over the leave limit still waiting for the teacher's decision.
+const pendingHtml = (pending) => (pending?.length ? `
+  <div class="alert warn"><b>⚠️ Over the leave limit — your decision needed:</b>
+    ${pending.map((p) => `<button class="btn small" data-open="${esc(p.id)}">${esc(p.name)} (${p.leaves} leaves)</button>`).join(' ')}
+    <div class="muted">Nobody is removed automatically. Open a child to keep them in the choir or mark them as not continuing.</div></div>` : '');
+
+const overNote = (c) => (c.decision === 'out' ? '<div class="muted">Not continuing this year (your decision).</div>'
+  : c.decision === 'keep' ? '<div class="muted">Over the leave limit — kept in the choir ✓</div>'
+  : `<div class="muted">⚠️ Over the leave limit — <button class="link" data-open="${esc(c.id)}">decide</button></div>`);
+
 async function loadAttendance() {
   if (isOccasion(type) && !event && !otherMode) event = 'Christmas';
   if (isOccasion(type) && !event) return renderAttendance(); // waiting for a custom name
@@ -109,6 +119,7 @@ function renderAttendance() {
           ${showOther ? `<input id="eventName" placeholder="Occasion name" maxlength="60" value="${esc(event)}">` : ''}` : ''}
       </div>
     </div>
+    ${pendingHtml(view.pending)}
     ${when ? `<div class="banner">${when}</div>` : ''}
     ${waiting ? '<div class="empty">Type the occasion name above to start.</div>' : `
     <div class="row between"><span class="muted">${marked} of ${view.children.length} marked</span>
@@ -150,8 +161,10 @@ function childRow(c) {
         <span class="row">${avatarHtml(c)}<button class="link" data-open="${esc(c.id)}">${esc(c.name)}</button></span>
         ${leaveBadge(c.leaves, view.settings.maxLeaves, c.exceeded)}
       </div>
-      ${c.exceeded ? '<div class="muted">Over the leave limit – not continuing this year.</div>' : ''}
-      <div class="status">${st('present', 'Present')}${st('absent', 'Absent')}${st('excused', 'Sick / hospital')}</div>
+      ${c.exceeded ? overNote(c) : ''}
+      <div class="status">${st('present', 'Present')}${st('absent', 'Absent')}${st('excused', '🏥 Medical')}</div>
+      ${c.status === 'excused' ? `<select class="reason" aria-label="Medical reason" style="margin-top:8px"><option value="">Reason (optional)</option>${view.excuseReasons.map((r) => `<option${c.reason === r ? ' selected' : ''}>${esc(r)}</option>`).join('')}</select>
+        <div class="muted">Medical absences never count as a leave.</div>` : ''}
       <details class="remarks"${open}>
         <summary>Behaviour remarks${c.remarks.length ? ` (${c.remarks.length})` : ''}</summary>
         ${view.remarkOptions.map((r) => `<label class="chk"><input type="checkbox" value="${esc(r)}"${c.remarks.includes(r) ? ' checked' : ''}> ${esc(r)}</label>`).join('')}
@@ -163,7 +176,7 @@ function childRow(c) {
 function wireRow(el) {
   const c = view.children.find((x) => x.id === el.dataset.child);
   const save = () => run(async () => {
-    await call('teacher/mark', { method: 'PUT', body: { date, type, event, childId: c.id, status: c.status, remarks: c.remarks, note: c.note } });
+    await call('teacher/mark', { method: 'PUT', body: { date, type, event, childId: c.id, status: c.status, reason: c.reason, remarks: c.remarks, note: c.note } });
     const qs = new URLSearchParams({ date, type, ...(isOccasion(type) ? { event } : {}) });
     view = await call(`teacher/session?${qs}`); // refresh leave tallies
     const next = view.children.find((x) => x.id === c.id);
@@ -177,8 +190,10 @@ function wireRow(el) {
   });
   el.querySelectorAll('[data-set]').forEach((b) => b.addEventListener('click', () => {
     c.status = c.status === b.dataset.set ? null : b.dataset.set; // tap again to clear
+    if (c.status !== 'excused') c.reason = '';
     save();
   }));
+  $('.reason', el)?.addEventListener('change', (e) => { c.reason = e.target.value; save(); });
   el.querySelectorAll('input[type=checkbox]').forEach((i) => i.addEventListener('change', () => {
     c.remarks = [...el.querySelectorAll('input[type=checkbox]:checked')].map((x) => x.value);
     save();
@@ -235,8 +250,9 @@ async function loadOccasions() {
 // ======================= Children =======================
 
 async function loadChildren() {
-  const { children } = await call('teacher/children');
+  const { children, pending } = await call('teacher/children');
   $('#children').innerHTML = `
+    ${pendingHtml(pending)}
     <div class="row between"><h3 style="margin:8px 0">${children.filter((c) => c.active).length} children</h3>
       <button class="btn primary" id="addChild">＋ Add child</button></div>
     ${children.map((c) => `
@@ -262,6 +278,19 @@ async function resizeToJpeg(file, size = 480) {
   canvas.height = size;
   canvas.getContext('2d').drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, size, size);
   return canvas.toDataURL('image/jpeg', 0.85);
+}
+
+function decisionPanel(d) {
+  const st = d.stats;
+  const cur = st.decision?.status ?? null;
+  if (!st.exceeded && !cur) return '';
+  const btn = (v, label) => `<button class="btn small${cur === v ? ' primary' : ''}" data-decide="${v}">${label}</button>`;
+  return `
+    <div class="alert ${cur ? 'ok' : 'warn'}" style="margin-top:16px">
+      <b>${st.exceeded ? `Over the leave limit (${st.leaves}/${d.settings.maxLeaves})` : 'Leave decision'}</b>
+      <div class="muted">${cur === 'keep' ? 'You chose to keep them in the choir.' : cur === 'out' ? 'Marked as not continuing this year (hidden from the leaderboard).' : 'Nobody is removed automatically. You decide:'}</div>
+      <div class="row" style="margin-top:8px">${btn('keep', '✅ Keep in choir')}${btn('out', 'Not continuing this year')}${cur ? btn('clear', 'Undo decision') : ''}</div>
+    </div>`;
 }
 
 async function openChild(id) {
@@ -302,11 +331,12 @@ async function openChild(id) {
         <button class="btn small danger" id="newCode" style="margin-top:8px">Make a new code</button>
         <div class="muted">Anyone with this link can see ${esc(d.name)}'s details. Make a new code if it was shared by mistake.</div>
       </div>
-      ${leaveAlertHtml(d)}
+      ${decisionPanel(d)}
+      ${leaveAlertHtml(d, { teacher: true })}
       <h3 style="margin-top:20px">This year</h3>${statsHtml(d)}
       <h3 style="margin-top:20px">Attendance</h3><div class="card">${historyHtml(d.history)}</div>
       <button class="btn danger" id="toggle">${d.active ? 'Remove from choir' : 'Add back to choir'}</button>` : ''}`;
-  dlg.showModal();
+  if (!dlg.open) dlg.showModal();
   $('#close').addEventListener('click', () => dlg.close());
 
   const setPhoto = async (file) => {
@@ -342,6 +372,12 @@ async function openChild(id) {
     } catch (err) { $('#cfMsg').textContent = `⚠️ ${err.message}`; }
   });
   if (!id) return;
+  $('#dlgBody').querySelectorAll('[data-decide]').forEach((b) => b.addEventListener('click', () => run(async () => {
+    const v = b.dataset.decide;
+    await call(`teacher/children/${id}/decision`, { method: 'PUT', body: { season: d.season, status: v === 'clear' ? null : v } });
+    await openChild(id);
+    refreshVisible();
+  })));
   $('#copy').addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(link); $('#copy').textContent = 'Copied ✓'; } catch { $('#linkBox').select(); }
   });
@@ -369,7 +405,7 @@ async function loadBoard() {
   const eligible = (rows) => rows.filter((r) => r.eligible);
   const table = (rows) => `<table><thead><tr><th>#</th><th>Name</th><th class="num">Leaves</th><th class="num">Points</th></tr></thead><tbody>${rows.map((r) => `
     <tr${r.eligible ? '' : ' style="color:var(--muted)"'}><td>${r.rank ?? '–'}</td>
-      <td><button class="link" data-open="${esc(r.id)}">${esc(r.name)}</button>${r.eligible ? '' : ' <span class="badge bad">out this year</span>'}</td>
+      <td><button class="link" data-open="${esc(r.id)}">${esc(r.name)}</button>${r.eligible ? (r.over ? ` <span class="badge ${r.decision === 'keep' ? 'info' : 'warn'}">${r.decision === 'keep' ? 'over limit – kept' : 'over limit – decide'}</span>` : '') : ' <span class="badge bad">not continuing</span>'}</td>
       <td class="num">${r.leaves}</td><td class="num"><b>${fmtPts(r.points)}</b></td></tr>`).join('')}</tbody></table>`;
   $('#board').innerHTML = `
     <div class="stage">
@@ -381,9 +417,10 @@ async function loadBoard() {
       </div>
       <div id="lb"></div>
     </div>
+    ${pendingHtml(o.pending)}
     <h2>Prize race <span class="muted">(private – parents don't see this)</span></h2>
     <div class="card"><b>Prize at ${esc(o.prize.label)}</b>
-      <div class="muted">Counting ${esc(o.seasonLabel)} up to ${fmtDate(o.prize.date)}. Children over the leave limit are not eligible.</div>
+      <div class="muted">Counting ${esc(o.seasonLabel)} up to ${fmtDate(o.prize.date)}. Children you marked as not continuing are not eligible.</div>
       ${table(o.prizeBoard)}</div>`;
   const draw = () => renderBoard($('#lb'), eligible(boardRange === 'month' ? o.monthBoard : o.yearBoard));
   draw();
@@ -409,7 +446,7 @@ async function loadSettings() {
       ${num('latePointsFactor', 'Share of points when late (0 to 1)', s.latePointsFactor, 'step="0.1" max="1"')}
       <label class="chk"><input name="countSundayAbsences" type="checkbox"${s.countSundayAbsences ? ' checked' : ''}> Missing Sunday mass also counts as a leave</label>
       <label class="field">First year (starts April of)<input name="firstSeason" type="number" placeholder="${firstSeason}" value="${s.firstSeason ?? ''}"></label>
-      <p class="muted">Your private prize race ends at Easter in the first year and at the end of December every year after. Leave blank to start from your first recorded session. Feast practices and masses never count as leaves.</p>
+      <p class="muted">Your private prize race ends at Easter in the first year and at the end of December every year after. Leave blank to start from your first recorded session. Feast practices, feast masses and medical absences never count as leaves. Going over the leave limit never removes a child by itself; you decide.</p>
       <button class="btn primary">Save settings</button>
     </form>`;
   $('#setForm').addEventListener('submit', (e) => {

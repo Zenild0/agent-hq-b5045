@@ -17,6 +17,7 @@ export function newCode(db) {
 export const PROFILE_DEFAULTS = {
   standard: '', joinedYear: null, contact: '', address: '',
   emergencyName: '', emergencyPhone: '', photoVersion: 0,
+  leaveDecisions: {}, // { [season]: { status: 'keep' | 'out', on: 'YYYY-MM-DD' } }
 };
 
 // Fill in fields added in newer versions so older db.json files keep working.
@@ -24,7 +25,7 @@ function migrate(db) {
   let changed = false;
   for (const c of db.children) {
     for (const [k, v] of Object.entries(PROFILE_DEFAULTS)) {
-      if (!(k in c)) { c[k] = v; changed = true; }
+      if (!(k in c)) { c[k] = structuredClone(v); changed = true; }
     }
     if (c.joinedYear === null && c.joinedOn) { c.joinedYear = Number(c.joinedOn.slice(0, 4)); changed = true; }
     if (!c.code) { c.code = newCode(db); changed = true; }

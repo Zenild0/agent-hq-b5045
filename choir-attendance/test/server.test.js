@@ -88,6 +88,31 @@ test('back-dated and feast attendance feed the leaderboard and occasions', async
   assert.ok(!('prize' in pub));
 });
 
+test('medical absence keeps a reason and is never a leave; going over the limit removes nobody', async () => {
+  const mark = (date, childId, status, reason) => j('/api/teacher/mark', { method: 'PUT', body: { date, type: 'saturday', event: '', childId, status, reason } });
+  for (const d of ['2026-06-06', '2026-06-13', '2026-06-20']) assert.equal((await mark(d, ben.id, 'excused', 'Hospitalised')).status, 200);
+  assert.equal((await mark('2026-06-27', ben.id, 'excused', 'Not a real reason')).status, 200);
+  let detail = (await j(`/api/teacher/child/${ben.id}?season=2026`)).data;
+  assert.equal(detail.stats.leaves, 0);
+  assert.equal(detail.history.find((h) => h.date === '2026-06-06').reason, 'Hospitalised');
+  assert.equal(detail.history.find((h) => h.date === '2026-06-27').reason, ''); // unknown reasons are dropped
+  for (const d of ['07-04', '07-11', '07-18', '07-25', '08-01', '08-08']) await mark(`2026-${d}`, ben.id, 'absent');
+  detail = (await j(`/api/teacher/child/${ben.id}?season=2026`)).data;
+  assert.equal(detail.stats.leaves, 6);
+  const sess = (await j('/api/teacher/session?date=2026-10-03&type=saturday')).data;
+  assert.deepEqual(sess.pending.map((p) => p.name), ['Ben Fernandes']);
+  assert.ok((await j('/api/public?season=2026')).data.yearBoard.some((r) => r.name === 'Ben Fernandes'), 'still on the leaderboard');
+  // teacher decides
+  const keep = await j(`/api/teacher/children/${ben.id}/decision`, { method: 'PUT', body: { season: 2026, status: 'keep' } });
+  assert.equal(keep.data.decision.status, 'keep');
+  assert.equal((await j('/api/teacher/session?date=2026-10-03&type=saturday')).data.pending.length, 0);
+  await j(`/api/teacher/children/${ben.id}/decision`, { method: 'PUT', body: { season: 2026, status: 'out' } });
+  assert.ok(!(await j('/api/public?season=2026')).data.yearBoard.some((r) => r.name === 'Ben Fernandes'), 'hidden only after the teacher says so');
+  assert.equal((await j(`/api/teacher/children/${ben.id}/decision`, { method: 'PUT', body: { status: 'banana' } })).status, 400);
+  await j(`/api/teacher/children/${ben.id}/decision`, { method: 'PUT', body: { season: 2026, status: null } });
+  assert.ok((await j('/api/public?season=2026')).data.yearBoard.some((r) => r.name === 'Ben Fernandes'));
+});
+
 test('static files and path traversal', async () => {
   assert.equal((await fetch(`${base}/`)).status, 200);
   assert.equal((await fetch(`${base}/teacher`)).status, 200);
