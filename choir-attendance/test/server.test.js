@@ -293,3 +293,71 @@ test('hymn library: add, bulk paste, links, recordings, public browsing', async 
   const viaProxy = await fetch(`${base}/api/teacher/hymns`, { method: 'POST', headers: { 'x-forwarded-for': '203.0.113.9', 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Hack', category: 'Gloria' }) });
   assert.equal(viaProxy.status, 403);
 });
+
+test('tar files round-trip and reject junk', async () => {
+  const { createTar, readTar } = await import('../lib/tar.js');
+  const files = [{ name: 'db.json', data: Buffer.from('{"a":1}') }, { name: 'photos/abcd1234.jpg', data: Buffer.alloc(1500, 7) }, { name: 'empty', data: Buffer.alloc(0) }];
+  const back = readTar(createTar(files));
+  assert.deepEqual(back.map((f) => [f.name, f.data.length]), [['db.json', 7], ['photos/abcd1234.jpg', 1500], ['empty', 0]]);
+  assert.equal(back[1].data[100], 7);
+  assert.throws(() => readTar(Buffer.from('this is not a tar file'.repeat(40))));
+});
+
+test('backup and restore bring back everything, and nothing else', async () => {
+  const bk = await fetch(`${base}/api/teacher/backup`);
+  assert.equal(bk.status, 200);
+  assert.match(bk.headers.get('content-disposition'), /choir-backup-\d{4}-\d{2}-\d{2}\.tar/);
+  const tar = Buffer.from(await bk.arrayBuffer());
+  const { readTar, createTar } = await import('../lib/tar.js');
+  const names = readTar(tar).map((f) => f.name);
+  assert.ok(names.includes('db.json') && names.some((n) => n.startsWith('photos/')), names.join());
+
+  // change things after the backup was taken
+  const temp = (await j('/api/teacher/children', { method: 'POST', body: { name: 'Temp Child' } })).data;
+  await j(`/api/teacher/children/${anna.id}`, { method: 'PATCH', body: { name: 'Anna Changed' } });
+  const send = (body) => fetch(`${base}/api/teacher/restore`, { method: 'POST', headers: { 'content-type': 'application/x-tar' }, body });
+  // junk is refused and changes nothing
+  assert.equal((await send(Buffer.from('not a backup at all'.repeat(50)))).status, 400);
+  assert.equal((await send(createTar([{ name: 'db.json', data: Buffer.from('{"nope":true}') }]))).status, 400);
+  const still = (await j('/api/teacher/children')).data.children.map((c) => c.name);
+  assert.ok(still.includes('Temp Child') && still.includes('Anna Changed'));
+
+  const ok = await send(tar);
+  assert.equal(ok.status, 200);
+  const after = (await j('/api/teacher/children')).data.children;
+  assert.ok(!after.some((c) => c.id === temp.id), 'child added after the backup is gone');
+  assert.equal(after.find((c) => c.id === anna.id).name, 'Anna Dias', 'rename undone');
+  assert.ok(existsSync(join(dir, 'photos', `${anna.id}.jpg`)), 'photo restored');
+  assert.ok((await j('/api/hymns')).data.hymns.length >= 0);
+  assert.equal((await j('/api/me', { code: anna.code })).status, 200, 'parent codes survive a restore');
+  // restoring is for the teacher only
+  const viaProxy = await fetch(`${base}/api/teacher/restore`, { method: 'POST', headers: { 'x-forwarded-for': '203.0.113.9' }, body: tar });
+  assert.equal(viaProxy.status, 403);
+  assert.equal((await fetch(`${base}/healthz`)).status, 200);
+});
+
+test('hosted mode (behind a proxy): per-visitor lockouts, PIN-protected teacher area', async () => {
+  const { spawn } = await import('node:child_process');
+  const port = 3300 + Math.floor(Math.random() * 500);
+  const child = spawn(process.execPath, [new URL('../server.js', import.meta.url).pathname], {
+    env: { ...process.env, PORT: String(port), CHOIR_DATA: join(dir, 'hosted', 'db.json'), CHOIR_PIN: 'owner-pin-9', CHOIR_TRUST_PROXY: '1' },
+    stdio: 'ignore',
+  });
+  try {
+    const url = `http://127.0.0.1:${port}`;
+    for (let i = 0; i < 40; i += 1) { try { if ((await fetch(`${url}/healthz`)).ok) break; } catch { /* starting */ } await new Promise((r) => setTimeout(r, 100)); }
+    const asVisitor = (ip, path, headers = {}) => fetch(url + path, { headers: { 'x-forwarded-for': ip, ...headers } });
+    // teacher area: PIN required from anywhere except the machine itself
+    assert.equal((await asVisitor('9.9.9.9', '/api/teacher/children')).status, 401);
+    assert.equal((await asVisitor('9.9.9.9', '/api/teacher/children', { 'x-pin': 'wrong' })).status, 401);
+    assert.equal((await asVisitor('9.9.9.9', '/api/teacher/children', { 'x-pin': 'owner-pin-9' })).status, 200);
+    const meta = await (await asVisitor('9.9.9.9', '/api/meta')).json();
+    assert.deepEqual([meta.pinRequired, meta.teacherAllowed], [true, true]);
+    // one parent's wrong codes lock only that parent, not everyone behind the proxy
+    for (let i = 0; i < 5; i += 1) assert.equal((await asVisitor('1.1.1.1', '/api/me', { 'x-code': `NO${i}X` })).status, 401);
+    assert.equal((await asVisitor('1.1.1.1', '/api/me', { 'x-code': 'NOPE' })).status, 429);
+    assert.equal((await asVisitor('2.2.2.2', '/api/me', { 'x-code': 'NOPE' })).status, 401);
+  } finally {
+    child.kill();
+  }
+});

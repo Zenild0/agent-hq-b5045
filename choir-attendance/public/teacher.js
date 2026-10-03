@@ -4,7 +4,7 @@ import {
 } from './common.js';
 
 let pin = '';
-try { pin = sessionStorage.getItem('choir-pin') || ''; } catch { /* private mode */ }
+try { pin = localStorage.getItem('choir-pin') || ''; } catch { /* private mode */ }
 const call = (path, opts = {}) => api(path, { ...opts, pin });
 
 const iso = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -51,7 +51,7 @@ function askPin(message = '') {
   const p = prompt(`${message ? `${message}\n` : ''}Teacher PIN`);
   if (p === null) return flash('PIN required to use the teacher page from this device.');
   pin = p;
-  try { sessionStorage.setItem('choir-pin', p); } catch { /* private mode */ }
+  try { localStorage.setItem('choir-pin', p); } catch { /* private mode */ }
   location.reload();
 }
 
@@ -657,6 +657,41 @@ async function loadSettings() {
       <p class="muted">Your private prize race ends at Easter in the first year and at the end of December every year after. Leave blank to start from your first recorded session. Feast practices, feast masses and medical absences never count as leaves. Going over the leave limit never removes a child by itself; you decide.</p>
       <button class="btn primary">Save settings</button>
     </form>`;
+  $('#settings').insertAdjacentHTML('beforeend', `
+    <div class="card" id="backupBox">
+      <h3>Backup &amp; restore</h3>
+      <div class="muted">One file with all children, attendance, occasions, hymns, photos and recordings. Download one regularly and keep it safe (for example in your D drive or Google Drive). Use <b>Restore</b> to move everything onto a new computer or the online server. Restoring replaces what is there now.</div>
+      <div class="row" style="margin-top:10px"><button class="btn primary" id="dlBackup">⬇ Download backup</button>
+        <label class="btn" style="display:inline-block">⬆ Restore from backup<input type="file" accept=".tar,application/x-tar" id="rsBackup" hidden></label>
+        <span id="bkMsg" class="muted" aria-live="polite"></span></div>
+      ${pin ? '<div class="row" style="margin-top:12px"><button class="btn small" id="forgetPin">Forget my PIN on this device</button></div>' : ''}
+    </div>`);
+  $('#dlBackup').addEventListener('click', () => run(async () => {
+    $('#bkMsg').textContent = 'Preparing…';
+    const res = await fetch('/api/teacher/backup', { headers: pin ? { 'x-pin': pin } : {} });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not make the backup');
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `choir-backup-${todayStr()}.tar`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    $('#bkMsg').textContent = '✅ Downloaded';
+  }));
+  $('#rsBackup').addEventListener('change', async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    if (!confirm(`Restore from ${f.name}? Everything currently here (children, attendance, hymns, photos) will be replaced by the backup.`)) { e.target.value = ''; return; }
+    $('#bkMsg').textContent = 'Restoring… please wait';
+    try {
+      const res = await fetch('/api/teacher/restore', { method: 'POST', headers: { 'content-type': 'application/x-tar', ...(pin ? { 'x-pin': pin } : {}) }, body: f });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Restore failed');
+      $('#bkMsg').textContent = `✅ Restored ${data.children} children. Reloading…`;
+      setTimeout(() => location.reload(), 1200);
+    } catch (err) { $('#bkMsg').textContent = `⚠️ ${err.message}`; }
+  });
+  $('#forgetPin')?.addEventListener('click', () => { try { localStorage.removeItem('choir-pin'); } catch { /* private mode */ } location.reload(); });
   $('#setForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const f = new FormData(e.target);

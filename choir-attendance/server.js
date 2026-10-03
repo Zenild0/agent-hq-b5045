@@ -11,6 +11,7 @@ import {
   compareNames, findOccasion, slug,
 } from './lib/logic.js';
 import { openStore, newCode } from './lib/store.js';
+import { createTar, readTar } from './lib/tar.js';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const PUBLIC = resolve(here, 'public');
@@ -63,6 +64,17 @@ function noteFailure(map, ip) {
   map.set(ip, cur);
 }
 
+// When hosted behind a proxy (CHOIR_TRUST_PROXY=1), the real visitor is in X-Forwarded-For.
+const TRUST_HOPS = Number(process.env.CHOIR_TRUST_PROXY) || 0;
+function clientIp(req) {
+  if (TRUST_HOPS > 0) {
+    const parts = String(req.headers['x-forwarded-for'] || '').split(',').map((x) => x.trim()).filter(Boolean);
+    const ip = parts[parts.length - TRUST_HOPS];
+    if (ip) return ip;
+  }
+  return req.socket.remoteAddress || '?';
+}
+
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 function isLocal(req) {
   const host = String(req.headers.host || '').replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
@@ -73,7 +85,7 @@ function isLocal(req) {
 function checkTeacher(req) {
   if (isLocal(req)) return;
   if (!PIN_ENV) throw new HttpError(403, 'The teacher area only opens on the computer where the app is running.');
-  const ip = req.socket.remoteAddress || '?';
+  const ip = clientIp(req);
   if (tooManyFailures(pinFailures, ip, 10)) throw new HttpError(429, 'Too many wrong PINs. Please wait a few minutes.');
   const a = Buffer.from(String(req.headers['x-pin'] ?? ''));
   const b = Buffer.from(PIN_ENV);
@@ -188,7 +200,7 @@ function lockedOutCount() {
 }
 
 function childByCode(req) {
-  const ip = req.socket.remoteAddress || '?';
+  const ip = clientIp(req);
   // Short codes are easier to guess, so wrong tries are limited strictly.
   if (tooManyFailures(failures, ip, 5) || tooManyFailures(failures, '*all*', 100)) {
     throw new HttpError(429, 'Too many wrong codes. Please try again in about half an hour.');
@@ -500,12 +512,12 @@ function bulkHymns(body) {
   return { added, skipped };
 }
 
-async function readRaw(req, limit) {
+async function readRaw(req, limit, tooBig = 'That file is too big') {
   const chunks = [];
   let size = 0;
   for await (const c of req) {
     size += c.length;
-    if (size > limit) throw new HttpError(413, 'That recording is too big (max 25 MB)');
+    if (size > limit) throw new HttpError(413, tooBig);
     chunks.push(c);
   }
   return Buffer.concat(chunks);
@@ -521,7 +533,7 @@ async function saveHymnAudio(h, req) {
   const type = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
   const ext = AUDIO_TYPES[type];
   if (!ext) throw new HttpError(400, 'Please upload an MP3, M4A, WAV or OGG recording');
-  const buf = await readRaw(req, MAX_AUDIO);
+  const buf = await readRaw(req, MAX_AUDIO, 'That recording is too big (max 25 MB)');
   if (!buf.length) throw new HttpError(400, 'That file is empty');
   await mkdir(HYMNS_DIR, { recursive: true });
   await removeAudio(h);
@@ -587,6 +599,48 @@ async function serveAudio(req, res, file, ext) {
   createReadStream(file, { start, end }).pipe(res);
 }
 
+// ---- backup & restore: one .tar file with the database, photos and recordings ----
+
+const BACKUP_FILE = /^(photos\/[a-f0-9]{8}\.jpg|hymns\/[a-f0-9]{8}\.(mp3|m4a|aac|wav|ogg|webm))$/;
+
+async function buildBackup() {
+  const { db } = store;
+  const files = [{ name: 'db.json', data: Buffer.from(JSON.stringify(db)) }];
+  for (const c of db.children) {
+    if (!c.photoVersion) continue;
+    try { files.push({ name: `photos/${c.id}.jpg`, data: await readFile(join(PHOTOS, `${c.id}.jpg`)) }); } catch { /* photo file missing */ }
+  }
+  for (const h of db.hymns) {
+    if (!h.audioExt) continue;
+    try { files.push({ name: `hymns/${h.id}.${h.audioExt}`, data: await readFile(join(HYMNS_DIR, `${h.id}.${h.audioExt}`)) }); } catch { /* recording missing */ }
+  }
+  return createTar(files);
+}
+
+async function restoreBackup(req) {
+  const buf = await readRaw(req, 400_000_000, 'That backup is too big');
+  let files;
+  try { files = readTar(buf); } catch { throw new HttpError(400, 'That is not a Choir backup file'); }
+  const dbFile = files.find((f) => f.name === 'db.json');
+  let parsed;
+  try { parsed = JSON.parse(dbFile?.data.toString('utf8') ?? ''); } catch { parsed = null; }
+  if (!parsed || !Array.isArray(parsed.children) || typeof parsed.sessions !== 'object' || parsed.sessions === null) {
+    throw new HttpError(400, 'That is not a Choir backup file');
+  }
+  await rm(PHOTOS, { recursive: true, force: true });
+  await rm(HYMNS_DIR, { recursive: true, force: true });
+  await mkdir(PHOTOS, { recursive: true });
+  await mkdir(HYMNS_DIR, { recursive: true });
+  let restored = 0;
+  for (const f of files) {
+    if (!BACKUP_FILE.test(f.name)) continue; // only known file names are ever written
+    await writeFile(join(f.name.startsWith('photos/') ? PHOTOS : HYMNS_DIR, f.name.split('/')[1]), f.data);
+    restored += 1;
+  }
+  store.replace(parsed);
+  return { children: store.db.children.length, files: restored };
+}
+
 function teacherBoard() {
   const { db } = store;
   const season = seasonOf(today());
@@ -623,6 +677,14 @@ async function teacherApi(req, res, q, parts) {
       });
     }
     if (b === 'child' && id) return send(res, 200, { ...childDetail(child, seasonFromQuery(q), { teacher: true }), code: child.code, active: child.active, guest: Boolean(child.guest) });
+    if (b === 'backup') {
+      const tar = await buildBackup();
+      res.writeHead(200, {
+        'content-type': 'application/x-tar', 'content-length': tar.length, 'cache-control': 'no-store',
+        'content-disposition': `attachment; filename="choir-backup-${today()}.tar"`,
+      });
+      return res.end(tar);
+    }
     if (b === 'board') return send(res, 200, teacherBoard());
     if (b === 'occasions') {
       const season = seasonFromQuery(q);
@@ -636,6 +698,7 @@ async function teacherApi(req, res, q, parts) {
   }
 
   if (b === 'hymns') return teacherHymns(req, res, req.method, id, action);
+  if (req.method === 'POST' && b === 'restore') return send(res, 200, await restoreBackup(req));
 
   const body = await readBody(req, b === 'children' && action === 'photo' ? 1_500_000 : 100_000);
   if (req.method === 'PUT' && b === 'mark') { mark(body); return send(res, 200, { ok: true }); }
@@ -733,6 +796,7 @@ async function serveFile(res, file, headers = {}) {
 }
 
 async function serveStatic(req, res, pathname) {
+  if (pathname === '/healthz') { res.writeHead(200, { 'content-type': 'text/plain' }); return res.end('ok'); }
   const audio = /^\/hymns\/([a-f0-9]{8})\.(mp3|m4a|aac|wav|ogg|webm)$/.exec(pathname);
   if (audio) {
     if (!store.db.hymns.some((h) => h.id === audio[1] && h.audioExt === audio[2])) throw new HttpError(404, 'Not found');

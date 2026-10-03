@@ -1,0 +1,24 @@
+# Optional: Render "Blueprint" for the choir app. See choir-attendance/HOSTING.md.
+services:
+  - type: web
+    name: childrens-choir-zd
+    runtime: node
+    rootDir: choir-attendance
+    branch: claude/childrens-choir-attendance-r3d2st
+    plan: starter
+    buildCommand: echo ok
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    disk:
+      name: choir-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: CHOIR_DATA
+        value: /data/db.json
+      - key: CHOIR_TRUST_PROXY
+        value: "1"
+      - key: NODE_VERSION
+        value: "22"
+      - key: CHOIR_PIN
+        sync: false # Render asks you for this when you create the service

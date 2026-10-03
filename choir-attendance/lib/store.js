@@ -57,17 +57,22 @@ function migrate(db) {
 }
 
 // Tiny JSON-file store. Writes are atomic (tmp file + rename).
+const blank = () => ({ settings: { ...DEFAULT_SETTINGS }, children: [], sessions: {}, occasions: [], hymns: [], codesShortened: false });
+const withDefaults = (saved) => ({ ...blank(), ...saved, settings: { ...DEFAULT_SETTINGS, ...saved.settings } });
+
 export function openStore(file) {
-  let db = { settings: { ...DEFAULT_SETTINGS }, children: [], sessions: {}, occasions: [], hymns: [], codesShortened: false };
-  if (existsSync(file)) {
-    const saved = JSON.parse(readFileSync(file, 'utf8'));
-    db = { ...db, ...saved, settings: { ...DEFAULT_SETTINGS, ...saved.settings } };
-  }
+  let db = existsSync(file) ? withDefaults(JSON.parse(readFileSync(file, 'utf8'))) : blank();
   mkdirSync(dirname(file), { recursive: true });
   const save = () => {
     writeFileSync(`${file}.tmp`, JSON.stringify(db, null, 2));
     renameSync(`${file}.tmp`, file);
   };
   if (migrate(db)) save();
-  return { get db() { return db; }, save };
+  // Used by "restore from backup": swap in a whole new database.
+  const replace = (next) => {
+    db = withDefaults(next);
+    migrate(db);
+    save();
+  };
+  return { get db() { return db; }, save, replace };
 }
