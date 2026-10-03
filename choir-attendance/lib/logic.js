@@ -1,4 +1,4 @@
-// Pure rules for the choir: seasons, leaves, points, scoreboard.
+// Pure rules for the choir: seasons, leaves, points, leaderboards, achievers.
 // A "season" (choir year) runs April 1 -> March 31 and is identified by the
 // calendar year it starts in (season 2026 = Apr 2026 .. Mar 2027).
 
@@ -12,15 +12,32 @@ export const REMARKS = [
 ];
 
 export const STATUSES = ['present', 'absent', 'excused'];
-export const TYPES = ['saturday', 'sunday'];
+
+// saturday = regular practice, sunday = regular mass,
+// practice = rehearsal for a feast, feast = the feast mass itself.
+export const TYPES = ['saturday', 'sunday', 'practice', 'feast'];
+export const OCCASION_TYPES = ['practice', 'feast'];
+
+export const EVENTS = [
+  'Christmas',
+  'New Year',
+  'Maundy Thursday',
+  'Good Friday',
+  'Easter',
+  "Mother Mary's Feast",
+  'Communion Mass',
+  'Confirmation Mass',
+];
 
 export const DEFAULT_SETTINGS = {
   satPoints: 1, // Saturday practice
   sunPoints: 2, // Sunday mass
+  practicePoints: 1, // each rehearsal for a feast / special mass
+  feastPoints: 2, // the feast / special mass itself
   maxLeaves: 5, // more than this in a season => out until next April
   latePointsFactor: 0.5, // a "Late" present earns this share of the points
   countSundayAbsences: false, // by default only Saturday practice absences are leaves
-  firstSeason: null, // season (start year) that ends at Easter; null = auto
+  firstSeason: null, // season (start year) whose private prize date is Easter; null = auto
 };
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -33,6 +50,13 @@ export function isValidDate(s) {
 
 export function defaultType(date) {
   return new Date(`${date}T00:00:00Z`).getUTCDay() === 0 ? 'sunday' : 'saturday';
+}
+
+const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+// One session per date+type; feast sessions are also keyed by occasion.
+export function sessionKey(date, type, event) {
+  return OCCASION_TYPES.includes(type) ? `${date}|${type}|${slug(event)}` : `${date}|${type}`;
 }
 
 export function seasonOf(date) {
@@ -73,7 +97,7 @@ export function firstSeason(db, today) {
   return seasonOf(dates[0] ?? today);
 }
 
-// First season: prize at Easter. Every later season: prize at end of December.
+// Teacher-only: first season's prize at Easter, every later season at end of December.
 export function prizeInfo(db, season, today) {
   const { end } = seasonRange(season);
   if (season === firstSeason(db, today)) {
@@ -83,16 +107,22 @@ export function prizeInfo(db, season, today) {
   return { label: 'December', date: `${season}-12-31` };
 }
 
+const BASE_POINTS = { saturday: 'satPoints', sunday: 'sunPoints', practice: 'practicePoints', feast: 'feastPoints' };
+
 export function pointsFor(entry, type, settings) {
   if (!entry || entry.status !== 'present') return 0;
-  const base = type === 'sunday' ? settings.sunPoints : settings.satPoints;
-  const late = entry.remarks?.includes('Late');
-  return late ? base * settings.latePointsFactor : base;
+  const base = settings[BASE_POINTS[type]] ?? 0;
+  return entry.remarks?.includes('Late') ? base * settings.latePointsFactor : base;
 }
 
+// Only compulsory sessions can cost a leave; sick / hospital (excused) never does.
 export function isLeave(entry, type, settings) {
-  if (!entry || entry.status !== 'absent') return false; // 'excused' (sick/hospital) never counts
-  return type === 'saturday' || settings.countSundayAbsences;
+  if (!entry || entry.status !== 'absent') return false;
+  return type === 'saturday' || (type === 'sunday' && settings.countSundayAbsences);
+}
+
+export function photoUrl(child) {
+  return child.photoVersion ? `/photos/${child.id}.jpg?v=${child.photoVersion}` : null;
 }
 
 function sessionsInRange(db, from, to) {
@@ -132,25 +162,28 @@ export function childStats(db, childId, season, from, to) {
   return stats;
 }
 
-// Ranked board for [from, to]. Children who exceeded the leave limit stay
-// visible but are not eligible for the prize. Ties share a rank.
-export function scoreboard(db, season, from, to) {
-  const rows = db.children
-    .filter((c) => c.active)
+// Ranked board for [from, to]. A child counts as "out" once the leave limit was
+// passed on or before `to`. Ties share a rank.
+//   hideOut: drop children who are out (parent-facing boards)
+//   includeInactive: also rank children who have left the choir (history)
+export function scoreboard(db, season, from, to, { hideOut = false, includeInactive = false } = {}) {
+  let rows = db.children
+    .filter((c) => c.active || includeInactive)
     .map((c) => {
       const st = childStats(db, c.id, season, from, to);
       return {
-        id: c.id, name: c.name, points: st.points, leaves: st.leaves,
-        present: st.present, late: st.late, eligible: !st.exceeded,
+        id: c.id, name: c.name, photo: photoUrl(c), points: st.points, leaves: st.leaves,
+        present: st.present, late: st.late, eligible: !(st.leftOn && st.leftOn <= to),
       };
-    })
-    .sort((a, b) =>
-      Number(b.eligible) - Number(a.eligible) ||
-      b.points - a.points || a.leaves - b.leaves || a.name.localeCompare(b.name));
+    });
+  if (hideOut) rows = rows.filter((r) => r.eligible);
+  rows.sort((a, b) =>
+    Number(b.eligible) - Number(a.eligible) ||
+    b.points - a.points || a.leaves - b.leaves || a.name.localeCompare(b.name));
   let rank = 0;
   rows.forEach((r, i) => {
     const prev = rows[i - 1];
-    const tied = prev && prev.eligible === r.eligible && prev.points === r.points && prev.leaves === r.leaves;
+    const tied = prev && prev.eligible === r.eligible && prev.points === r.points; // equal points share a rank
     if (!tied) rank = i + 1;
     r.rank = r.eligible ? rank : null;
   });
@@ -166,4 +199,78 @@ export function monthRange(month) {
 export function monthLabel(month) {
   const [y, m] = month.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, 1)).toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
+export function seasonsWithData(db, today) {
+  const set = new Set(Object.values(db.sessions).map((s) => seasonOf(s.date)));
+  set.add(seasonOf(today));
+  return [...set].sort((a, b) => b - a);
+}
+
+// Everyone sharing the highest (non-zero) score wins.
+function winnersOf(rows) {
+  const top = rows.find((r) => r.eligible)?.points ?? 0;
+  if (top <= 0) return [];
+  return rows.filter((r) => r.eligible && r.points === top)
+    .map(({ id, name, photo, points }) => ({ id, name, photo, points }));
+}
+
+const hasSessions = (db, from, to) => Object.values(db.sessions).some((s) => s.date >= from && s.date <= to);
+
+// Month-by-month winners for a season (months that have started and have data).
+export function monthlyAchievers(db, season, today) {
+  const out = [];
+  for (let i = 0; i < 12; i += 1) {
+    const m = ((i + 3) % 12) + 1;
+    const month = `${m >= 4 ? season : season + 1}-${pad(m)}`;
+    const { start, end } = monthRange(month);
+    if (start > today || !hasSessions(db, start, end)) continue;
+    const rows = scoreboard(db, season, start, end, { includeInactive: true });
+    out.push({ month, label: monthLabel(month), inProgress: today <= end, winners: winnersOf(rows) });
+  }
+  return out.reverse();
+}
+
+// Whole-season winners, newest first.
+export function yearlyAchievers(db, today) {
+  const cur = seasonOf(today);
+  return seasonsWithData(db, today)
+    .filter((s) => { const r = seasonRange(s); return hasSessions(db, r.start, r.end); })
+    .map((season) => {
+      const r = seasonRange(season);
+      const rows = scoreboard(db, season, r.start, r.end, { includeInactive: true });
+      return { season, label: seasonLabel(season), inProgress: season === cur, winners: winnersOf(rows) };
+    });
+}
+
+// Who attended each practice / mass for every special occasion in a season.
+export function occasions(db, season) {
+  const range = seasonRange(season);
+  const sessions = sessionsInRange(db, range.start, range.end).filter((s) => OCCASION_TYPES.includes(s.type));
+  const byEvent = new Map();
+  for (const s of sessions) {
+    if (!byEvent.has(s.event)) byEvent.set(s.event, []);
+    byEvent.get(s.event).push(s);
+  }
+  return [...byEvent].map(([event, list]) => {
+    const children = db.children
+      .filter((c) => c.active || list.some((s) => s.entries[c.id]?.status))
+      .map((c) => {
+        const cells = list.map((s) => s.entries[c.id]?.status ?? null);
+        const points = list.reduce((sum, s) => sum + pointsFor(s.entries[c.id], s.type, db.settings), 0);
+        return {
+          id: c.id, name: c.name, photo: photoUrl(c), cells, points,
+          attended: cells.filter((x) => x === 'present').length,
+        };
+      })
+      .sort((a, b) => b.attended - a.attended || a.name.localeCompare(b.name));
+    return {
+      event,
+      sessions: list.map((s, i) => ({
+        date: s.date, type: s.type,
+        presentCount: children.filter((c) => c.cells[i] === 'present').length,
+      })),
+      children,
+    };
+  });
 }
