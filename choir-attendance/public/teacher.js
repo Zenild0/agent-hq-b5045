@@ -719,29 +719,39 @@ async function loadHymns() {
   drawHymnsTab();
 }
 
+const hymnSort = () => { try { return localStorage.getItem('choir-hymn-sort') === 'az' ? 'az' : 'cat'; } catch { return 'cat'; } };
+
 function drawHymnsTab() {
   const { categories, hymns } = hymnState;
+  const az = hymnSort() === 'az';
+  const byTitle = (a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base', numeric: true });
+  const groups = az ? [{ id: '_az', label: 'All hymns (A–Z)' }] : categories;
   const term = ($('#hq')?.value || '').trim().toLowerCase();
   $('#hymns').innerHTML = `
     <div class="card">
       <div class="row between"><div><h3 style="margin:0">Hymn library</h3><div class="muted">Hymns taught that are not in the book. Parents browse them by category.</div></div>
         <div class="row"><button class="btn primary" id="addHymn">＋ Add hymn</button><button class="btn" id="addHymns">＋ Add many</button></div></div>
+      <div class="row" role="group" aria-label="Order of hymns" style="margin-top:8px"><button class="btn small${az ? '' : ' primary'}" data-sort="cat">By category</button><button class="btn small${az ? ' primary' : ''}" data-sort="az">A–Z</button></div>
       <label class="field"><span class="sr">Search</span><input id="hq" type="search" placeholder="Search hymns…" value="${esc(term)}"></label>
     </div>
-    ${categories.map((c) => {
-      const items = hymns.filter((h) => h.category === c.id && (!term || h.title.toLowerCase().includes(term)));
+    ${groups.map((c) => {
+      const items = hymns.filter((h) => (az || h.category === c.id) && (!term || h.title.toLowerCase().includes(term))).sort(byTitle);
       if (term && !items.length) return '';
-      return `<details class="hcat" data-cat="${esc(c.id)}"${term || openHymnCats.has(c.id) ? ' open' : ''}>
+      return `<details class="hcat" data-cat="${esc(c.id)}"${az || term || openHymnCats.has(c.id) ? ' open' : ''}>
         <summary><span>${esc(c.label)}</span><span class="badge info">${items.length}</span></summary>
         ${items.map((h) => `
           <div class="hymn row between">
             <div class="grow"><div class="ht">${esc(h.title)}</div>
-              <div>${h.audio ? '<span class="badge ok">🎧 recording</span> ' : ''}${h.link ? '<span class="badge info">🔗 link</span>' : ''}</div></div>
+              <div>${az ? `<span class="badge info">${esc(categories.find((x) => x.id === h.category)?.label || '')}</span> ` : ''}${h.audio ? '<span class="badge ok">🎧 recording</span> ' : ''}${h.link ? '<span class="badge info">🔗 link</span>' : ''}</div></div>
             <span class="row"><button class="btn small" data-hview="${esc(h.id)}">⛶ View</button><button class="btn small" data-hedit="${esc(h.id)}">Edit</button></span>
           </div>`).join('') || '<div class="hymn muted">No hymns here yet.</div>'}
       </details>`;
     }).join('')}`;
   $('#hq').addEventListener('input', () => { drawHymnsTab(); const el = $('#hq'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); });
+  $('#hymns').querySelectorAll('[data-sort]').forEach((b) => b.addEventListener('click', () => {
+    try { localStorage.setItem('choir-hymn-sort', b.dataset.sort); } catch { /* ignore */ }
+    drawHymnsTab();
+  }));
   $('#addHymn').addEventListener('click', () => openHymn(null));
   $('#addHymns').addEventListener('click', openHymnBulk);
   $('#hymns').querySelectorAll('[data-hview]').forEach((b) => b.addEventListener('click', () => {
