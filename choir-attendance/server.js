@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rm, stat } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -422,6 +423,170 @@ function deleteOccasion(occ) {
   store.save();
 }
 
+// ---- hymn library: hymns taught that are not in the book ----------------------
+
+const HYMN_CATEGORIES = ['Entrance', 'LHM', 'Gloria', 'Response', 'Acclamation', 'Offertory', 'Holy', 'Peace', 'Communion', 'Recessional'];
+const HYMN_LABELS = { LHM: 'Lord Have Mercy (LHM)' };
+const AUDIO_TYPES = {
+  'audio/mpeg': 'mp3', 'audio/mp3': 'mp3', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/m4a': 'm4a',
+  'audio/aac': 'aac', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/wave': 'wav', 'audio/ogg': 'ogg', 'audio/webm': 'webm',
+};
+const AUDIO_MIME = { mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', wav: 'audio/wav', ogg: 'audio/ogg', webm: 'audio/webm' };
+const HYMNS_DIR = join(dirname(DATA_FILE), 'hymns');
+const MAX_AUDIO = 25_000_000;
+
+const hymnOut = (h) => ({
+  id: h.id, title: h.title, category: h.category, link: h.link, notes: h.notes,
+  audio: h.audioExt ? `/hymns/${h.id}.${h.audioExt}?v=${h.audioVersion}` : null,
+});
+
+const hymnList = () => ({
+  categories: HYMN_CATEGORIES.map((id) => ({ id, label: HYMN_LABELS[id] ?? id })),
+  hymns: [...store.db.hymns].sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' })).map(hymnOut),
+});
+
+function applyHymn(h, body) {
+  if ('title' in body) {
+    const t = text(body.title, 120, 'Title').replace(/\s+/g, ' ');
+    if (!t) throw new HttpError(400, 'Hymn title is required');
+    h.title = t;
+  }
+  if ('category' in body) {
+    if (!HYMN_CATEGORIES.includes(body.category)) throw new HttpError(400, 'Choose a category from the list');
+    h.category = body.category;
+  }
+  if ('link' in body) {
+    const l = text(body.link, 500, 'Link');
+    if (l && !/^https?:\/\/[^\s]+$/i.test(l)) throw new HttpError(400, 'The link must start with http:// or https://');
+    h.link = l;
+  }
+  if ('notes' in body) h.notes = text(body.notes, 300, 'Notes');
+}
+
+const sameHymn = (a, b) => a.category === b.category && a.title.toLowerCase() === b.title.toLowerCase();
+const newHymn = () => ({ id: randomUUID().slice(0, 8), title: '', category: '', link: '', notes: '', audioExt: '', audioVersion: 0 });
+
+function createHymn(body) {
+  const h = newHymn();
+  applyHymn(h, body);
+  if (!h.title || !h.category) throw new HttpError(400, 'A hymn needs a title and a category');
+  if (store.db.hymns.some((x) => sameHymn(x, h))) throw new HttpError(400, `${h.title} is already in ${h.category}`);
+  store.db.hymns.push(h);
+  store.save();
+  return hymnOut(h);
+}
+
+// Paste many titles for one category. A line is "Title" or "Title | https://link".
+function bulkHymns(body) {
+  if (!HYMN_CATEGORIES.includes(body.category)) throw new HttpError(400, 'Choose a category first');
+  const lines = String(body.text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) throw new HttpError(400, 'Paste at least one hymn title');
+  if (lines.length > 300) throw new HttpError(400, 'Please add at most 300 hymns at a time');
+  const added = [];
+  const skipped = [];
+  for (const line of lines) {
+    const [title, link = ''] = line.replace(/^(?:\d+[.)]|[-*•])\s*/, '').split('|').map((x) => x.trim());
+    try {
+      const h = newHymn();
+      applyHymn(h, { title, category: body.category, link });
+      if (store.db.hymns.some((x) => sameHymn(x, h))) { skipped.push({ line, reason: 'already in the list' }); continue; }
+      store.db.hymns.push(h);
+      added.push(hymnOut(h));
+    } catch (err) {
+      skipped.push({ line, reason: err.message });
+    }
+  }
+  store.save();
+  return { added, skipped };
+}
+
+async function readRaw(req, limit) {
+  const chunks = [];
+  let size = 0;
+  for await (const c of req) {
+    size += c.length;
+    if (size > limit) throw new HttpError(413, 'That recording is too big (max 25 MB)');
+    chunks.push(c);
+  }
+  return Buffer.concat(chunks);
+}
+
+async function removeAudio(h) {
+  if (h.audioExt) await rm(join(HYMNS_DIR, `${h.id}.${h.audioExt}`), { force: true });
+  h.audioExt = '';
+  h.audioVersion = 0;
+}
+
+async function saveHymnAudio(h, req) {
+  const type = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+  const ext = AUDIO_TYPES[type];
+  if (!ext) throw new HttpError(400, 'Please upload an MP3, M4A, WAV or OGG recording');
+  const buf = await readRaw(req, MAX_AUDIO);
+  if (!buf.length) throw new HttpError(400, 'That file is empty');
+  await mkdir(HYMNS_DIR, { recursive: true });
+  await removeAudio(h);
+  await writeFile(join(HYMNS_DIR, `${h.id}.${ext}`), buf);
+  h.audioExt = ext;
+  h.audioVersion = Date.now();
+  store.save();
+  return hymnOut(h);
+}
+
+async function teacherHymns(req, res, method, id, action) {
+  const { db } = store;
+  const h = id && id !== 'bulk' ? db.hymns.find((x) => x.id === id) : null;
+  if (id && id !== 'bulk' && !h) throw new HttpError(404, 'Hymn not found');
+  if (h && action === 'audio') {
+    if (method === 'PUT') return send(res, 200, await saveHymnAudio(h, req));
+    if (method === 'DELETE') { await removeAudio(h); store.save(); return send(res, 200, hymnOut(h)); }
+    throw new HttpError(405, 'Method not allowed');
+  }
+  const body = await readBody(req);
+  if (method === 'POST' && id === 'bulk') return send(res, 201, bulkHymns(body));
+  if (method === 'POST' && !id) return send(res, 201, createHymn(body));
+  if (method === 'PATCH' && h) {
+    const draft = { ...h };
+    applyHymn(draft, body);
+    if (db.hymns.some((x) => x !== h && sameHymn(x, draft))) throw new HttpError(400, `${draft.title} is already in ${draft.category}`);
+    Object.assign(h, draft);
+    store.save();
+    return send(res, 200, hymnOut(h));
+  }
+  if (method === 'DELETE' && h) {
+    await removeAudio(h);
+    db.hymns = db.hymns.filter((x) => x !== h);
+    store.save();
+    return send(res, 200, { ok: true });
+  }
+  throw new HttpError(404, 'Not found');
+}
+
+// Audio with Range support so players can seek.
+async function serveAudio(req, res, file, ext) {
+  let st;
+  try { st = await stat(file); } catch { throw new HttpError(404, 'Not found'); }
+  let start = 0;
+  let end = st.size - 1;
+  let status = 200;
+  const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+  if (m && (m[1] || m[2])) {
+    if (m[1] === '') start = Math.max(0, st.size - Number(m[2]));
+    else { start = Number(m[1]); if (m[2]) end = Math.min(end, Number(m[2])); }
+    if (start > end || start >= st.size) {
+      res.writeHead(416, { 'content-range': `bytes */${st.size}` });
+      return res.end();
+    }
+    status = 206;
+  }
+  res.writeHead(status, {
+    'content-type': AUDIO_MIME[ext], 'accept-ranges': 'bytes', 'content-length': end - start + 1,
+    'cache-control': 'public, max-age=86400', 'x-content-type-options': 'nosniff',
+    ...(status === 206 ? { 'content-range': `bytes ${start}-${end}/${st.size}` } : {}),
+  });
+  if (req.method === 'HEAD') return res.end();
+  createReadStream(file, { start, end }).pipe(res);
+}
+
 function teacherBoard() {
   const { db } = store;
   const season = seasonOf(today());
@@ -469,6 +634,8 @@ async function teacherApi(req, res, q, parts) {
     }
     throw new HttpError(404, 'Not found');
   }
+
+  if (b === 'hymns') return teacherHymns(req, res, req.method, id, action);
 
   const body = await readBody(req, b === 'children' && action === 'photo' ? 1_500_000 : 100_000);
   if (req.method === 'PUT' && b === 'mark') { mark(body); return send(res, 200, { ok: true }); }
@@ -535,6 +702,7 @@ async function api(req, res, url) {
   const [a, b] = parts;
 
   if (req.method === 'GET' && a === 'public') return send(res, 200, publicOverview(q));
+  if (req.method === 'GET' && a === 'hymns') return send(res, 200, hymnList());
   if (req.method === 'GET' && a === 'meta') return send(res, 200, { pinRequired: !isLocal(req) && Boolean(PIN_ENV), teacherAllowed: isLocal(req) || Boolean(PIN_ENV) });
 
   if (a === 'me') {
@@ -564,7 +732,12 @@ async function serveFile(res, file, headers = {}) {
   }
 }
 
-async function serveStatic(res, pathname) {
+async function serveStatic(req, res, pathname) {
+  const audio = /^\/hymns\/([a-f0-9]{8})\.(mp3|m4a|aac|wav|ogg|webm)$/.exec(pathname);
+  if (audio) {
+    if (!store.db.hymns.some((h) => h.id === audio[1] && h.audioExt === audio[2])) throw new HttpError(404, 'Not found');
+    return serveAudio(req, res, join(HYMNS_DIR, `${audio[1]}.${audio[2]}`), audio[2]);
+  }
   const photo = /^\/photos\/([a-f0-9]{8})\.jpg$/.exec(pathname);
   if (photo) return serveFile(res, join(PHOTOS, `${photo[1]}.jpg`), { 'cache-control': 'public, max-age=86400' });
   const rel = pathname === '/' ? 'index.html' : pathname === '/teacher' ? 'teacher.html' : pathname.slice(1);
@@ -577,7 +750,7 @@ export const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     if (url.pathname.startsWith('/api/')) await api(req, res, url);
-    else if (req.method === 'GET') await serveStatic(res, decodeURIComponent(url.pathname));
+    else if (req.method === 'GET') await serveStatic(req, res, decodeURIComponent(url.pathname));
     else throw new HttpError(405, 'Method not allowed');
   } catch (err) {
     if (!(err instanceof HttpError)) console.error(err);

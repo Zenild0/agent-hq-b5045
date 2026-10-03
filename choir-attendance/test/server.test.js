@@ -230,3 +230,59 @@ test('five wrong codes lock a device out; the teacher can unlock everyone', asyn
   assert.equal((await j('/api/teacher/children')).data.lockedOut, 0);
   assert.equal((await j('/api/me', { code: anna.code })).status, 200);
 });
+
+test('hymn library: add, bulk paste, links, recordings, public browsing', async () => {
+  const add = (body) => j('/api/teacher/hymns', { method: 'POST', body });
+  const one = await add({ title: 'Here I Am, Lord', category: 'Entrance', link: 'https://youtu.be/abc123', notes: 'Key of D' });
+  assert.equal(one.status, 201);
+  assert.equal((await add({ title: 'here i am, lord', category: 'Entrance' })).status, 400); // duplicate in same category
+  assert.equal((await add({ title: 'Here I Am, Lord', category: 'Communion' })).status, 201); // same title, other category is fine
+  assert.equal((await add({ title: 'No Category' })).status, 400);
+  assert.equal((await add({ title: 'Bad', category: 'Karaoke' })).status, 400);
+  assert.equal((await add({ title: 'Bad link', category: 'Gloria', link: 'javascript:alert(1)' })).status, 400);
+
+  const bulk = await j('/api/teacher/hymns/bulk', { method: 'POST', body: { category: 'Gloria', text: '1. Glory to God\n- Gloria in Excelsis | https://example.com/gloria\nglory to god\nBroken | not-a-link' } });
+  assert.equal(bulk.status, 201);
+  assert.deepEqual(bulk.data.added.map((h) => h.title), ['Glory to God', 'Gloria in Excelsis']);
+  assert.equal(bulk.data.added[1].link, 'https://example.com/gloria');
+  assert.equal(bulk.data.skipped.length, 2);
+
+  // recordings: only audio types, served with Range support
+  const id = one.data.id;
+  const up = (type, bytes) => fetch(`${base}/api/teacher/hymns/${id}/audio`, { method: 'PUT', headers: { 'content-type': type }, body: bytes });
+  assert.equal((await up('text/html', Buffer.from('<script>'))).status, 400);
+  const bytes = Buffer.from('0123456789abcdefghij');
+  const ok = await up('audio/mpeg', bytes);
+  assert.equal(ok.status, 200);
+  const audioUrl = (await ok.json()).audio;
+  assert.match(audioUrl, /^\/hymns\/[a-f0-9]{8}\.mp3\?v=/);
+  const full = await fetch(base + audioUrl);
+  assert.equal(full.headers.get('content-type'), 'audio/mpeg');
+  assert.equal(full.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(Buffer.from(await full.arrayBuffer()).toString(), '0123456789abcdefghij');
+  const part = await fetch(base + audioUrl, { headers: { range: 'bytes=5-9' } });
+  assert.equal(part.status, 206);
+  assert.equal(part.headers.get('content-range'), 'bytes 5-9/20');
+  assert.equal(Buffer.from(await part.arrayBuffer()).toString(), '56789');
+  assert.equal((await fetch(base + audioUrl, { headers: { range: 'bytes=50-60' } })).status, 416);
+
+  // parents browse by category without logging in
+  const pub = (await j('/api/hymns')).data;
+  assert.equal(pub.categories.length, 10);
+  assert.equal(pub.categories.find((c) => c.id === 'LHM').label, 'Lord Have Mercy (LHM)');
+  const mine = pub.hymns.find((h) => h.id === id);
+  assert.equal(mine.audio, audioUrl);
+  assert.equal(mine.link, 'https://youtu.be/abc123');
+  const titles = pub.hymns.map((h) => h.title);
+  assert.deepEqual(titles, [...titles].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })));
+
+  // edit, remove recording, delete
+  assert.equal((await j(`/api/teacher/hymns/${id}`, { method: 'PATCH', body: { category: 'Recessional', notes: '' } })).data.category, 'Recessional');
+  assert.equal((await fetch(`${base}/api/teacher/hymns/${id}/audio`, { method: 'DELETE' })).status, 200);
+  assert.equal((await fetch(base + audioUrl)).status, 404);
+  assert.equal((await j(`/api/teacher/hymns/${id}`, { method: 'DELETE' })).status, 200);
+  assert.ok(!(await j('/api/hymns')).data.hymns.some((h) => h.id === id));
+  // writing needs the teacher area (refused when arriving via a proxy)
+  const viaProxy = await fetch(`${base}/api/teacher/hymns`, { method: 'POST', headers: { 'x-forwarded-for': '203.0.113.9', 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Hack', category: 'Gloria' }) });
+  assert.equal(viaProxy.status, 403);
+});

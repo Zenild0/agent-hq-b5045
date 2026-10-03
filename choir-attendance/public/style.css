@@ -245,3 +245,17 @@ dialog .dlg { padding: 16px 18px 20px; overflow: auto; max-height: 92vh; }
 
 .pick-list { max-height: 220px; overflow: auto; border: 2px solid var(--line); border-radius: 12px; padding: 4px 12px; }
 .code-mask { font: 800 1.1rem var(--font-head); letter-spacing: .12em; }
+
+/* ---------- hymn library ---------- */
+.hcat { background: var(--card); border: 2px solid var(--line); border-radius: var(--radius); margin: 10px 0; overflow: hidden; }
+.hcat > summary { list-style: none; cursor: pointer; padding: 14px 16px; min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 10px; font: 800 1.05rem var(--font-head); }
+.hcat > summary::-webkit-details-marker { display: none; }
+.hcat > summary::after { content: '▾'; color: var(--muted); transition: rotate .2s; }
+.hcat[open] > summary::after { rotate: 180deg; }
+.hcat[open] > summary { background: #f6f0ff; }
+.hymn { padding: 12px 16px; border-top: 1px solid var(--line); }
+.hymn .ht { font-weight: 800; }
+.hymn audio { width: 100%; margin-top: 8px; }
+.hymn .acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; align-items: center; }
+a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }

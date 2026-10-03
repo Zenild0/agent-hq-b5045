@@ -33,10 +33,12 @@ function shell() {
       <nav class="tabs" role="tablist">
         <button data-tab="board">🏆 Leaderboard</button>
         <button data-tab="ach">⭐ Achievers</button>
+        <button data-tab="hymns">🎵 Hymns</button>
         <button data-tab="child">👧 My child</button>
       </nav>
       <section id="board"></section>
       <section id="ach" hidden></section>
+      <section id="hymns" hidden></section>
       <section id="child" hidden></section>
     </main>
     ${footerHtml()}`;
@@ -46,7 +48,7 @@ function shell() {
 function show(t) {
   tab = t;
   app.querySelectorAll('nav button').forEach((b) => b.classList.toggle('on', b.dataset.tab === t));
-  ['board', 'ach', 'child'].forEach((id) => { $(`#${id}`).hidden = id !== t; });
+  ['board', 'ach', 'hymns', 'child'].forEach((id) => { $(`#${id}`).hidden = id !== t; });
 }
 
 // ---------- leaderboard ----------
@@ -107,6 +109,52 @@ function achTab() {
     overview = await api(`public?season=${season}`);
     achTab();
   });
+}
+
+// ---------- hymn library (open to everyone) ----------
+
+let hymnData = null;
+const openCats = new Set();
+
+function drawHymns() {
+  const term = ($('#hsearch')?.value || '').trim().toLowerCase();
+  const { categories, hymns } = hymnData;
+  const safeLink = (u) => /^https?:\/\//i.test(u) ? u : '';
+  const html = categories.map((c) => {
+    const items = hymns.filter((h) => h.category === c.id && (!term || h.title.toLowerCase().includes(term)));
+    if (term && !items.length) return '';
+    const open = term || openCats.has(c.id);
+    return `
+      <details class="hcat" data-cat="${esc(c.id)}"${open ? ' open' : ''}>
+        <summary><span>${esc(c.label)}</span><span class="badge info">${items.length}</span></summary>
+        ${items.length ? items.map((h) => `
+          <div class="hymn">
+            <div class="ht">${esc(h.title)}</div>
+            ${h.notes ? `<div class="muted">${esc(h.notes)}</div>` : ''}
+            ${h.audio ? `<audio controls preload="none" src="${esc(h.audio)}"></audio>` : ''}
+            ${safeLink(h.link) ? `<div class="acts"><a class="btn small" href="${esc(safeLink(h.link))}" target="_blank" rel="noopener noreferrer">🔗 Open music link</a></div>` : ''}
+          </div>`).join('') : '<div class="hymn muted">No hymns here yet.</div>'}
+      </details>`;
+  }).join('');
+  $('#hlist').innerHTML = html || '<div class="empty">No hymns match your search.</div>';
+  $('#hlist').querySelectorAll('details').forEach((d) => d.addEventListener('toggle', () => {
+    if (term) return;
+    if (d.open) openCats.add(d.dataset.cat); else openCats.delete(d.dataset.cat);
+  }));
+}
+
+async function hymnsTab() {
+  $('#hymns').innerHTML = `
+    <h2>🎵 Hymn library</h2>
+    <div class="muted">Hymns we have learned that are not in the book. Open a group to listen or find the music.</div>
+    <label class="field"><span class="sr">Search hymns</span><input id="hsearch" type="search" placeholder="Search for a hymn…" autocomplete="off"></label>
+    <div id="hlist"><div class="empty">Loading…</div></div>`;
+  $('#hsearch').addEventListener('input', () => hymnData && drawHymns());
+  try {
+    hymnData = await api('hymns');
+    if (!hymnData.hymns.length) $('#hlist').innerHTML = '<div class="empty">Hymns will appear here once your teacher adds them.</div>';
+    else drawHymns();
+  } catch (e) { $('#hlist').innerHTML = `<div class="alert bad">${esc(e.message)}</div>`; }
 }
 
 // ---------- my child (private, needs the code) ----------
@@ -196,6 +244,7 @@ api('public')
     overview = o;
     boardTab();
     achTab();
+    hymnsTab();
     return loadMe();
   })
   .catch((e) => { $('#board').innerHTML = `<div class="alert bad">${esc(e.message)}</div>`; });

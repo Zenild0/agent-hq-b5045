@@ -23,6 +23,7 @@ app.innerHTML = `
       <button data-tab="attendance" class="on">✅ Attendance</button>
       <button data-tab="occasions">🎄 Occasions</button>
       <button data-tab="children">👧 Children</button>
+      <button data-tab="hymns">🎵 Hymns</button>
       <button data-tab="board">🏆 Leaderboard</button>
       <button data-tab="settings">⚙️ Settings</button>
     </nav>
@@ -30,6 +31,7 @@ app.innerHTML = `
     <section id="attendance"></section>
     <section id="occasions" hidden></section>
     <section id="children" hidden></section>
+    <section id="hymns" hidden></section>
     <section id="board" hidden></section>
     <section id="settings" hidden></section>
   </main>
@@ -58,8 +60,8 @@ function lockOut(message) {
   app.querySelector('main').innerHTML = `<div class="card"><h2 style="margin-top:0">🔒 Teacher area</h2><p>${esc(message)}</p><p class="muted">Open <b>http://localhost:3000/teacher</b> on the computer running the app. Parents use the main link and their child's code.</p><a class="btn" href="/">Go to the parent page</a></div>`;
 }
 
-const tabs = ['attendance', 'occasions', 'children', 'board', 'settings'];
-const loaders = { attendance: loadAttendance, occasions: loadOccasions, children: loadChildren, board: loadBoard, settings: loadSettings };
+const tabs = ['attendance', 'occasions', 'children', 'hymns', 'board', 'settings'];
+const loaders = { attendance: loadAttendance, occasions: loadOccasions, children: loadChildren, hymns: loadHymns, board: loadBoard, settings: loadSettings };
 function showTab(name) {
   tabs.forEach((t) => { $(`#${t}`).hidden = t !== name; });
   app.querySelectorAll('nav button').forEach((x) => x.classList.toggle('on', x.dataset.tab === name));
@@ -667,6 +669,141 @@ async function loadSettings() {
       await call('teacher/settings', { method: 'PUT', body });
       flash('Settings saved.', 'ok');
     });
+  });
+}
+
+// ======================= Hymn library =======================
+
+const openHymnCats = new Set();
+let hymnState = null;
+
+async function loadHymns() {
+  hymnState = await api('hymns');
+  drawHymnsTab();
+}
+
+function drawHymnsTab() {
+  const { categories, hymns } = hymnState;
+  const term = ($('#hq')?.value || '').trim().toLowerCase();
+  $('#hymns').innerHTML = `
+    <div class="card">
+      <div class="row between"><div><h3 style="margin:0">Hymn library</h3><div class="muted">Hymns taught that are not in the book. Parents browse them by category.</div></div>
+        <div class="row"><button class="btn primary" id="addHymn">＋ Add hymn</button><button class="btn" id="addHymns">＋ Add many</button></div></div>
+      <label class="field"><span class="sr">Search</span><input id="hq" type="search" placeholder="Search hymns…" value="${esc(term)}"></label>
+    </div>
+    ${categories.map((c) => {
+      const items = hymns.filter((h) => h.category === c.id && (!term || h.title.toLowerCase().includes(term)));
+      if (term && !items.length) return '';
+      return `<details class="hcat" data-cat="${esc(c.id)}"${term || openHymnCats.has(c.id) ? ' open' : ''}>
+        <summary><span>${esc(c.label)}</span><span class="badge info">${items.length}</span></summary>
+        ${items.map((h) => `
+          <div class="hymn row between">
+            <div class="grow"><div class="ht">${esc(h.title)}</div>
+              <div>${h.audio ? '<span class="badge ok">🎧 recording</span> ' : ''}${h.link ? '<span class="badge info">🔗 link</span>' : ''}</div></div>
+            <button class="btn small" data-hedit="${esc(h.id)}">Edit</button>
+          </div>`).join('') || '<div class="hymn muted">No hymns here yet.</div>'}
+      </details>`;
+    }).join('')}`;
+  $('#hq').addEventListener('input', () => { drawHymnsTab(); const el = $('#hq'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); });
+  $('#addHymn').addEventListener('click', () => openHymn(null));
+  $('#addHymns').addEventListener('click', openHymnBulk);
+  $('#hymns').querySelectorAll('[data-hedit]').forEach((b) => b.addEventListener('click', () => openHymn(b.dataset.hedit)));
+  $('#hymns').querySelectorAll('details.hcat').forEach((d) => d.addEventListener('toggle', () => {
+    if (term) return;
+    if (d.open) openHymnCats.add(d.dataset.cat); else openHymnCats.delete(d.dataset.cat);
+  }));
+}
+
+const catOptions = (selected) => hymnState.categories.map((c) => `<option value="${esc(c.id)}"${c.id === selected ? ' selected' : ''}>${esc(c.label)}</option>`).join('');
+
+function openHymn(id) {
+  const h = id ? hymnState.hymns.find((x) => x.id === id) : { title: '', category: hymnState.categories[0].id, link: '', notes: '', audio: null };
+  $('#dlgBody').innerHTML = `
+    <div class="row between"><h2 style="margin:0">${id ? 'Edit hymn' : 'Add hymn'}</h2><button class="btn small" id="close" aria-label="Close">✕</button></div>
+    <form id="hf">
+      <label class="field">Hymn title<input name="title" required maxlength="120" value="${esc(h.title)}"></label>
+      <label class="field">Category<select name="category">${catOptions(h.category)}</select></label>
+      <label class="field">Link to the music (optional)<input name="link" type="url" placeholder="https://…" maxlength="500" value="${esc(h.link)}"></label>
+      <label class="field">Notes (optional)<input name="notes" maxlength="300" placeholder="e.g. Key of D, verses 1 and 3" value="${esc(h.notes)}"></label>
+      <div class="row"><button class="btn primary">${id ? 'Save' : 'Add hymn'}</button><span id="hmsg" class="muted" aria-live="polite"></span></div>
+    </form>
+    ${id ? `
+      <h3 style="margin-top:18px">Recording</h3>
+      <div class="card" style="margin-top:6px">
+        <div id="audBox">${h.audio ? `<audio controls preload="none" src="${esc(h.audio)}" style="width:100%"></audio>` : '<div class="muted">No recording yet.</div>'}</div>
+        <div class="row" style="margin-top:8px">
+          <label class="btn small" style="display:inline-block">🎧 ${h.audio ? 'Replace' : 'Upload'} recording<input type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg" id="aud" hidden></label>
+          ${h.audio ? '<button class="btn small danger" id="delAud">Remove recording</button>' : ''}
+          <span id="audMsg" class="muted" aria-live="polite"></span></div>
+        <div class="muted">MP3, M4A, WAV or OGG, up to 25 MB.</div>
+      </div>
+      <button class="btn danger" id="delHymn" style="margin-top:14px">Delete hymn</button>` : ''}`;
+  if (!dlg.open) dlg.showModal();
+  $('#close').addEventListener('click', () => dlg.close());
+  $('#hf').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(e.target));
+    try {
+      if (id) {
+        await call(`teacher/hymns/${id}`, { method: 'PATCH', body });
+        dlg.close();
+      } else {
+        const created = await call('teacher/hymns', { method: 'POST', body });
+        hymnState = await api('hymns');
+        await openHymn(created.id); // straight on to adding a recording
+        $('#hmsg').textContent = '✅ Added. You can attach a recording below.';
+        return drawHymnsTab();
+      }
+      await loadHymns();
+    } catch (err) { $('#hmsg').textContent = `⚠️ ${err.message}`; }
+  });
+  if (!id) return;
+  const extType = { mp3: 'audio/mpeg', m4a: 'audio/mp4', wav: 'audio/wav', ogg: 'audio/ogg', aac: 'audio/aac' };
+  $('#aud').addEventListener('change', async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const type = f.type || extType[f.name.split('.').pop().toLowerCase()] || '';
+    $('#audMsg').textContent = 'Uploading…';
+    try {
+      const res = await fetch(`/api/teacher/hymns/${id}/audio`, { method: 'PUT', headers: { 'content-type': type, ...(pin ? { 'x-pin': pin } : {}) }, body: f });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      await loadHymns();
+      await openHymn(id);
+      $('#audMsg').textContent = '✅ Saved';
+    } catch (err) { $('#audMsg').textContent = `⚠️ ${err.message}`; }
+  });
+  $('#delAud')?.addEventListener('click', () => run(async () => { await call(`teacher/hymns/${id}/audio`, { method: 'DELETE' }); await loadHymns(); await openHymn(id); }));
+  $('#delHymn').addEventListener('click', () => run(async () => {
+    if (!confirm(`Delete “${h.title}”? Parents will no longer see it.`)) return;
+    await call(`teacher/hymns/${id}`, { method: 'DELETE' });
+    dlg.close();
+    await loadHymns();
+  }));
+}
+
+function openHymnBulk() {
+  $('#dlgBody').innerHTML = `
+    <div class="row between"><h2 style="margin:0">Add many hymns</h2><button class="btn small" id="close" aria-label="Close">✕</button></div>
+    <p class="muted">Choose the category, then paste the titles, one per line. To add a music link, put it after a bar: <b>Title | https://…</b></p>
+    <form id="hb">
+      <label class="field">Category<select name="category">${catOptions(hymnState.categories[0].id)}</select></label>
+      <textarea name="text" rows="9" required placeholder="Here I Am, Lord&#10;Gather Us In | https://youtu.be/…&#10;We Are One in the Spirit"></textarea>
+      <div class="row" style="margin-top:8px"><button class="btn primary">Add hymns</button><span id="bmsg" class="muted" aria-live="polite"></span></div>
+    </form><div id="bres"></div>`;
+  if (!dlg.open) dlg.showModal();
+  $('#close').addEventListener('click', () => { dlg.close(); loadHymns(); });
+  $('#hb').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const r = await call('teacher/hymns/bulk', { method: 'POST', body: Object.fromEntries(new FormData(e.target)) });
+      $('#hb').hidden = true;
+      $('#bres').innerHTML = `
+        <div class="alert ok"><b>Added ${r.added.length} ${r.added.length === 1 ? 'hymn' : 'hymns'}.</b> Tap a hymn later to attach a recording.</div>
+        ${r.skipped.length ? `<div class="alert warn"><b>Skipped ${r.skipped.length}:</b>${r.skipped.map((x) => `<div>${esc(x.line)} — ${esc(x.reason)}</div>`).join('')}</div>` : ''}
+        <button class="btn primary" id="bdone">Done</button>`;
+      $('#bdone').addEventListener('click', () => { dlg.close(); loadHymns(); });
+    } catch (err) { $('#bmsg').textContent = `⚠️ ${err.message}`; }
   });
 }
 
