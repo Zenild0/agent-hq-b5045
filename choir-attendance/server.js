@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
-import { extname, join, normalize, resolve } from 'node:path';
+import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   REMARKS, STATUSES, TYPES, isValidDate, defaultType, seasonOf,
@@ -222,7 +222,7 @@ async function api(req, res, url) {
 async function serveStatic(res, pathname) {
   const rel = pathname === '/' ? 'index.html' : pathname === '/teacher' ? 'teacher.html' : pathname.slice(1);
   const file = normalize(join(PUBLIC, rel));
-  if (!file.startsWith(PUBLIC + '/')) throw new HttpError(404, 'Not found');
+  if (!file.startsWith(PUBLIC + sep)) throw new HttpError(404, 'Not found');
   try {
     const data = await readFile(file);
     res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream' });
