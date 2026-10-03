@@ -300,13 +300,13 @@ async function openOccasion(id, seasonWanted = occSeason) {
   const ev = id ? o.events.find((x) => x.id === id) : null;
   const picked = new Set(ev ? ev.memberIds : o.main.map((c) => c.id)); // new occasions start with everyone ticked
   const guestsIn = ev ? ev.children.filter((c) => c.guest) : [];
-  const names = [...o.presets, 'Other…'];
   $('#dlgBody').innerHTML = `
     <div class="row between"><h2 style="margin:0">${ev ? esc(ev.event) : 'New occasion'}</h2><button class="btn small" id="close" aria-label="Close">✕</button></div>
     <form id="occForm">
-      ${ev ? '' : `<label class="field">Occasion
-        <select id="occName">${names.map((n, i) => `<option value="${i === names.length - 1 ? '' : esc(n)}">${esc(n)}</option>`).join('')}</select></label>
-        <label class="field" id="customWrap" hidden>Occasion name<input id="customName" maxlength="60" placeholder="e.g. Feast of St. Francis"></label>`}
+      ${ev ? '' : `<label class="field">Occasion name
+        <input id="occNameInput" required maxlength="60" placeholder="Type your own name, e.g. Feast of St. Francis"></label>
+        <div class="muted" style="margin:-4px 0 6px">Or tap a quick start:</div>
+        <div class="row">${o.presets.map((n) => `<button type="button" class="btn small" data-preset="${esc(n)}">${esc(n)}</button>`).join('')}</div>`}
       <div class="row between"><h3 style="margin:12px 0 4px">Main group</h3>
         <span class="row"><button type="button" class="btn small" id="selAll">Select all</button><button type="button" class="btn small" id="selNone">None</button></span></div>
       <div class="pick-list">${o.main.map((c) => `<label class="chk"><input type="checkbox" data-m="${esc(c.id)}"${picked.has(c.id) ? ' checked' : ''}> ${esc(c.name)}</label>`).join('') || '<div class="muted">No children in the main group yet.</div>'}</div>
@@ -321,8 +321,7 @@ async function openOccasion(id, seasonWanted = occSeason) {
     </form>`;
   if (!dlg.open) dlg.showModal();
   $('#close').addEventListener('click', () => dlg.close());
-  $('#occName')?.addEventListener('change', (e) => { $('#customWrap').hidden = e.target.value !== ''; });
-  $('#occName') && ($('#customWrap').hidden = $('#occName').value !== '');
+  $('#dlgBody').querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => { $('#occNameInput').value = b.dataset.preset; $('#occNameInput').focus(); }));
   const boxes = () => [...$('#dlgBody').querySelectorAll('[data-m]')];
   $('#selAll').addEventListener('click', () => boxes().forEach((b) => { b.checked = true; }));
   $('#selNone').addEventListener('click', () => boxes().forEach((b) => { b.checked = false; }));
@@ -336,7 +335,7 @@ async function openOccasion(id, seasonWanted = occSeason) {
     const members = boxes().filter((b) => b.checked).map((b) => b.dataset.m);
     const guests = $('#guests').value;
     try {
-      const name = ev ? ev.event : ($('#occName').value || $('#customName').value.trim());
+      const name = ev ? ev.event : $('#occNameInput').value.trim();
       const r = ev
         ? await call(`teacher/occasions/${id}`, { method: 'PUT', body: { members, guests } })
         : await call('teacher/occasions', { method: 'POST', body: { season, name, members, guests } });
