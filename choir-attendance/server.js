@@ -57,7 +57,7 @@ function tooManyFailures(map, ip, limit) {
 }
 function noteFailure(map, ip) {
   const f = map.get(ip);
-  const cur = f && f.resetAt > Date.now() ? f : { n: 0, resetAt: Date.now() + 10 * 60_000 };
+  const cur = f && f.resetAt > Date.now() ? f : { n: 0, resetAt: Date.now() + 30 * 60_000 };
   cur.n += 1;
   map.set(ip, cur);
 }
@@ -180,11 +180,12 @@ function publicOverview(q) {
 const failures = new Map(); // ip -> { n, resetAt }
 function childByCode(req) {
   const ip = req.socket.remoteAddress || '?';
-  if (tooManyFailures(failures, ip, 10) || tooManyFailures(failures, '*all*', 300)) {
-    throw new HttpError(429, 'Too many wrong codes. Please try again in a few minutes.');
+  // Short codes are easier to guess, so wrong tries are limited strictly.
+  if (tooManyFailures(failures, ip, 5) || tooManyFailures(failures, '*all*', 100)) {
+    throw new HttpError(429, 'Too many wrong codes. Please try again in about half an hour.');
   }
   const code = String(req.headers['x-code'] || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-  const child = code.length >= 6 ? store.db.children.find((c) => c.code === code && c.active) : null;
+  const child = code.length >= 3 ? store.db.children.find((c) => c.code === code && c.active) : null;
   if (!child) {
     noteFailure(failures, ip);
     noteFailure(failures, '*all*');
@@ -346,6 +347,14 @@ function createChildren(text, { standard = '', joinedYear = null, guest = false 
 
 const childOut = (c) => ({ ...profileOf(c), code: c.code, active: c.active, guest: Boolean(c.guest) });
 
+// Teacher-chosen code (e.g. 1001 or CC01): 3-8 letters/digits, unique.
+function customCode(value, child) {
+  const code = String(value ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (code.length < 3 || code.length > 8) throw new HttpError(400, 'A code needs 3 to 8 letters or digits, like 1001 or CC01');
+  if (store.db.children.some((c) => c !== child && c.code === code)) throw new HttpError(400, `The code ${code} is already used by another child`);
+  return code;
+}
+
 function bulkAdd(body) {
   if (!String(body.text ?? '').trim()) throw new HttpError(400, 'Type or paste at least one name');
   const { added, skipped } = createChildren(body.text, { standard: body.standard, joinedYear: body.joinedYear });
@@ -482,6 +491,7 @@ async function teacherApi(req, res, q, parts) {
       applyProfile(child, body, { teacher: true });
       if ('active' in body) child.active = Boolean(body.active);
       if (body.guest === false) child.guest = false; // promote a guest to the main group
+      if ('code' in body) child.code = customCode(body.code, child);
       store.save();
       return send(res, 200, childOut(child));
     }

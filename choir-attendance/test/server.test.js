@@ -31,7 +31,7 @@ test('teacher adds children with full profiles and a photo', async () => {
   assert.equal(a.status, 201);
   anna = a.data;
   ben = (await j('/api/teacher/children', { method: 'POST', body: { name: 'Ben Fernandes', address: 'SECRET STREET 9' } })).data;
-  assert.match(anna.code, /^[A-Z2-9]{6}$/);
+  assert.match(anna.code, /^[A-Z0-9]{4}$/); // short, roll-number style
   const p = await j(`/api/teacher/children/${anna.id}/photo`, { method: 'POST', body: { image: JPEG } });
   assert.equal(p.status, 200);
   assert.match(p.data.photo, /^\/photos\//);
@@ -190,7 +190,31 @@ test('guests: added with an occasion, marked only there, kept off the main list,
 });
 
 test('one shared link: parents enter a short code (any case, with or without a dash)', async () => {
-  const code = anna.code.toLowerCase().replace(/(...)(...)/, '$1-$2'); // typed in any case, with a dash
+  const code = anna.code.toLowerCase().replace(/(..)(..)/, '$1-$2'); // typed in any case, with a dash
   assert.equal((await j('/api/me', { code })).data.name, 'Anna Dias');
   assert.equal((await j('/api/me', { code: 'ABC' })).status, 401);
+});
+
+test('teacher can choose short codes like 1001 or CC01; duplicates and junk are refused', async () => {
+  const set = (id, code) => j(`/api/teacher/children/${id}`, { method: 'PATCH', body: { code } });
+  assert.equal((await set(anna.id, '1001')).data.code, '1001');
+  assert.equal((await set(ben.id, 'cc-01')).data.code, 'CC01'); // tidied to upper case
+  assert.equal((await set(ben.id, '1001')).status, 400); // already Anna's
+  assert.equal((await set(ben.id, 'ab')).status, 400); // too short
+  assert.equal((await set(ben.id, 'x'.repeat(9))).status, 400); // too long
+  assert.equal((await j('/api/me', { code: '1001' })).data.name, 'Anna Dias');
+  assert.equal((await j('/api/me', { code: 'cc01' })).data.name, 'Ben Fernandes');
+  anna.code = '1001';
+});
+
+test('older long codes are shortened once on startup, short ones are left alone', async () => {
+  const { openStore } = await import('../lib/store.js');
+  const { writeFileSync } = await import('node:fs');
+  const file = join(dir, 'old.json');
+  writeFileSync(file, JSON.stringify({ children: [{ id: 'a1', name: 'Old', active: true, code: 'ABCDEFGH' }, { id: 'b2', name: 'Short', active: true, code: 'CC01' }], sessions: {} }));
+  const first = openStore(file).db;
+  assert.match(first.children[0].code, /^[A-Z0-9]{4}$/);
+  assert.equal(first.children[1].code, 'CC01');
+  const again = openStore(file).db; // second start: nothing changes
+  assert.equal(again.children[0].code, first.children[0].code);
 });

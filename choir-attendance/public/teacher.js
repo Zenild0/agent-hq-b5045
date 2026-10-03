@@ -348,7 +348,7 @@ async function openOccasion(id, seasonWanted = occSeason) {
 
 // ======================= Children =======================
 
-const codeText = (code) => `${code.slice(0, 3)}-${code.slice(3)}`;
+const codeText = (code) => code;
 const mask = (code) => '•'.repeat(code.length);
 
 async function loadChildren() {
@@ -513,7 +513,8 @@ async function openChild(id) {
         <div class="row between"><span class="code-mask" id="codeShown" data-shown="0">${mask(d.code)}</span>
           <span class="row"><button class="btn small" id="reveal">Show</button><button class="btn small" id="copyCode">Copy code</button>
             <a class="btn small" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(`Hi! Open ${base} , tap "My child" and enter this code for ${d.name}: ${codeText(d.code)}`)}">WhatsApp</a></span></div>
-        <button class="btn small danger" id="newCode" style="margin-top:8px">Make a new code</button>
+        <div class="row" style="margin-top:8px"><button class="btn small" id="editCode">Choose my own code</button>
+          <button class="btn small danger" id="newCode">Make a new code</button></div>
         <div class="muted">Only you can see this code. Give it privately to this child's parent. Make a new code if it was shared by mistake.</div>
       </div>
       ${decisionPanel(d)}
@@ -572,6 +573,11 @@ async function openChild(id) {
   });
   $('#copyCode').addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(codeText(d.code)); $('#copyCode').textContent = 'Copied ✓'; } catch { prompt('Copy this code:', codeText(d.code)); }
+  });
+  $('#editCode').addEventListener('click', async () => {
+    const v = prompt(`Type a short code for ${d.name} (3–8 letters or digits), e.g. 1001 or CC01`, d.code);
+    if (v === null || !v.trim()) return;
+    await run(async () => { await call(`teacher/children/${id}`, { method: 'PATCH', body: { code: v } }); await openChild(id); });
   });
   $('#newCode').addEventListener('click', async () => {
     if (!confirm(`The old link for ${d.name} will stop working. Continue?`)) return;

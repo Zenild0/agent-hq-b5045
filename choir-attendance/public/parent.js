@@ -115,10 +115,10 @@ function codeForm(error = '') {
   $('#child').innerHTML = `
     <div class="card">
       <h2 style="margin-top:0">👋 Find your child</h2>
-      <p class="muted">Type the code your choir teacher gave you for your child (like a roll number). It opens only your own child's page, so everyone's details stay private.</p>
+      <p class="muted">Type the short code your choir teacher gave you for your child (like a roll number, e.g. 1001). It opens only your own child's page, so everyone's details stay private.</p>
       ${error ? `<div class="alert bad">${esc(error)}</div>` : ''}
       <form id="codeForm" class="row">
-        <input name="code" class="grow" placeholder="e.g. K7M-2QX" autocomplete="off" autocapitalize="characters" required maxlength="20" aria-label="Child code">
+        <input name="code" class="grow" placeholder="e.g. 1001 or CC01" autocomplete="off" autocapitalize="characters" required maxlength="20" aria-label="Child code">
         <button class="btn primary">Open</button>
       </form>
     </div>`;

@@ -6,8 +6,8 @@ import { DEFAULT_SETTINGS, OCCASION_TYPES, seasonOf, slug } from './logic.js';
 // No 0/O/1/I/L so codes are easy to read out over the phone.
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
-// Short, roll-number style codes (6 characters). Older 8-character codes keep working.
-export function newCode(db, length = 6) {
+// Short, roll-number style codes (4 characters). Teachers can also type their own, e.g. 1001 or CC01.
+export function newCode(db, length = 4) {
   for (;;) {
     let code = '';
     for (let i = 0; i < length; i += 1) code += CODE_CHARS[randomInt(CODE_CHARS.length)];
@@ -32,6 +32,12 @@ function migrate(db) {
     if (c.joinedYear === null && c.joinedOn) { c.joinedYear = Number(c.joinedOn.slice(0, 4)); changed = true; }
     if (!c.code) { c.code = newCode(db); changed = true; }
   }
+  // One-time: older versions made longer codes. Shorten them (the teacher can still edit any code).
+  if (!db.codesShortened) {
+    for (const c of db.children) if (c.code.length > 4) c.code = newCode(db);
+    db.codesShortened = true;
+    changed = true;
+  }
   for (const s of Object.values(db.sessions)) {
     if (!('event' in s)) { s.event = ''; changed = true; }
   }
@@ -52,7 +58,7 @@ function migrate(db) {
 
 // Tiny JSON-file store. Writes are atomic (tmp file + rename).
 export function openStore(file) {
-  let db = { settings: { ...DEFAULT_SETTINGS }, children: [], sessions: {}, occasions: [] };
+  let db = { settings: { ...DEFAULT_SETTINGS }, children: [], sessions: {}, occasions: [], codesShortened: false };
   if (existsSync(file)) {
     const saved = JSON.parse(readFileSync(file, 'utf8'));
     db = { ...db, ...saved, settings: { ...DEFAULT_SETTINGS, ...saved.settings } };
