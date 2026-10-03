@@ -52,7 +52,7 @@ function migrate(db) {
 
 // Tiny JSON-file store. Writes are atomic (tmp file + rename).
 export function openStore(file) {
-  let db = { settings: { ...DEFAULT_SETTINGS }, children: [], sessions: {}, occasions: [], teacherPin: null };
+  let db = { settings: { ...DEFAULT_SETTINGS }, children: [], sessions: {}, occasions: [] };
   if (existsSync(file)) {
     const saved = JSON.parse(readFileSync(file, 'utf8'));
     db = { ...db, ...saved, settings: { ...DEFAULT_SETTINGS, ...saved.settings } };

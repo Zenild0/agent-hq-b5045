@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { randomUUID, randomInt, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -16,7 +16,7 @@ const PUBLIC = resolve(here, 'public');
 const DATA_FILE = process.env.CHOIR_DATA || join(here, 'data', 'db.json');
 const PHOTOS = join(dirname(DATA_FILE), 'photos');
 const PORT = Number(process.env.PORT) || 3000;
-const PIN_ENV = process.env.CHOIR_PIN || ''; // optional: overrides the stored PIN
+const PIN_ENV = process.env.CHOIR_PIN || ''; // optional: lets the teacher in from other devices
 const store = openStore(DATA_FILE);
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -46,15 +46,10 @@ async function readBody(req, limit = 100_000) {
   try { return JSON.parse(Buffer.concat(chunks).toString()); } catch { throw new HttpError(400, 'Invalid JSON'); }
 }
 
-// The teacher area is always PIN-protected: codes and children's details must never be public.
-const hashPin = (pin, salt = randomBytes(16).toString('hex')) => ({ salt, hash: scryptSync(String(pin), salt, 32).toString('hex') });
-let generatedPin = '';
-if (!PIN_ENV && !store.db.teacherPin) {
-  generatedPin = String(randomInt(100000, 1000000));
-  store.db.teacherPin = hashPin(generatedPin);
-  store.save();
-}
-
+// The teacher area has no PIN: it simply opens only on the computer that runs the app.
+// Requests that arrive through a shared link, a proxy or the network are refused, so
+// children's details and parent codes can't be reached by anyone else.
+// (Optional: set CHOIR_PIN to also allow the teacher in from another device, with that PIN.)
 const pinFailures = new Map(); // ip -> { n, resetAt }
 function tooManyFailures(map, ip, limit) {
   const f = map.get(ip);
@@ -67,21 +62,21 @@ function noteFailure(map, ip) {
   map.set(ip, cur);
 }
 
-function pinMatches(pin) {
-  const given = String(pin ?? '');
-  if (PIN_ENV) {
-    const a = Buffer.from(given);
-    const b = Buffer.from(PIN_ENV);
-    return a.length === b.length && timingSafeEqual(a, b);
-  }
-  const { salt, hash } = store.db.teacherPin;
-  return timingSafeEqual(Buffer.from(hashPin(given, salt).hash, 'hex'), Buffer.from(hash, 'hex'));
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+function isLocal(req) {
+  const host = String(req.headers.host || '').replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
+  const proxied = ['x-forwarded-for', 'x-forwarded-host', 'x-real-ip', 'forwarded', 'cf-connecting-ip'].some((h) => req.headers[h]);
+  return LOOPBACK.has(req.socket.remoteAddress) && ['localhost', '127.0.0.1', '::1'].includes(host) && !proxied;
 }
 
-function checkPin(req) {
+function checkTeacher(req) {
+  if (isLocal(req)) return;
+  if (!PIN_ENV) throw new HttpError(403, 'The teacher area only opens on the computer where the app is running.');
   const ip = req.socket.remoteAddress || '?';
   if (tooManyFailures(pinFailures, ip, 10)) throw new HttpError(429, 'Too many wrong PINs. Please wait a few minutes.');
-  if (!pinMatches(req.headers['x-pin'])) {
+  const a = Buffer.from(String(req.headers['x-pin'] ?? ''));
+  const b = Buffer.from(PIN_ENV);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
     noteFailure(pinFailures, ip);
     throw new HttpError(401, 'PIN required');
   }
@@ -469,14 +464,6 @@ async function teacherApi(req, res, q, parts) {
     if (req.method === 'PUT' && occ) return send(res, 200, updateOccasion(occ, body));
     if (req.method === 'DELETE' && occ) { deleteOccasion(occ); return send(res, 200, { ok: true }); }
   }
-  if (req.method === 'PUT' && b === 'pin') {
-    if (PIN_ENV) throw new HttpError(400, 'The PIN is set by CHOIR_PIN on the server, so it can\'t be changed here');
-    const pin = String(body.pin ?? '');
-    if (!/^[A-Za-z0-9]{4,20}$/.test(pin)) throw new HttpError(400, 'PIN must be 4 to 20 letters or digits');
-    store.db.teacherPin = hashPin(pin);
-    store.save();
-    return send(res, 200, { ok: true });
-  }
   if (req.method === 'PUT' && b === 'settings') { updateSettings(body); return send(res, 200, store.db.settings); }
   if (b === 'children') {
     if (req.method === 'POST' && !id) {
@@ -525,7 +512,7 @@ async function api(req, res, url) {
   const [a, b] = parts;
 
   if (req.method === 'GET' && a === 'public') return send(res, 200, publicOverview(q));
-  if (req.method === 'GET' && a === 'meta') return send(res, 200, { pinRequired: true });
+  if (req.method === 'GET' && a === 'meta') return send(res, 200, { pinRequired: !isLocal(req) && Boolean(PIN_ENV), teacherAllowed: isLocal(req) || Boolean(PIN_ENV) });
 
   if (a === 'me') {
     const child = childByCode(req);
@@ -540,7 +527,7 @@ async function api(req, res, url) {
   }
 
   if (a !== 'teacher') throw new HttpError(404, 'Not found');
-  checkPin(req);
+  checkTeacher(req);
   return teacherApi(req, res, q, parts);
 }
 
@@ -578,7 +565,6 @@ export const server = createServer(async (req, res) => {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   server.listen(PORT, () => {
     console.log(`Choir attendance running on http://localhost:${PORT}  (teacher: /teacher)`);
-    if (generatedPin) console.log(`\nYour teacher PIN is: ${generatedPin}\nKeep it private. You can change it in Settings.\n`);
-    else console.log('Teacher PIN is set (use the one you chose, or CHOIR_PIN).');
+    console.log('Teacher area: open it on this computer only. Other devices cannot reach it.');
   });
 }

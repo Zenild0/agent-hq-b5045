@@ -41,15 +41,21 @@ const flash = (text, kind = 'bad') => {
 async function run(fn) {
   try { flash(''); return await fn(); } catch (e) {
     if (e.status === 401) return askPin(pin ? 'That PIN was not right.' : '');
+    if (e.status === 403) return lockOut(e.message);
     flash(e.message);
   }
 }
 function askPin(message = '') {
-  const p = prompt(`${message ? `${message}\n` : ''}Teacher PIN (shown when the app first started)`);
-  if (p === null) return flash('PIN required to use the teacher page.');
+  const p = prompt(`${message ? `${message}\n` : ''}Teacher PIN`);
+  if (p === null) return flash('PIN required to use the teacher page from this device.');
   pin = p;
   try { sessionStorage.setItem('choir-pin', p); } catch { /* private mode */ }
   location.reload();
+}
+
+function lockOut(message) {
+  $('#msg').innerHTML = '';
+  app.querySelector('main').innerHTML = `<div class="card"><h2 style="margin-top:0">🔒 Teacher area</h2><p>${esc(message)}</p><p class="muted">Open <b>http://localhost:3000/teacher</b> on the computer running the app. Parents use the main link and their child's code.</p><a class="btn" href="/">Go to the parent page</a></div>`;
 }
 
 const tabs = ['attendance', 'occasions', 'children', 'board', 'settings'];
@@ -635,24 +641,7 @@ async function loadSettings() {
       <label class="field">First year (starts April of)<input name="firstSeason" type="number" placeholder="${firstSeason}" value="${s.firstSeason ?? ''}"></label>
       <p class="muted">Your private prize race ends at Easter in the first year and at the end of December every year after. Leave blank to start from your first recorded session. Feast practices, feast masses and medical absences never count as leaves. Going over the leave limit never removes a child by itself; you decide.</p>
       <button class="btn primary">Save settings</button>
-    </form>
-    <form class="card" id="pinForm">
-      <h3>Teacher PIN</h3>
-      <div class="muted">The PIN keeps the teacher pages, children's details and parent codes private. Choose something only you know.</div>
-      <label class="field">New PIN (4–20 letters or digits)<input name="pin" type="password" autocomplete="new-password" minlength="4" maxlength="20" required></label>
-      <button class="btn">Change PIN</button>
     </form>`;
-  $('#pinForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const next = new FormData(e.target).get('pin');
-    run(async () => {
-      await call('teacher/pin', { method: 'PUT', body: { pin: next } });
-      pin = next;
-      try { sessionStorage.setItem('choir-pin', next); } catch { /* private mode */ }
-      e.target.reset();
-      flash('PIN changed.', 'ok');
-    });
-  });
   $('#setForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
@@ -671,6 +660,7 @@ async function loadSettings() {
 
 run(async () => {
   const meta = await api('meta');
+  if (!meta.teacherAllowed) return lockOut('The teacher area only opens on the computer where the app is running.');
   if (meta.pinRequired && !pin) return askPin();
   await loadAttendance();
 });

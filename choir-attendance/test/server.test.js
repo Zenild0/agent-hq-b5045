@@ -6,7 +6,7 @@ import { join } from 'node:path';
 
 const dir = mkdtempSync(join(tmpdir(), 'choir-'));
 process.env.CHOIR_DATA = join(dir, 'db.json');
-process.env.CHOIR_PIN = '4821';
+delete process.env.CHOIR_PIN;
 const { server } = await import('../server.js');
 
 let base;
@@ -16,7 +16,7 @@ after(() => server.close());
 const j = async (path, { method = 'GET', body, code } = {}) => {
   const res = await fetch(base + path, {
     method,
-    headers: { 'x-pin': '4821', ...(body ? { 'content-type': 'application/json' } : {}), ...(code ? { 'x-code': code } : {}) },
+    headers: { ...(body ? { 'content-type': 'application/json' } : {}), ...(code ? { 'x-code': code } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
   return { status: res.status, data: await res.json().catch(() => null), res };
@@ -139,11 +139,22 @@ test('static files and path traversal', async () => {
   assert.equal((await fetch(`${base}/photos/../../server.js`)).status, 404);
 });
 
-test('the teacher area needs the PIN; codes are never public', async () => {
-  const bare = (path) => fetch(base + path).then((r) => r.status);
-  assert.equal(await bare('/api/teacher/children'), 401);
-  const wrong = await fetch(base + '/api/teacher/children', { headers: { 'x-pin': '0000' } });
-  assert.equal(wrong.status, 401);
+test('the teacher area opens only on this computer; codes are never public', async () => {
+  assert.equal((await fetch(base + '/api/teacher/children')).status, 200); // local: no PIN needed
+  // anything arriving through a proxy / shared link is refused
+  for (const headers of [{ 'x-forwarded-for': '203.0.113.9' }, { forwarded: 'for=203.0.113.9' }, { 'x-real-ip': '203.0.113.9' }]) {
+    assert.equal((await fetch(base + '/api/teacher/children', { headers })).status, 403, JSON.stringify(headers));
+    assert.equal((await fetch(base + '/api/teacher/mark', { method: 'PUT', headers: { ...headers, 'content-type': 'application/json' }, body: '{}' })).status, 403);
+  }
+  // a different Host name (e.g. reached over the network) is refused too
+  const viaNetwork = await new Promise((ok) => {
+    import('node:http').then(({ request }) => {
+      const r = request({ host: 'localhost', port: server.address().port, path: '/api/teacher/children', headers: { host: 'choir.example.com' } }, (res) => ok(res.statusCode));
+      r.end();
+    });
+  });
+  assert.equal(viaNetwork, 403);
+  assert.equal((await (await fetch(base + '/api/meta')).json()).teacherAllowed, true);
   const text = JSON.stringify((await j('/api/public')).data);
   assert.ok(!text.includes(anna.code));
 });
@@ -178,10 +189,8 @@ test('guests: added with an occasion, marked only there, kept off the main list,
   assert.ok((await j('/api/public?season=2026')).data.yearBoard.some((x) => x.name === 'Gita Guest'));
 });
 
-test('one shared link: parents enter a short code; PIN can be changed only with the PIN', async () => {
+test('one shared link: parents enter a short code (any case, with or without a dash)', async () => {
   const code = anna.code.toLowerCase().replace(/(...)(...)/, '$1-$2'); // typed in any case, with a dash
   assert.equal((await j('/api/me', { code })).data.name, 'Anna Dias');
   assert.equal((await j('/api/me', { code: 'ABC' })).status, 401);
-  // CHOIR_PIN is set in this test, so changing it through the app is refused
-  assert.equal((await j('/api/teacher/pin', { method: 'PUT', body: { pin: 'abcd1234' } })).status, 400);
 });
