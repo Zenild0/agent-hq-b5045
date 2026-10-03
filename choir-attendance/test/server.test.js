@@ -6,7 +6,7 @@ import { join } from 'node:path';
 
 const dir = mkdtempSync(join(tmpdir(), 'choir-'));
 process.env.CHOIR_DATA = join(dir, 'db.json');
-delete process.env.CHOIR_PIN;
+process.env.CHOIR_PIN = '4821';
 const { server } = await import('../server.js');
 
 let base;
@@ -16,7 +16,7 @@ after(() => server.close());
 const j = async (path, { method = 'GET', body, code } = {}) => {
   const res = await fetch(base + path, {
     method,
-    headers: { ...(body ? { 'content-type': 'application/json' } : {}), ...(code ? { 'x-code': code } : {}) },
+    headers: { 'x-pin': '4821', ...(body ? { 'content-type': 'application/json' } : {}), ...(code ? { 'x-code': code } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
   return { status: res.status, data: await res.json().catch(() => null), res };
@@ -31,7 +31,7 @@ test('teacher adds children with full profiles and a photo', async () => {
   assert.equal(a.status, 201);
   anna = a.data;
   ben = (await j('/api/teacher/children', { method: 'POST', body: { name: 'Ben Fernandes', address: 'SECRET STREET 9' } })).data;
-  assert.match(anna.code, /^[A-Z2-9]{8}$/);
+  assert.match(anna.code, /^[A-Z2-9]{6}$/);
   const p = await j(`/api/teacher/children/${anna.id}/photo`, { method: 'POST', body: { image: JPEG } });
   assert.equal(p.status, 200);
   assert.match(p.data.photo, /^\/photos\//);
@@ -74,6 +74,9 @@ test('parents can edit contact details but not name, standard or code', async ()
 
 test('back-dated and feast attendance feed the leaderboard and occasions', async () => {
   const mark = (date, type, event, childId, status) => j('/api/teacher/mark', { method: 'PUT', body: { date, type, event, childId, status } });
+  assert.equal((await mark('2026-12-12', 'practice', 'Christmas', anna.id, 'present')).status, 400); // occasion must exist first
+  const made = await j('/api/teacher/occasions', { method: 'POST', body: { season: 2026, name: 'Christmas', members: [anna.id, ben.id] } });
+  assert.equal(made.status, 201);
   assert.equal((await mark('2026-05-02', 'saturday', '', anna.id, 'present')).status, 200); // back-dated
   assert.equal((await mark('2026-12-12', 'practice', 'Christmas', anna.id, 'present')).status, 200);
   assert.equal((await mark('2026-12-12', 'practice', 'Christmas', ben.id, 'absent')).status, 200);
@@ -134,4 +137,51 @@ test('static files and path traversal', async () => {
   assert.equal((await fetch(`${base}/teacher`)).status, 200);
   assert.equal((await fetch(`${base}/../server.js`)).status, 404);
   assert.equal((await fetch(`${base}/photos/../../server.js`)).status, 404);
+});
+
+test('the teacher area needs the PIN; codes are never public', async () => {
+  const bare = (path) => fetch(base + path).then((r) => r.status);
+  assert.equal(await bare('/api/teacher/children'), 401);
+  const wrong = await fetch(base + '/api/teacher/children', { headers: { 'x-pin': '0000' } });
+  assert.equal(wrong.status, 401);
+  const text = JSON.stringify((await j('/api/public')).data);
+  assert.ok(!text.includes(anna.code));
+});
+
+test('guests: added with an occasion, marked only there, kept off the main list, then promoted', async () => {
+  const r = await j('/api/teacher/occasions', { method: 'POST', body: { season: 2026, name: 'Easter', members: [anna.id], guests: 'Gita Guest, 4th\nHarry Helper' } });
+  assert.equal(r.status, 201);
+  assert.equal(r.data.guestsAdded, 2);
+  assert.equal((await j('/api/teacher/occasions', { method: 'POST', body: { season: 2026, name: 'easter' } })).status, 400); // duplicate
+  const list = (await j('/api/teacher/children')).data.children;
+  const gita = list.find((c) => c.name === 'Gita Guest');
+  assert.equal(gita.guest, true);
+  assert.deepEqual(list.map((c) => c.name), [...list.map((c) => c.name)].sort((a, b) => a.localeCompare(b)));
+  // roster: only the people picked for the occasion, alphabetical
+  const view = (await j('/api/teacher/session?date=2027-03-20&type=practice&event=Easter')).data;
+  assert.deepEqual(view.children.map((c) => c.name), ['Anna Dias', 'Gita Guest', 'Harry Helper']);
+  const regular = (await j('/api/teacher/session?date=2027-03-20&type=saturday')).data;
+  assert.ok(!regular.children.some((c) => c.guest), 'guests are not in regular attendance');
+  const mark = (childId, extra = {}) => j('/api/teacher/mark', { method: 'PUT', body: { date: '2027-03-20', type: 'practice', event: 'Easter', childId, status: 'present', ...extra } });
+  assert.equal((await mark(gita.id, { remarks: ['Well behaved'] })).status, 200);
+  assert.equal((await mark(ben.id)).status, 400); // Ben was not picked for Easter
+  assert.equal((await j('/api/teacher/mark', { method: 'PUT', body: { date: '2027-03-20', type: 'saturday', event: '', childId: gita.id, status: 'present' } })).status, 400);
+  assert.ok(!(await j('/api/public?season=2026')).data.yearBoard.some((x) => x.name === 'Gita Guest'));
+  const occ = (await j('/api/teacher/occasions?season=2026')).data.events.find((x) => x.event === 'Easter');
+  assert.equal(occ.children.find((c) => c.name === 'Gita Guest').good, 1);
+  // cannot drop someone who already has attendance; can drop a guest with none
+  const upd = await j(`/api/teacher/occasions/${occ.id}`, { method: 'PUT', body: { members: [anna.id] } });
+  assert.equal(upd.status, 400);
+  // promote to the main group
+  await j(`/api/teacher/children/${gita.id}`, { method: 'PATCH', body: { guest: false } });
+  assert.ok((await j('/api/teacher/session?date=2027-03-20&type=saturday')).data.children.some((c) => c.name === 'Gita Guest'));
+  assert.ok((await j('/api/public?season=2026')).data.yearBoard.some((x) => x.name === 'Gita Guest'));
+});
+
+test('one shared link: parents enter a short code; PIN can be changed only with the PIN', async () => {
+  const code = anna.code.toLowerCase().replace(/(...)(...)/, '$1-$2'); // typed in any case, with a dash
+  assert.equal((await j('/api/me', { code })).data.name, 'Anna Dias');
+  assert.equal((await j('/api/me', { code: 'ABC' })).status, 401);
+  // CHOIR_PIN is set in this test, so changing it through the app is refused
+  assert.equal((await j('/api/teacher/pin', { method: 'PUT', body: { pin: 'abcd1234' } })).status, 400);
 });

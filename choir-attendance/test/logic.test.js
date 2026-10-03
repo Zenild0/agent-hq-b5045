@@ -10,6 +10,7 @@ const mkDb = (sessions = [], settings = {}) => ({
     { id: 'a', name: 'Anna', active: true },
     { id: 'b', name: 'Ben', active: true },
   ],
+  occasions: [],
   sessions: Object.fromEntries(sessions.map(([date, type, entries]) => [`${date}|${type}`, { date, type, entries }])),
 });
 const e = (status, remarks = []) => ({ status, remarks, note: '' });
@@ -163,6 +164,7 @@ test('occasions list who attended each practice', () => {
     ['2026-12-19', 'practice', { a: e('present'), b: e('present') }],
     ['2026-12-25', 'feast', { a: e('present') }],
   ]);
+  db.occasions = [{ id: 'o1', season: 2026, name: 'Christmas', members: ['a', 'b'] }];
   db.sessions['2026-12-12|practice'].event = 'Christmas';
   db.sessions['2026-12-19|practice'].event = 'Christmas';
   db.sessions['2026-12-25|feast'].event = 'Christmas';
@@ -173,4 +175,23 @@ test('occasions list who attended each practice', () => {
   assert.equal(anna.attended, 3);
   assert.equal(anna.points, 1 + 1 + 2);
   assert.deepEqual(xmas.children.find((c) => c.name === 'Ben').cells, ['absent', 'present', null]);
+});
+
+test('guests join an occasion only: never on the main leaderboard, but their points and remarks show', () => {
+  const db = mkDb([
+    ['2026-12-12', 'practice', { a: e('present'), g: e('present', ['Well behaved']) }],
+    ['2026-12-19', 'practice', { a: e('present'), g: e('present', ['Well behaved', 'Helped others']) }],
+  ]);
+  db.children.push({ id: 'g', name: 'Guest Gita', active: true, guest: true });
+  db.occasions = [{ id: 'o1', season: 2026, name: 'Christmas', members: ['a', 'g'] }];
+  for (const s of Object.values(db.sessions)) s.event = 'Christmas';
+  const board = scoreboard(db, 2026, '2026-04-01', '2027-03-31');
+  assert.ok(!board.some((r) => r.name === 'Guest Gita'));
+  assert.ok(!monthlyAchievers(db, 2026, '2026-12-31')[0].winners.some((w) => w.name === 'Guest Gita'));
+  const [xmas] = occasions(db, 2026);
+  const gita = xmas.children.find((c) => c.name === 'Guest Gita');
+  assert.deepEqual([gita.guest, gita.attended, gita.points, gita.good], [true, 2, 2, 3]);
+  assert.deepEqual(xmas.children.map((c) => c.name), ['Anna', 'Guest Gita']); // alphabetical
+  gita && (db.children.find((c) => c.id === 'g').guest = false); // promoted
+  assert.ok(scoreboard(db, 2026, '2026-04-01', '2027-03-31').some((r) => r.name === 'Guest Gita'));
 });

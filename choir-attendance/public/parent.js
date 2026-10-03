@@ -61,6 +61,7 @@ function boardTab() {
   const o = overview;
   $('#season').textContent = `Year ${o.seasonLabel}`;
   $('#board').innerHTML = `
+    ${code ? '' : `<div class="card row between"><span><b>Parent?</b> See your child's attendance and contact details.</span><button class="btn primary small" id="goChild">Enter your child's code</button></div>`}
     <div class="stage">
       <h2>🎤 Leaderboard</h2>
       <div class="sub">Come to every practice, and on time, to climb!</div>
@@ -77,6 +78,7 @@ function boardTab() {
       Arriving late earns fewer points!</div>
     </div>`;
   drawBoard();
+  $('#goChild')?.addEventListener('click', () => show('child'));
   $('#board').querySelectorAll('[data-range]').forEach((b) => b.addEventListener('click', () => {
     range = b.dataset.range;
     $('#board').querySelectorAll('[data-range]').forEach((x) => x.classList.toggle('on', x === b));
@@ -113,16 +115,17 @@ function codeForm(error = '') {
   $('#child').innerHTML = `
     <div class="card">
       <h2 style="margin-top:0">👋 Find your child</h2>
-      <p class="muted">Enter the private code your choir teacher gave you (or tap the link they sent). It keeps every child's details private.</p>
+      <p class="muted">Type the code your choir teacher gave you for your child (like a roll number). It opens only your own child's page, so everyone's details stay private.</p>
       ${error ? `<div class="alert bad">${esc(error)}</div>` : ''}
       <form id="codeForm" class="row">
-        <input name="code" class="grow" placeholder="e.g. ABCD-2345" autocomplete="off" autocapitalize="characters" required maxlength="20" aria-label="Child code">
+        <input name="code" class="grow" placeholder="e.g. K7M-2QX" autocomplete="off" autocapitalize="characters" required maxlength="20" aria-label="Child code">
         <button class="btn primary">Open</button>
       </form>
     </div>`;
   $('#codeForm').addEventListener('submit', (e) => {
     e.preventDefault();
     code = new FormData(e.target).get('code').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    store.set('choir-code', '');
     loadMe();
   });
 }
@@ -132,6 +135,7 @@ async function loadMe() {
   try {
     me = await api('me', { code });
     store.set('choir-code', code);
+    $('#goChild')?.closest('.card')?.remove();
     childView();
     drawBoard();
   } catch (e) {

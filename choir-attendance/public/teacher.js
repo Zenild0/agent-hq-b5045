@@ -40,12 +40,12 @@ const flash = (text, kind = 'bad') => {
 };
 async function run(fn) {
   try { flash(''); return await fn(); } catch (e) {
-    if (e.status === 401) return askPin();
+    if (e.status === 401) return askPin(pin ? 'That PIN was not right.' : '');
     flash(e.message);
   }
 }
-function askPin() {
-  const p = prompt('Teacher PIN');
+function askPin(message = '') {
+  const p = prompt(`${message ? `${message}\n` : ''}Teacher PIN (shown when the app first started)`);
   if (p === null) return flash('PIN required to use the teacher page.');
   pin = p;
   try { sessionStorage.setItem('choir-pin', p); } catch { /* private mode */ }
@@ -66,7 +66,6 @@ app.querySelectorAll('nav button').forEach((b) => b.addEventListener('click', ()
 let date = todayStr();
 let type = '';
 let event = '';
-let otherMode = false; // "Other…" occasion chosen: teacher types the name
 let view;
 
 const isOccasion = (t) => t === 'practice' || t === 'feast';
@@ -82,18 +81,21 @@ const overNote = (c) => (c.decision === 'out' ? '<div class="muted">Not continui
   : `<div class="muted">⚠️ Over the leave limit — <button class="link" data-open="${esc(c.id)}">decide</button></div>`);
 
 async function loadAttendance() {
-  if (isOccasion(type) && !event && !otherMode) event = 'Christmas';
-  if (isOccasion(type) && !event) return renderAttendance(); // waiting for a custom name
-  const qs = new URLSearchParams({ date, ...(type ? { type } : {}), ...(isOccasion(type) ? { event } : {}) });
-  view = await call(`teacher/session?${qs}`);
+  const qs = () => new URLSearchParams({ date, ...(type ? { type } : {}), ...(isOccasion(type) ? { event } : {}) });
+  view = await call(`teacher/session?${qs()}`);
   type = view.type;
+  if (isOccasion(type)) {
+    const hit = view.occasions.find((o) => o.toLowerCase() === event.toLowerCase());
+    if (hit) event = hit;
+    else if (view.occasions.length) { event = view.occasions[0]; view = await call(`teacher/session?${qs()}`); }
+    else event = '';
+  }
   renderAttendance();
 }
 
 function renderAttendance() {
   const s = view.settings;
-  const showOther = isOccasion(type) && (otherMode || !view.events.includes(event));
-  const waiting = isOccasion(type) && !event.trim();
+  const waiting = isOccasion(type) && view.missingOccasion;
   const when = date < todayStr() ? `📅 Back-dated entry for ${fmtDate(date)}` : date > todayStr() ? `📅 Future date: ${fmtDate(date)}` : '';
   $('#attendance').innerHTML = `
     <div class="card">
@@ -110,17 +112,16 @@ function renderAttendance() {
           <option value="practice">Special practice – feast (${fmtPts(s.practicePoints)} pt)</option>
           <option value="feast">Special mass – feast (${fmtPts(s.feastPoints)} pts)</option>
         </select>
-        ${isOccasion(type) ? `
+        ${isOccasion(type) ? (view.occasions.length ? `
           <select id="event" aria-label="Occasion">
-            ${view.events.map((e) => `<option${!showOther && e === event ? ' selected' : ''}>${esc(e)}</option>`).join('')}
-            <option value="__other"${showOther ? ' selected' : ''}>Other…</option>
-          </select>
-          ${showOther ? `<input id="eventName" placeholder="Occasion name" maxlength="60" value="${esc(event)}">` : ''}` : ''}
+            ${view.occasions.map((e) => `<option${e === event ? ' selected' : ''}>${esc(e)}</option>`).join('')}
+            <option value="__new">＋ New occasion…</option>
+          </select>` : '<button class="btn small" id="newOcc">＋ Create an occasion</button>') : ''}
       </div>
     </div>
     ${pendingHtml(view.pending)}
     ${when ? `<div class="banner">${when}</div>` : ''}
-    ${waiting ? '<div class="empty">Type the occasion name above to start.</div>' : `
+    ${waiting ? `<div class="empty">No occasion yet for this year.<br>Create one (Christmas, Easter…) and choose who takes part.<br><br><button class="btn primary" id="newOcc2">＋ Create an occasion</button></div>` : `
     <div class="row between"><span class="muted" id="sumline">${summaryText()}</span>
       <button class="btn small" id="allPresent">Mark all present</button></div>
     <div class="muted legend"><b>P</b> Present · <b>A</b> Absent · <b>ML</b> Medical leave · <b>⋯</b> remarks &amp; notes</div>
@@ -129,7 +130,7 @@ function renderAttendance() {
   $('#date').addEventListener('change', (e) => {
     if (!e.target.value) return;
     date = e.target.value;
-    type = '';
+    if (!isOccasion(type)) type = ''; // keep feast sessions when back-dating; otherwise pick Saturday/Sunday from the date
     run(loadAttendance);
   });
   $('#attendance').querySelectorAll('[data-jump]').forEach((b) => b.addEventListener('click', () => {
@@ -140,11 +141,11 @@ function renderAttendance() {
   }));
   $('#type').addEventListener('change', (e) => { type = e.target.value; run(loadAttendance); });
   $('#event')?.addEventListener('change', (e) => {
-    otherMode = e.target.value === '__other';
-    event = otherMode ? '' : e.target.value;
+    if (e.target.value === '__new') { e.target.value = event; run(() => openOccasion(null, view.season)); return; }
+    event = e.target.value;
     run(loadAttendance);
   });
-  $('#eventName')?.addEventListener('change', (e) => { event = e.target.value.trim(); run(loadAttendance); });
+  ['newOcc', 'newOcc2'].forEach((id) => $(`#${id}`)?.addEventListener('click', () => run(() => openOccasion(null, view.season))));
   $('#allPresent')?.addEventListener('click', () => run(async () => {
     await call('teacher/mark-all-present', { method: 'POST', body: { date, type, event } });
     await loadAttendance();
@@ -181,7 +182,7 @@ function childRow(c) {
         ${avatarHtml(c, 'sm')}
         <div class="att-name">
           <button class="link" data-open="${esc(c.id)}">${esc(c.name)}</button>
-          <div class="att-meta">${leaveBadge(c.leaves, view.settings.maxLeaves, c.exceeded)}${c.status === 'excused' && c.reason ? ` <span class="badge info">${esc(c.reason)}</span>` : ''}</div>
+          <div class="att-meta">${c.guest ? '<span class="badge info">Guest</span>' : leaveBadge(c.leaves, view.settings.maxLeaves, c.exceeded)}${c.status === 'excused' && c.reason ? ` <span class="badge info">${esc(c.reason)}</span>` : ''}</div>
         </div>
         <div class="pam">
           ${b('present', 'P', 'Present')}${b('absent', 'A', 'Absent')}${b('excused', 'ML', 'Medical leave')}
@@ -241,59 +242,138 @@ let occSeason = null;
 async function loadOccasions() {
   const o = await call(`teacher/occasions${occSeason ? `?season=${occSeason}` : ''}`);
   occSeason = o.season;
-  const sym = (s) => (s === 'present' ? '<span class="sym p">✓</span>' : s === 'absent' ? '<span class="sym a">✗</span>' : s === 'excused' ? '<span class="sym e">S</span>' : '<span class="sym n">–</span>');
+  const sym = (st) => (st === 'present' ? '<span class="sym p">✓</span>' : st === 'absent' ? '<span class="sym a">✗</span>' : st === 'excused' ? '<span class="sym e">ML</span>' : '<span class="sym n">–</span>');
   $('#occasions').innerHTML = `
     <div class="card row between">
-      <div><h3 style="margin:0">Special occasions</h3><div class="muted">Who attended each practice and mass for feasts. Points add to the leaderboard.</div></div>
-      <select id="occSeason" aria-label="Choir year">${o.seasons.map((s) => `<option value="${s}"${s === o.season ? ' selected' : ''}>${s}–${String(s + 1).slice(2)}</option>`).join('')}</select>
+      <div><h3 style="margin:0">Special occasions</h3><div class="muted">Pick who takes part in each feast (main group and guests), then take attendance for its practices and mass.</div></div>
+      <div class="row"><select id="occSeason" aria-label="Choir year">${o.seasons.map((x) => `<option value="${x}"${x === o.season ? ' selected' : ''}>${x}–${String(x + 1).slice(2)}</option>`).join('')}</select>
+        <button class="btn primary" id="newOccasion">＋ New occasion</button></div>
     </div>
     ${o.events.length ? o.events.map((ev) => `
       <div class="card">
-        <div class="row between"><h3 style="margin:0">${esc(ev.event)}</h3>
-          <button class="btn small" data-add="${esc(ev.event)}">＋ Add practice</button></div>
-        <div class="matrix-wrap"><table class="matrix">
-          <thead><tr><th>Child</th>${ev.sessions.map((s) => `
-            <th><button class="link" data-goto="${s.date}|${s.type}|${esc(ev.event)}">${s.date.slice(8)}/${s.date.slice(5, 7)}</button><div class="muted">${s.type === 'feast' ? '🎶 Mass' : 'Practice'}<br>${s.presentCount} here</div></th>`).join('')}
-            <th>Attended</th><th>Points</th></tr></thead>
+        <div class="row between"><h3 style="margin:0">${esc(ev.event)} <span class="muted">· ${ev.total} people</span></h3>
+          <div class="row"><button class="btn small" data-edit="${esc(ev.id)}">👥 People</button>
+            <button class="btn small" data-add="${esc(ev.event)}">＋ Practice</button></div></div>
+        ${ev.sessions.length ? `<div class="matrix-wrap"><table class="matrix">
+          <thead><tr><th>Child</th>${ev.sessions.map((x) => `
+            <th><button class="link" data-goto="${x.date}|${x.type}|${esc(ev.event)}">${x.date.slice(8)}/${x.date.slice(5, 7)}</button><div class="muted">${x.type === 'feast' ? '🎶 Mass' : 'Practice'}<br>${x.presentCount} here</div></th>`).join('')}
+            <th>Attended</th><th>Points</th><th>Remarks</th><th></th></tr></thead>
           <tbody>${ev.children.map((c) => `
-            <tr><td><button class="link" data-open="${esc(c.id)}">${esc(c.name)}</button></td>
-              ${c.cells.map((s) => `<td>${sym(s)}</td>`).join('')}
-              <td><b>${c.attended}/${ev.sessions.length}</b></td><td>${fmtPts(c.points)}</td></tr>`).join('')}</tbody>
-        </table></div>
-      </div>`).join('') : `<div class="empty">No special practices recorded yet.<br>In <b>Attendance</b>, choose “Special practice” and pick the occasion.</div>`}
-    <div class="card"><b>Quick start:</b> ${['Christmas', 'New Year', 'Maundy Thursday', 'Good Friday', 'Easter', "Mother Mary's Feast", 'Communion Mass', 'Confirmation Mass'].map((e) => `<button class="btn small" data-add="${esc(e)}">${esc(e)}</button>`).join(' ')}</div>`;
+            <tr><td><button class="link" data-open="${esc(c.id)}">${esc(c.name)}</button>${c.guest ? ' <span class="badge info">Guest</span>' : ''}</td>
+              ${c.cells.map((st) => `<td>${sym(st)}</td>`).join('')}
+              <td><b>${c.attended}/${ev.sessions.length}</b></td><td>${fmtPts(c.points)}</td>
+              <td>${c.good ? `👍 ${c.good}` : ''} ${c.concerns ? `⚠️ ${c.concerns}` : ''}</td>
+              <td>${c.guest ? `<button class="btn small" data-promote="${esc(c.id)}">⬆ Main group</button>` : ''}</td></tr>`).join('')}</tbody>
+        </table></div>` : '<div class="muted" style="margin-top:8px">No practices recorded yet. Tap “＋ Practice” to start.</div>'}
+      </div>`).join('') : `<div class="empty">No occasions for this year yet.<br>Tap <b>＋ New occasion</b>, name it (Christmas, Easter…) and choose who takes part.</div>`}`;
   $('#occSeason').addEventListener('change', (e) => { occSeason = Number(e.target.value); run(loadOccasions); });
+  $('#newOccasion').addEventListener('click', () => run(() => openOccasion(null)));
+  $('#occasions').querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => run(() => openOccasion(b.dataset.edit))));
   $('#occasions').querySelectorAll('[data-add]').forEach((b) => b.addEventListener('click', () => {
-    type = 'practice'; event = b.dataset.add; date = todayStr(); otherMode = false;
+    type = 'practice'; event = b.dataset.add; date = todayStr();
     showTab('attendance');
   }));
   $('#occasions').querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => {
     [date, type, event] = b.dataset.goto.split('|');
-    otherMode = false;
     showTab('attendance');
   }));
+  $('#occasions').querySelectorAll('[data-promote]').forEach((b) => b.addEventListener('click', () => run(async () => {
+    const c = o.events.flatMap((e) => e.children).find((x) => x.id === b.dataset.promote);
+    if (!confirm(`Move ${c.name} to the main group? They will appear in regular attendance and on the leaderboard.`)) return;
+    await call(`teacher/children/${c.id}`, { method: 'PATCH', body: { guest: false } });
+    await loadOccasions();
+  })));
+}
+
+// Create or edit an occasion: choose main-group children, add guests who are not in the choir.
+async function openOccasion(id, seasonWanted = occSeason) {
+  const o = await call(`teacher/occasions${seasonWanted ? `?season=${seasonWanted}` : ''}`);
+  const season = o.season;
+  const ev = id ? o.events.find((x) => x.id === id) : null;
+  const picked = new Set(ev ? ev.memberIds : o.main.map((c) => c.id)); // new occasions start with everyone ticked
+  const guestsIn = ev ? ev.children.filter((c) => c.guest) : [];
+  const names = [...o.presets, 'Other…'];
+  $('#dlgBody').innerHTML = `
+    <div class="row between"><h2 style="margin:0">${ev ? esc(ev.event) : 'New occasion'}</h2><button class="btn small" id="close" aria-label="Close">✕</button></div>
+    <form id="occForm">
+      ${ev ? '' : `<label class="field">Occasion
+        <select id="occName">${names.map((n, i) => `<option value="${i === names.length - 1 ? '' : esc(n)}">${esc(n)}</option>`).join('')}</select></label>
+        <label class="field" id="customWrap" hidden>Occasion name<input id="customName" maxlength="60" placeholder="e.g. Feast of St. Francis"></label>`}
+      <div class="row between"><h3 style="margin:12px 0 4px">Main group</h3>
+        <span class="row"><button type="button" class="btn small" id="selAll">Select all</button><button type="button" class="btn small" id="selNone">None</button></span></div>
+      <div class="pick-list">${o.main.map((c) => `<label class="chk"><input type="checkbox" data-m="${esc(c.id)}"${picked.has(c.id) ? ' checked' : ''}> ${esc(c.name)}</label>`).join('') || '<div class="muted">No children in the main group yet.</div>'}</div>
+      ${guestsIn.length ? `<h3 style="margin:12px 0 4px">Guests in this occasion</h3>
+        <div class="pick-list">${guestsIn.map((c) => `<label class="chk"><input type="checkbox" data-m="${esc(c.id)}" checked> ${esc(c.name)} <span class="badge info">Guest</span></label>`).join('')}</div>` : ''}
+      <h3 style="margin:12px 0 4px">Add guests <span class="muted">(not in the main choir)</span></h3>
+      <textarea id="guests" rows="4" placeholder="One name per line, e.g.&#10;Gita Menezes&#10;Harry Lobo, 5th"></textarea>
+      <div class="muted">Guests appear only in this occasion. If they do well, move them to the main group later.</div>
+      <div class="row" style="margin-top:12px"><button class="btn primary">${ev ? 'Save people' : 'Create occasion'}</button>
+        ${ev && !ev.sessions.length ? '<button type="button" class="btn danger" id="delOcc">Delete occasion</button>' : ''}
+        <span id="occMsg" class="muted" aria-live="polite"></span></div>
+    </form>`;
+  if (!dlg.open) dlg.showModal();
+  $('#close').addEventListener('click', () => dlg.close());
+  $('#occName')?.addEventListener('change', (e) => { $('#customWrap').hidden = e.target.value !== ''; });
+  $('#occName') && ($('#customWrap').hidden = $('#occName').value !== '');
+  const boxes = () => [...$('#dlgBody').querySelectorAll('[data-m]')];
+  $('#selAll').addEventListener('click', () => boxes().forEach((b) => { b.checked = true; }));
+  $('#selNone').addEventListener('click', () => boxes().forEach((b) => { b.checked = false; }));
+  $('#delOcc')?.addEventListener('click', () => run(async () => {
+    if (!confirm(`Delete ${ev.event}? This cannot be undone.`)) return;
+    await call(`teacher/occasions/${id}`, { method: 'DELETE' });
+    dlg.close(); await loadOccasions();
+  }));
+  $('#occForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const members = boxes().filter((b) => b.checked).map((b) => b.dataset.m);
+    const guests = $('#guests').value;
+    try {
+      const name = ev ? ev.event : ($('#occName').value || $('#customName').value.trim());
+      const r = ev
+        ? await call(`teacher/occasions/${id}`, { method: 'PUT', body: { members, guests } })
+        : await call('teacher/occasions', { method: 'POST', body: { season, name, members, guests } });
+      if (r.skipped?.length) alert(`Some guest names were skipped:\n${r.skipped.map((x) => `${x.line}: ${x.reason}`).join('\n')}`);
+      dlg.close();
+      if (!ev) { type = 'practice'; event = name; }
+      refreshVisible();
+    } catch (err) { $('#occMsg').textContent = `⚠️ ${err.message}`; }
+  });
 }
 
 // ======================= Children =======================
 
+const codeText = (code) => `${code.slice(0, 3)}-${code.slice(3)}`;
+const mask = (code) => '•'.repeat(code.length);
+
 async function loadChildren() {
   const { children, pending } = await call('teacher/children');
+  const main = children.filter((c) => !c.guest);
+  const guests = children.filter((c) => c.guest);
+  const row = (c) => `
+    <div class="card row">
+      ${avatarHtml(c)}
+      <div class="grow"><button class="link" data-open="${esc(c.id)}">${esc(c.name)}</button>
+        <div class="muted">${c.standard ? `Std ${esc(c.standard)}` : 'No standard yet'}${c.joinedYear ? ` · joined ${c.joinedYear}` : ''}</div></div>
+      ${c.active ? '' : '<span class="badge">left choir</span>'}
+      ${c.guest ? `<button class="btn small" data-promote="${esc(c.id)}">⬆ Move to main group</button>` : ''}
+    </div>`;
   $('#children').innerHTML = `
     ${pendingHtml(pending)}
-    <div class="row between"><h3 style="margin:8px 0">${children.filter((c) => c.active).length} children</h3>
+    <div class="row between"><h3 style="margin:8px 0">${main.filter((c) => c.active).length} children (A–Z)</h3>
       <div class="row"><button class="btn primary" id="addChild">＋ Add child</button>
         <button class="btn" id="addMany">＋ Add many</button>
-        <button class="btn" id="parentLinks">🔗 Parent links</button></div></div>
-    ${children.map((c) => `
-      <div class="card row">
-        ${avatarHtml(c)}
-        <div class="grow"><button class="link" data-open="${esc(c.id)}">${esc(c.name)}</button>
-          <div class="muted">${c.standard ? `Std ${esc(c.standard)}` : 'No standard yet'}${c.joinedYear ? ` · joined ${c.joinedYear}` : ''}</div></div>
-        ${c.active ? '' : '<span class="badge">left choir</span>'}
-      </div>`).join('') || '<div class="empty">No children yet — tap “Add child”.</div>'}`;
+        <button class="btn" id="parentLinks">🔑 Parent access</button></div></div>
+    ${main.map(row).join('') || '<div class="empty">No children yet — tap “Add child”.</div>'}
+    ${guests.length ? `<h3 style="margin:18px 0 4px">Guests <span class="muted">(only in special occasions)</span></h3>${guests.map(row).join('')}` : ''}`;
   $('#addChild').addEventListener('click', () => run(() => openChild(null)));
   $('#addMany').addEventListener('click', openBulk);
   $('#parentLinks').addEventListener('click', () => run(openLinks));
+  $('#children').querySelectorAll('[data-promote]').forEach((b) => b.addEventListener('click', () => run(async () => {
+    const c = guests.find((x) => x.id === b.dataset.promote);
+    if (!confirm(`Move ${c.name} to the main group? They will appear in regular attendance and on the leaderboard.`)) return;
+    await call(`teacher/children/${c.id}`, { method: 'PATCH', body: { guest: false } });
+    await loadChildren();
+  })));
 }
 
 // ---- child details dialog ----
@@ -333,9 +413,9 @@ function openBulk() {
       const r = await call('teacher/bulk-children', { method: 'POST', body });
       $('#bulkResult').innerHTML = `
         <div class="alert ok"><b>Added ${r.added.length} ${r.added.length === 1 ? 'child' : 'children'}.</b>
-          ${r.added.length ? 'Each one has a private parent link.' : ''}</div>
+          ${r.added.length ? 'Each one has a private parent code.' : ''}</div>
         ${r.skipped.length ? `<div class="alert warn"><b>Skipped ${r.skipped.length}:</b>${r.skipped.map((x) => `<div>${esc(x.line)} — ${esc(x.reason)}</div>`).join('')}</div>` : ''}
-        <div class="row"><button class="btn primary" id="toLinks">🔗 Get parent links</button><button class="btn" id="done">Done</button></div>`;
+        <div class="row"><button class="btn primary" id="toLinks">🔑 Get parent codes</button><button class="btn" id="done">Done</button></div>`;
       $('#bulkForm').hidden = true;
       $('#done').addEventListener('click', () => { dlg.close(); refreshVisible(); });
       $('#toLinks').addEventListener('click', () => run(openLinks));
@@ -343,20 +423,29 @@ function openBulk() {
   });
 }
 
-// ---- every parent's private link in one place ----
+// ---- parent access: ONE shared link for everybody + a private code per child ----
 
 async function openLinks() {
-  const { children } = await call('teacher/children');
-  const list = children.filter((c) => c.active).map((c) => ({ ...c, link: `${location.origin}/?c=${c.code}` }));
-  const msg = (c) => `Hi! Here is ${c.name}'s private choir page: ${c.link}`;
+  const { children, settings } = await call('teacher/children');
+  const base = settings.publicUrl || location.origin;
+  const list = children.filter((c) => c.active && !c.guest);
+  const hello = `Hi parents! Open ${base} , tap "My child" and enter the code I give you for your child.`;
+  const msg = (c) => `Hi! Open ${base} , tap "My child" and enter this code for ${c.name}: ${codeText(c.code)}`;
+  let revealed = false;
   $('#dlgBody').innerHTML = `
-    <div class="row between"><h2 style="margin:0">Parent links</h2><button class="btn small" id="close" aria-label="Close">✕</button></div>
-    <p class="muted">Each link opens <b>only that child's</b> page, where the parent can see attendance and edit their own contact details. Send each family their own link. Nobody can open or edit another child.</p>
-    <button class="btn" id="copyAll">Copy all (name + link)</button>
+    <div class="row between"><h2 style="margin:0">Parent access</h2><button class="btn small" id="close" aria-label="Close">✕</button></div>
+    <h3 style="margin:14px 0 4px">1. One link for everyone</h3>
+    <div class="linkrow"><input readonly value="${esc(base)}" id="baseBox" aria-label="Link for all parents">
+      <button class="btn small" id="copyBase">Copy link</button>
+      <a class="btn small" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(hello)}">WhatsApp</a></div>
+    ${settings.publicUrl ? '' : `<div class="muted">This is the address you're using now. Once the app is online, set the real web address in <b>Settings</b>.</div>`}
+    <h3 style="margin:16px 0 4px">2. A private code for each child</h3>
+    <div class="muted">Like a roll number. Parents open the link above, tap <b>My child</b> and type the code. A code opens only that child. Only you can see this list, so give each parent only their own code.</div>
+    <div class="row" style="margin:8px 0"><button class="btn small" id="toggleAll">Show codes</button><button class="btn small" id="copyAll">Copy all (name + code)</button></div>
     <div class="links-list">${list.map((c) => `
       <div class="row between">
-        <span class="row">${avatarHtml(c, 'sm')}<span><b>${esc(c.name)}</b><div class="muted">${c.code.slice(0, 4)}-${c.code.slice(4)}</div></span></span>
-        <span class="row"><button class="btn small" data-copy="${esc(c.id)}">Copy link</button>
+        <span class="row">${avatarHtml(c, 'sm')}<span><b>${esc(c.name)}</b><div class="code-mask" data-code="${esc(c.id)}">${mask(c.code)}</div></span></span>
+        <span class="row"><button class="btn small" data-copy="${esc(c.id)}">Copy code</button>
           <a class="btn small" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(msg(c))}">WhatsApp</a></span>
       </div>`).join('') || '<div class="empty">No children yet.</div>'}</div>`;
   if (!dlg.open) dlg.showModal();
@@ -364,8 +453,14 @@ async function openLinks() {
   const copy = async (text, btn, done) => {
     try { await navigator.clipboard.writeText(text); const old = btn.textContent; btn.textContent = done; setTimeout(() => { btn.textContent = old; }, 1500); } catch { prompt('Copy this:', text); }
   };
-  $('#copyAll').addEventListener('click', (e) => copy(list.map((c) => `${c.name}\t${c.link}`).join('\n'), e.target, 'Copied ✓'));
-  $('#dlgBody').querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', () => copy(list.find((c) => c.id === b.dataset.copy).link, b, 'Copied ✓')));
+  $('#copyBase').addEventListener('click', (e) => copy(base, e.target, 'Copied ✓'));
+  $('#copyAll').addEventListener('click', (e) => copy(list.map((c) => `${c.name}\t${codeText(c.code)}`).join('\n'), e.target, 'Copied ✓'));
+  $('#toggleAll').addEventListener('click', (e) => {
+    revealed = !revealed;
+    $('#dlgBody').querySelectorAll('[data-code]').forEach((el) => { const c = list.find((x) => x.id === el.dataset.code); el.textContent = revealed ? codeText(c.code) : mask(c.code); });
+    e.target.textContent = revealed ? 'Hide codes' : 'Show codes';
+  });
+  $('#dlgBody').querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', () => copy(codeText(list.find((c) => c.id === b.dataset.copy).code), b, 'Copied ✓')));
 }
 
 function decisionPanel(d) {
@@ -385,8 +480,7 @@ async function openChild(id) {
   const blank = { id: null, name: '', standard: '', joinedYear: new Date().getFullYear(), contact: '', address: '', emergencyName: '', emergencyPhone: '', photo: null, active: true };
   const d = id ? await call(`teacher/child/${id}`) : blank;
   let pendingPhoto = null; // chosen before the child exists
-  const link = d.code ? `${location.origin}/?c=${d.code}` : '';
-  const shown = d.code ? `${d.code.slice(0, 4)}-${d.code.slice(4)}` : '';
+  const base = (await call('teacher/children')).settings.publicUrl || location.origin;
   $('#dlgBody').innerHTML = `
     <div class="row between"><h2 style="margin:0">${id ? esc(d.name) : 'New child'}</h2><button class="btn small" id="close" aria-label="Close">✕</button></div>
     <div class="profile-head" style="margin-top:12px">
@@ -408,16 +502,13 @@ async function openChild(id) {
       <div class="row"><button class="btn primary">${id ? 'Save details' : 'Add child'}</button><span id="cfMsg" class="muted" aria-live="polite"></span></div>
     </form>
     ${id ? `
-      <h3 style="margin-top:20px">Parent access</h3>
+      <h3 style="margin-top:20px">Parent code</h3>
       <div class="card" style="margin-top:6px">
-        <div class="muted">Private code: <b style="font-size:1.1rem;letter-spacing:.08em">${shown}</b></div>
-        <div class="linkrow">
-          <input readonly value="${esc(link)}" id="linkBox" aria-label="Parent link">
-          <button class="btn small" id="copy">Copy link</button>
-          <a class="btn small" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(`Hi! Here is ${d.name}'s private choir page: ${link}`)}">WhatsApp</a>
-        </div>
+        <div class="row between"><span class="code-mask" id="codeShown" data-shown="0">${mask(d.code)}</span>
+          <span class="row"><button class="btn small" id="reveal">Show</button><button class="btn small" id="copyCode">Copy code</button>
+            <a class="btn small" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(`Hi! Open ${base} , tap "My child" and enter this code for ${d.name}: ${codeText(d.code)}`)}">WhatsApp</a></span></div>
         <button class="btn small danger" id="newCode" style="margin-top:8px">Make a new code</button>
-        <div class="muted">Anyone with this link can see ${esc(d.name)}'s details. Make a new code if it was shared by mistake.</div>
+        <div class="muted">Only you can see this code. Give it privately to this child's parent. Make a new code if it was shared by mistake.</div>
       </div>
       ${decisionPanel(d)}
       ${leaveAlertHtml(d, { teacher: true })}
@@ -466,8 +557,15 @@ async function openChild(id) {
     await openChild(id);
     refreshVisible();
   })));
-  $('#copy').addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText(link); $('#copy').textContent = 'Copied ✓'; } catch { $('#linkBox').select(); }
+  $('#reveal').addEventListener('click', () => {
+    const el = $('#codeShown');
+    const show = el.dataset.shown !== '1';
+    el.dataset.shown = show ? '1' : '0';
+    el.textContent = show ? codeText(d.code) : mask(d.code);
+    $('#reveal').textContent = show ? 'Hide' : 'Show';
+  });
+  $('#copyCode').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(codeText(d.code)); $('#copyCode').textContent = 'Copied ✓'; } catch { prompt('Copy this code:', codeText(d.code)); }
   });
   $('#newCode').addEventListener('click', async () => {
     if (!confirm(`The old link for ${d.name} will stop working. Continue?`)) return;
@@ -533,10 +631,28 @@ async function loadSettings() {
       ${num('maxLeaves', 'Leaves allowed per year (April–April)', s.maxLeaves, 'step="1"')}
       ${num('latePointsFactor', 'Share of points when late (0 to 1)', s.latePointsFactor, 'step="0.1" max="1"')}
       <label class="chk"><input name="countSundayAbsences" type="checkbox"${s.countSundayAbsences ? ' checked' : ''}> Missing Sunday mass also counts as a leave</label>
+      <label class="field">Website address to share with parents<input name="publicUrl" type="url" placeholder="https://your-choir-app.example.com" value="${esc(s.publicUrl || '')}"></label>
       <label class="field">First year (starts April of)<input name="firstSeason" type="number" placeholder="${firstSeason}" value="${s.firstSeason ?? ''}"></label>
       <p class="muted">Your private prize race ends at Easter in the first year and at the end of December every year after. Leave blank to start from your first recorded session. Feast practices, feast masses and medical absences never count as leaves. Going over the leave limit never removes a child by itself; you decide.</p>
       <button class="btn primary">Save settings</button>
+    </form>
+    <form class="card" id="pinForm">
+      <h3>Teacher PIN</h3>
+      <div class="muted">The PIN keeps the teacher pages, children's details and parent codes private. Choose something only you know.</div>
+      <label class="field">New PIN (4–20 letters or digits)<input name="pin" type="password" autocomplete="new-password" minlength="4" maxlength="20" required></label>
+      <button class="btn">Change PIN</button>
     </form>`;
+  $('#pinForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const next = new FormData(e.target).get('pin');
+    run(async () => {
+      await call('teacher/pin', { method: 'PUT', body: { pin: next } });
+      pin = next;
+      try { sessionStorage.setItem('choir-pin', next); } catch { /* private mode */ }
+      e.target.reset();
+      flash('PIN changed.', 'ok');
+    });
+  });
   $('#setForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
@@ -544,6 +660,7 @@ async function loadSettings() {
       const body = Object.fromEntries(['satPoints', 'sunPoints', 'practicePoints', 'feastPoints', 'maxLeaves', 'latePointsFactor'].map((k) => [k, f.get(k)]));
       body.countSundayAbsences = f.get('countSundayAbsences') === 'on';
       body.firstSeason = f.get('firstSeason') || null;
+      body.publicUrl = f.get('publicUrl') || '';
       await call('teacher/settings', { method: 'PUT', body });
       flash('Settings saved.', 'ok');
     });

@@ -41,6 +41,7 @@ export const DEFAULT_SETTINGS = {
   latePointsFactor: 0.5, // a "Late" present earns this share of the points
   countSundayAbsences: false, // by default only Saturday practice absences are leaves
   firstSeason: null, // season (start year) whose private prize date is Easter; null = auto
+  publicUrl: '', // address shared with parents (e.g. https://choir.example.com)
 };
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -55,7 +56,11 @@ export function defaultType(date) {
   return new Date(`${date}T00:00:00Z`).getUTCDay() === 0 ? 'sunday' : 'saturday';
 }
 
-const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+export const compareNames = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+
+export const GOOD_REMARKS = ['Well behaved', 'Helped others'];
+
+export const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 // One session per date+type; feast sessions are also keyed by occasion.
 export function sessionKey(date, type, event) {
@@ -178,7 +183,7 @@ export function isOut(child, season, to) {
 //   includeInactive: also rank children who have left the choir (history)
 export function scoreboard(db, season, from, to, { hideOut = false, includeInactive = false } = {}) {
   let rows = db.children
-    .filter((c) => c.active || includeInactive)
+    .filter((c) => !c.guest && (c.active || includeInactive)) // guests only ever appear in their occasion
     .map((c) => {
       const st = childStats(db, c.id, season, from, to);
       return {
@@ -190,7 +195,7 @@ export function scoreboard(db, season, from, to, { hideOut = false, includeInact
   if (hideOut) rows = rows.filter((r) => r.eligible);
   rows.sort((a, b) =>
     Number(b.eligible) - Number(a.eligible) ||
-    b.points - a.points || a.leaves - b.leaves || a.name.localeCompare(b.name));
+    b.points - a.points || a.leaves - b.leaves || compareNames(a, b));
   let rank = 0;
   rows.forEach((r, i) => {
     const prev = rows[i - 1];
@@ -254,34 +259,42 @@ export function yearlyAchievers(db, today) {
     });
 }
 
+export function findOccasion(db, season, name) {
+  const k = slug(name ?? '');
+  return db.occasions.find((o) => o.season === season && slug(o.name) === k) ?? null;
+}
+
 // Who attended each practice / mass for every special occasion in a season.
+// An occasion has its own roster: regular children picked by the teacher plus guests.
 export function occasions(db, season) {
   const range = seasonRange(season);
-  const sessions = sessionsInRange(db, range.start, range.end).filter((s) => OCCASION_TYPES.includes(s.type));
-  const byEvent = new Map();
-  for (const s of sessions) {
-    if (!byEvent.has(s.event)) byEvent.set(s.event, []);
-    byEvent.get(s.event).push(s);
-  }
-  return [...byEvent].map(([event, list]) => {
-    const children = db.children
-      .filter((c) => c.active || list.some((s) => s.entries[c.id]?.status))
+  const all = sessionsInRange(db, range.start, range.end).filter((s) => OCCASION_TYPES.includes(s.type));
+  return db.occasions.filter((o) => o.season === season).map((o) => {
+    const list = all.filter((s) => slug(s.event) === slug(o.name));
+    const ids = new Set(o.members);
+    for (const s of list) for (const [id, e] of Object.entries(s.entries)) if (e.status) ids.add(id);
+    const children = [...ids]
+      .map((id) => db.children.find((c) => c.id === id))
+      .filter(Boolean)
       .map((c) => {
-        const cells = list.map((s) => s.entries[c.id]?.status ?? null);
-        const points = list.reduce((sum, s) => sum + pointsFor(s.entries[c.id], s.type, db.settings), 0);
+        const entries = list.map((s) => s.entries[c.id]);
+        const remarks = entries.flatMap((e) => e?.remarks ?? []);
         return {
-          id: c.id, name: c.name, photo: photoUrl(c), cells, points,
-          attended: cells.filter((x) => x === 'present').length,
+          id: c.id, name: c.name, photo: photoUrl(c), guest: Boolean(c.guest), member: o.members.includes(c.id),
+          cells: entries.map((e) => e?.status ?? null),
+          points: list.reduce((sum, s) => sum + pointsFor(s.entries[c.id], s.type, db.settings), 0),
+          attended: entries.filter((e) => e?.status === 'present').length,
+          good: remarks.filter((r) => GOOD_REMARKS.includes(r)).length,
+          concerns: remarks.filter((r) => !GOOD_REMARKS.includes(r)).length,
         };
       })
-      .sort((a, b) => b.attended - a.attended || a.name.localeCompare(b.name));
+      .sort(compareNames);
     return {
-      event,
+      id: o.id, event: o.name, memberIds: o.members, total: children.length,
       sessions: list.map((s, i) => ({
-        date: s.date, type: s.type,
-        presentCount: children.filter((c) => c.cells[i] === 'present').length,
+        date: s.date, type: s.type, presentCount: children.filter((c) => c.cells[i] === 'present').length,
       })),
       children,
     };
-  });
+  }).sort((a, b) => (a.sessions[0]?.date ?? '9999').localeCompare(b.sessions[0]?.date ?? '9999') || a.event.localeCompare(b.event));
 }
