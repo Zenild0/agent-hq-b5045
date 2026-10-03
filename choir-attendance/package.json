@@ -1,0 +1,11 @@
+{
+  "name": "choir-attendance",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Attendance, behaviour remarks and scoreboard for a children's choir",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  }
+}

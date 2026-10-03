@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Choir – Teacher</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header><h1>🎵 Teacher – Attendance</h1><small><a href="/" style="color:inherit">Parent view</a></small></header>
+  <main>
+    <nav>
+      <button data-tab="attendance" class="on">Attendance</button>
+      <button data-tab="board">Scoreboard</button>
+      <button data-tab="children">Children</button>
+      <button data-tab="settings">Settings</button>
+    </nav>
+    <div id="msg"></div>
+    <section id="attendance"></section>
+    <section id="board" hidden></section>
+    <section id="children" hidden></section>
+    <section id="settings" hidden></section>
+  </main>
+  <script type="module">
+    import { $, api, esc, boardHtml, fmtDate, leaveBadge, typeLabel } from './common.js';
+
+    let pin = '';
+    try { pin = sessionStorage.getItem('choir-pin') || ''; } catch {}
+    const call = (path, opts = {}) => api(path, { ...opts, pin });
+    const flash = (text, bad = true) => {
+      $('#msg').innerHTML = text ? `<div class="alert ${bad ? 'bad' : 'warn'}">${esc(text)}</div>` : '';
+    };
+    const run = async (fn) => {
+      try { flash(''); return await fn(); }
+      catch (e) {
+        if (e.status === 401) return askPin();
+        flash(e.message);
+      }
+    };
+    function askPin() {
+      const p = prompt('Teacher PIN');
+      if (p === null) return flash('PIN required to use the teacher page.');
+      pin = p;
+      try { sessionStorage.setItem('choir-pin', p); } catch {}
+      location.reload();
+    }
+
+    const tabs = ['attendance', 'board', 'children', 'settings'];
+    const loaders = { attendance: loadAttendance, board: loadBoard, children: loadChildren, settings: loadSettings };
+    document.querySelectorAll('nav button').forEach((b) => b.addEventListener('click', () => {
+      tabs.forEach((t) => { $(`#${t}`).hidden = t !== b.dataset.tab; });
+      document.querySelectorAll('nav button').forEach((x) => x.classList.toggle('on', x === b));
+      run(loaders[b.dataset.tab]);
+    }));
+
+    // ---- Attendance -----------------------------------------------------
+    const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    let date = today;
+    let type = '';
+    let view;
+
+    async function loadAttendance() {
+      view = await call(`teacher/session?date=${date}${type ? `&type=${type}` : ''}`);
+      type = view.type;
+      renderAttendance();
+    }
+
+    function renderAttendance() {
+      const s = view.settings;
+      $('#attendance').innerHTML = `
+        <div class="card row">
+          <input type="date" id="date" value="${date}">
+          <select id="type">
+            <option value="saturday"${type === 'saturday' ? ' selected' : ''}>Saturday practice (${s.satPoints} pt)</option>
+            <option value="sunday"${type === 'sunday' ? ' selected' : ''}>Sunday mass (${s.sunPoints} pts)</option>
+          </select>
+          <button class="btn" id="allPresent">Mark all present</button>
+        </div>
+        ${view.children.length ? view.children.map(childRow).join('') : '<div class="empty">Add children in the Children tab first.</div>'}`;
+      $('#date').addEventListener('change', (e) => {
+        if (!e.target.value) return;
+        date = e.target.value; type = '';
+        run(loadAttendance);
+      });
+      $('#type').addEventListener('change', (e) => { type = e.target.value; run(loadAttendance); });
+      $('#allPresent').addEventListener('click', () => run(async () => {
+        await call('teacher/mark-all-present', { method: 'POST', body: { date, type } });
+        await loadAttendance();
+      }));
+      document.querySelectorAll('[data-child]').forEach(wireRow);
+    }
+
+    function childRow(c) {
+      const st = (k, label) => `<button class="${k}${c.status === k ? ' on' : ''}" data-set="${k}">${label}</button>`;
+      const open = c.remarks.length || c.note ? ' open' : '';
+      return `
+        <div class="card" data-child="${esc(c.id)}">
+          <div class="row between"><b>${esc(c.name)}</b>${leaveBadge(c.leaves, view.settings.maxLeaves, c.exceeded)}</div>
+          ${c.exceeded ? '<div class="muted">Over the leave limit – not continuing this year.</div>' : ''}
+          <div class="status">${st('present', 'Present')}${st('absent', 'Absent')}${st('excused', 'Sick / hospital')}</div>
+          <details class="remarks"${open}>
+            <summary>Behaviour remarks${c.remarks.length ? ` (${c.remarks.length})` : ''}</summary>
+            ${view.remarkOptions.map((r) => `
+              <label class="chk"><input type="checkbox" value="${esc(r)}"${c.remarks.includes(r) ? ' checked' : ''}> ${esc(r)}</label>`).join('')}
+            <textarea rows="2" maxlength="500" placeholder="Private note (parents can't see this)">${esc(c.note)}</textarea>
+          </details>
+        </div>`;
+    }
+
+    function wireRow(el) {
+      const c = view.children.find((x) => x.id === el.dataset.child);
+      const save = () => run(async () => {
+        await call('teacher/mark', { method: 'PUT', body: { date, type, childId: c.id, status: c.status, remarks: c.remarks, note: c.note } });
+        const fresh = await call(`teacher/session?date=${date}&type=${type}`); // refresh leave tallies
+        view = fresh;
+        const next = fresh.children.find((x) => x.id === c.id);
+        const wasOpen = $('details', el).open;
+        const tmp = document.createElement('div');
+        tmp.innerHTML = childRow(next);
+        el.replaceWith(tmp.firstElementChild);
+        const newEl = document.querySelector(`[data-child="${CSS.escape(c.id)}"]`);
+        $('details', newEl).open = wasOpen;
+        wireRow(newEl);
+      });
+      el.querySelectorAll('[data-set]').forEach((b) => b.addEventListener('click', () => {
+        c.status = c.status === b.dataset.set ? null : b.dataset.set; // tap again to clear
+        save();
+      }));
+      el.querySelectorAll('input[type=checkbox]').forEach((i) => i.addEventListener('change', () => {
+        c.remarks = [...el.querySelectorAll('input[type=checkbox]:checked')].map((x) => x.value);
+        save();
+      }));
+      $('textarea', el).addEventListener('change', (e) => { c.note = e.target.value; save(); });
+    }
+
+    // ---- Scoreboard -----------------------------------------------------
+    async function loadBoard() {
+      const o = await api('public');
+      $('#board').innerHTML = `
+        <div class="card"><b>Prize at ${esc(o.prize.label)}</b>
+          <div class="muted">Counting ${esc(o.seasonLabel)} up to ${fmtDate(o.prize.date)}. Children over the leave limit are not eligible.</div></div>
+        <h2>Race for the ${esc(o.prize.label)} prize</h2><div class="card">${boardHtml(o.prizeBoard)}</div>
+        <h2>${esc(o.monthLabel)}</h2><div class="card">${boardHtml(o.monthBoard, 'No attendance this month yet.')}</div>`;
+    }
+
+    // ---- Children -------------------------------------------------------
+    async function loadChildren() {
+      const { children } = await call('teacher/children');
+      $('#children').innerHTML = `
+        <form class="card row" id="addForm">
+          <input name="name" placeholder="Child's name" required maxlength="80" style="flex:1">
+          <button class="btn primary">Add child</button>
+        </form>
+        ${children.map((c) => `
+          <div class="card row between" data-id="${esc(c.id)}">
+            <span>${esc(c.name)} ${c.active ? '' : '<span class="badge">left choir</span>'}</span>
+            <span class="row">
+              <button class="btn" data-act="rename">Rename</button>
+              <button class="btn" data-act="toggle">${c.active ? 'Remove' : 'Re-add'}</button>
+            </span>
+          </div>`).join('')}`;
+      $('#addForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        run(async () => {
+          await call('teacher/children', { method: 'POST', body: { name: new FormData(e.target).get('name') } });
+          await loadChildren();
+        });
+      });
+      document.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', () => run(async () => {
+        const c = children.find((x) => x.id === b.closest('[data-id]').dataset.id);
+        if (b.dataset.act === 'rename') {
+          const name = prompt('New name', c.name);
+          if (!name) return;
+          await call(`teacher/children/${c.id}`, { method: 'PATCH', body: { name } });
+        } else {
+          await call(`teacher/children/${c.id}`, { method: 'PATCH', body: { active: !c.active } });
+        }
+        await loadChildren();
+      })));
+    }
+
+    // ---- Settings -------------------------------------------------------
+    async function loadSettings() {
+      const { settings: s, firstSeason } = await call('teacher/children');
+      $('#settings').innerHTML = `
+        <form class="card" id="setForm">
+          <p class="chk"><label>Saturday practice points <input name="satPoints" type="number" step="0.5" min="0" value="${s.satPoints}" style="width:5em"></label></p>
+          <p class="chk"><label>Sunday mass points <input name="sunPoints" type="number" step="0.5" min="0" value="${s.sunPoints}" style="width:5em"></label></p>
+          <p class="chk"><label>Leaves allowed per year (April–April) <input name="maxLeaves" type="number" min="0" value="${s.maxLeaves}" style="width:5em"></label></p>
+          <p class="chk"><label>Share of points when late (0–1) <input name="latePointsFactor" type="number" step="0.1" min="0" max="1" value="${s.latePointsFactor}" style="width:5em"></label></p>
+          <label class="chk"><input name="countSundayAbsences" type="checkbox"${s.countSundayAbsences ? ' checked' : ''}> Missing Sunday mass also counts as a leave</label>
+          <p class="chk"><label>First year (starts April of) <input name="firstSeason" type="number" placeholder="${firstSeason}" value="${s.firstSeason ?? ''}" style="width:6em"></label></p>
+          <p class="muted">The first year's prize is at Easter; every year after that, at the end of December. Leave blank to start from your first recorded session.</p>
+          <button class="btn primary">Save settings</button>
+        </form>`;
+      $('#setForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const f = new FormData(e.target);
+        run(async () => {
+          await call('teacher/settings', {
+            method: 'PUT',
+            body: {
+              satPoints: f.get('satPoints'), sunPoints: f.get('sunPoints'), maxLeaves: f.get('maxLeaves'),
+              latePointsFactor: f.get('latePointsFactor'), countSundayAbsences: f.get('countSundayAbsences') === 'on',
+              firstSeason: f.get('firstSeason') || null,
+            },
+          });
+          flash('Settings saved.', false);
+        });
+      });
+    }
+
+    run(async () => {
+      const meta = await api('meta');
+      if (meta.pinRequired && !pin) return askPin();
+      await loadAttendance();
+    });
+  </script>
+</body>
+</html>

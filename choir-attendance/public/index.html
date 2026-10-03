@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Choir Attendance</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header><h1>🎵 Children's Choir</h1><small id="season"></small></header>
+  <main>
+    <nav>
+      <button data-tab="board" class="on">Scoreboard</button>
+      <button data-tab="child">My child</button>
+    </nav>
+    <section id="board"></section>
+    <section id="child" hidden></section>
+  </main>
+  <script type="module">
+    import { $, api, esc, boardHtml, childHtml, fmtDate } from './common.js';
+
+    let overview;
+    const show = (tab) => {
+      document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+      $('#board').hidden = tab !== 'board';
+      $('#child').hidden = tab !== 'child';
+    };
+    document.querySelectorAll('nav button').forEach((b) => b.addEventListener('click', () => show(b.dataset.tab)));
+
+    async function loadChild(id) {
+      const target = $('#detail');
+      if (!id) { target.innerHTML = ''; return; }
+      target.innerHTML = childHtml(await api(`child/${encodeURIComponent(id)}?season=${overview.season}`));
+      try { localStorage.setItem('choir-child', id); } catch {}
+    }
+
+    function render() {
+      const o = overview;
+      $('#season').textContent = `Year ${o.seasonLabel}`;
+      $('#board').innerHTML = `
+        <div class="card">
+          <b>Prize at ${esc(o.prize.label)}</b>
+          <div class="muted">Points are counted from April to ${fmtDate(o.prize.date)}.
+          Saturday practice = ${o.settings.satPoints} pt, Sunday mass = ${o.settings.sunPoints} pts.
+          Come on time to earn full points!</div>
+        </div>
+        <h2>🏆 Race for the ${esc(o.prize.label)} prize</h2>
+        <div class="card">${boardHtml(o.prizeBoard)}</div>
+        <h2>📅 ${esc(o.monthLabel)}</h2>
+        <div class="card">${boardHtml(o.monthBoard, 'No attendance this month yet.')}</div>`;
+      let saved = '';
+      try { saved = localStorage.getItem('choir-child') || ''; } catch {}
+      if (!o.children.some((c) => c.id === saved)) saved = '';
+      $('#child').innerHTML = `
+        <div class="card row">
+          <label for="pick"><b>Choose your child:</b></label>
+          <select id="pick"><option value="">— select —</option>
+            ${o.children.map((c) => `<option value="${esc(c.id)}"${c.id === saved ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div id="detail"></div>`;
+      $('#pick').addEventListener('change', (e) => loadChild(e.target.value));
+      if (saved) { loadChild(saved); }
+    }
+
+    api('public').then((o) => { overview = o; render(); })
+      .catch((e) => { $('#board').innerHTML = `<div class="alert bad">${esc(e.message)}</div>`; });
+  </script>
+</body>
+</html>
