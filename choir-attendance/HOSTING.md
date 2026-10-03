@@ -6,7 +6,7 @@ Pick the option that matches how you want to use it.
 |---|---|---|---|---|
 | **A. Your laptop + Tailscale Funnel** | Yes (lid can be closed, but not shut down or asleep) | Free | Easy | Data stays on your laptop. Stops if the laptop is off. |
 | **B. Render (cloud server)** | No | about $7 a month (check current price) | Easy | Works when your laptop is shut down. Recommended if a small fee is fine. |
-| **C. Free cloud server (Oracle or Google "Always Free")** | No | Free (card needed to sign up) | Hard (a Linux server to manage) | Works when your laptop is shut down. Ask me for a setup script. |
+| **C. Free cloud server (Oracle or Google "Always Free")** | No | Free (card needed to sign up) | Hard (a Linux server to manage) | Works when your laptop is shut down. Step-by-step guide: **[deploy/GOOGLE-CLOUD.md](deploy/GOOGLE-CLOUD.md)** (Google free server + your own domain through Cloudflare). |
 
 Free hosting services that sleep or have no disk (Render's free plan, Netlify) are **not** suitable: they lose data or stop when idle.
 
@@ -73,7 +73,7 @@ This app is a small Node server that saves everything (children, photos, recordi
 ---
 
 ## C. Free cloud server (outline)
-Oracle Cloud and Google Cloud both offer an "Always Free" small server that runs 24/7. You need a credit card to sign up (it is only used to verify you), and you manage a Linux server yourself. Oracle can reclaim servers that sit idle for a week unless the account is switched to Pay-As-You-Go (which stays free within the free limits). If you want this, tell me and I'll write a one-paste setup script plus step-by-step instructions.
+Oracle Cloud and Google Cloud both offer an "Always Free" small server that runs 24/7. You need a credit card to sign up (it is only used to verify you), and you manage a Linux server yourself. Oracle can reclaim servers that sit idle for a week unless the account is switched to Pay-As-You-Go (which stays free within the free limits). If you want this, tell me and The guide is in [deploy/GOOGLE-CLOUD.md](deploy/GOOGLE-CLOUD.md).
 
 ---
 
