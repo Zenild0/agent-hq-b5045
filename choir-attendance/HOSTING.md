@@ -73,7 +73,7 @@ This app is a small Node server that saves everything (children, photos, recordi
 ---
 
 ## C. Free cloud server (outline)
-Oracle Cloud and Google Cloud both offer an "Always Free" small server that runs 24/7. You need a credit card to sign up (it is only used to verify you), and you manage a Linux server yourself. Oracle can reclaim servers that sit idle for a week unless the account is switched to Pay-As-You-Go (which stays free within the free limits). If you want this, tell me and The guide is in [deploy/GOOGLE-CLOUD.md](deploy/GOOGLE-CLOUD.md).
+Oracle Cloud and Google Cloud both offer an "Always Free" small server that runs 24/7. You need a credit card to sign up (it is only used to verify you), and you manage a Linux server yourself. Oracle can reclaim servers that sit idle for a week unless the account is switched to Pay-As-You-Go (which stays free within the free limits). The guide for Google's free server is in [deploy/GOOGLE-CLOUD.md](deploy/GOOGLE-CLOUD.md).
 
 ---
 
