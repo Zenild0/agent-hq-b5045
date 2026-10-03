@@ -36,8 +36,8 @@ if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split("."
 fi
 if ! command -v cloudflared >/dev/null; then
   mkdir -p --mode=0755 /usr/share/keyrings
-  curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg > /usr/share/keyrings/cloudflare-main.gpg
-  echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main' > /etc/apt/sources.list.d/cloudflared.list
+  curl -fsSL https://pkg.cloudflare.com/cloudflare-public-v2.gpg > /usr/share/keyrings/cloudflare-public-v2.gpg
+  echo 'deb [signed-by=/usr/share/keyrings/cloudflare-public-v2.gpg] https://pkg.cloudflare.com/cloudflared any main' > /etc/apt/sources.list.d/cloudflared.list
   apt-get update -qq
   apt-get install -y -qq cloudflared >/dev/null
 fi
@@ -153,4 +153,4 @@ else
   echo "The app did not start. Look at:  sudo journalctl -u choir -n 40"
 fi
 echo
-echo "NEXT: connect it to your domain with Cloudflare Tunnel (see GOOGLE-CLOUD.md, Part 4)."
+echo "NEXT: connect it to your domain with Cloudflare Tunnel (see GOOGLE-CLOUD.md, Part 5)."
