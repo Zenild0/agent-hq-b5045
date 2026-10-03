@@ -113,6 +113,22 @@ test('medical absence keeps a reason and is never a leave; going over the limit 
   assert.ok((await j('/api/public?season=2026')).data.yearBoard.some((r) => r.name === 'Ben Fernandes'));
 });
 
+test('teacher can add many children at once; duplicates and bad lines are skipped', async () => {
+  const text = ['1. Zara Lobo, 3rd', '- Yash Patel', 'anna dias', '', 'Xavier Noronha;4th', 'Bad Standard, ' + 'x'.repeat(30)].join('\n');
+  const r = await j('/api/teacher/bulk-children', { method: 'POST', body: { text, standard: '2nd', joinedYear: 2025 } });
+  assert.equal(r.status, 201);
+  assert.deepEqual(r.data.added.map((c) => [c.name, c.standard, c.joinedYear]), [['Zara Lobo', '3rd', 2025], ['Yash Patel', '2nd', 2025], ['Xavier Noronha', '4th', 2025]]);
+  assert.equal(r.data.skipped.length, 2);
+  assert.match(r.data.skipped[0].reason, /already/);
+  assert.equal(new Set(r.data.added.map((c) => c.code)).size, 3);
+  assert.equal((await j('/api/teacher/bulk-children', { method: 'POST', body: { text: '  \n ' } })).status, 400);
+  // each new child's code opens only that child
+  const zara = r.data.added[0];
+  assert.equal((await j('/api/me', { code: zara.code })).data.name, 'Zara Lobo');
+  assert.equal((await j('/api/me', { method: 'PUT', code: zara.code, body: { address: 'Zara home' } })).status, 200);
+  assert.notEqual((await j('/api/me', { code: anna.code })).data.address, 'Zara home');
+});
+
 test('static files and path traversal', async () => {
   assert.equal((await fetch(`${base}/`)).status, 200);
   assert.equal((await fetch(`${base}/teacher`)).status, 200);

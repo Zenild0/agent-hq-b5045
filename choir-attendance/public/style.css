@@ -217,3 +217,28 @@ dialog .dlg { padding: 16px 18px 20px; overflow: auto; max-height: 92vh; }
 .sym.e { color: var(--info); font-weight: 800; }
 .sym.n { color: #bbb; }
 .banner { background: #e8e1ff; border-radius: 14px; padding: 10px 14px; margin: 10px 0; font-weight: 700; }
+
+/* ---------- compact attendance list ---------- */
+.avatar.sm { width: 32px; height: 32px; font-size: .75rem; }
+.legend { margin: 6px 2px; }
+.att-list { padding: 2px 0; }
+.att-row { padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.att-row:last-child { border-bottom: 0; }
+.att-main { display: flex; align-items: center; gap: 8px; }
+.att-name { flex: 1; min-width: 0; line-height: 1.2; }
+.att-name .link { overflow-wrap: break-word; word-break: normal; font-size: .95rem; }
+.att-meta { margin-top: 2px; }
+.att-meta .badge { font-size: .72rem; padding: 0 8px; }
+.pam { display: flex; gap: 4px; flex: none; }
+.pam button { width: 40px; height: 44px; border-radius: 12px; border: 2px solid var(--line); background: #fff; color: var(--ink); font: 800 .95rem var(--font-body); cursor: pointer; padding: 0; }
+.pam .pa.on.present { background: var(--ok); border-color: var(--ok); color: #fff; }
+.pam .pa.on.absent { background: var(--bad); border-color: var(--bad); color: #fff; }
+.pam .pa.on.excused { background: var(--info); border-color: var(--info); color: #fff; }
+.pam .more { width: 30px; color: var(--muted); position: relative; }
+.pam .more.on { background: #efe9ff; border-color: var(--brand); color: var(--brand-dark); }
+.pam .more.has::after { content: ''; position: absolute; top: 4px; right: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--coral); }
+.att-over { margin: 4px 0 0 40px; font-size: .85rem; }
+.att-extra { margin-top: 8px; padding: 10px 12px; background: #f8f4ff; border-radius: 14px; }
+.chk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+@media (max-width: 380px) { .chk-grid { grid-template-columns: 1fr; } }
+.links-list > .row { padding: 8px 0; border-bottom: 1px solid var(--line); }

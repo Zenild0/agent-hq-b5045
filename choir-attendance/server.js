@@ -265,6 +265,38 @@ async function savePhoto(child, image) {
   store.save();
 }
 
+// One child per line: "Name" or "Name, Standard". Numbering / bullets are ignored.
+function bulkAdd(body) {
+  const { db } = store;
+  const lines = String(body.text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) throw new HttpError(400, 'Type or paste at least one name');
+  if (lines.length > 300) throw new HttpError(400, 'Please add at most 300 names at a time');
+  const seen = new Set(db.children.map((c) => c.name.toLowerCase()));
+  const added = [];
+  const skipped = [];
+  for (const line of lines) {
+    const [rawName, rawStd] = line.replace(/^(?:\d+[.)]|[-*\u2022])\s*/, '').split(/[,\t;]/).map((x) => x.trim());
+    try {
+      const c = {
+        id: randomUUID().slice(0, 8), name: '', active: true, joinedOn: today(), code: newCode(db),
+        standard: '', joinedYear: Number(today().slice(0, 4)), contact: '', address: '',
+        emergencyName: '', emergencyPhone: '', photoVersion: 0, leaveDecisions: {},
+      };
+      const fields = { name: rawName, standard: rawStd || body.standard || '' };
+      if (body.joinedYear) fields.joinedYear = body.joinedYear;
+      applyProfile(c, fields, { teacher: true });
+      if (seen.has(c.name.toLowerCase())) { skipped.push({ line, reason: 'already in the list' }); continue; }
+      seen.add(c.name.toLowerCase());
+      db.children.push(c); // pushed now so the next code is unique
+      added.push({ ...profileOf(c), code: c.code, active: true });
+    } catch (err) {
+      skipped.push({ line, reason: err.message });
+    }
+  }
+  store.save();
+  return { added, skipped };
+}
+
 function teacherBoard() {
   const { db } = store;
   const season = seasonOf(today());
@@ -311,6 +343,7 @@ async function teacherApi(req, res, q, parts) {
   const body = await readBody(req, b === 'children' && action === 'photo' ? 1_500_000 : 100_000);
   if (req.method === 'PUT' && b === 'mark') { mark(body); return send(res, 200, { ok: true }); }
   if (req.method === 'POST' && b === 'mark-all-present') { markAllPresent(body); return send(res, 200, { ok: true }); }
+  if (req.method === 'POST' && b === 'bulk-children') return send(res, 201, bulkAdd(body));
   if (req.method === 'PUT' && b === 'settings') { updateSettings(body); return send(res, 200, store.db.settings); }
   if (b === 'children') {
     if (req.method === 'POST' && !id) {

@@ -94,7 +94,6 @@ function renderAttendance() {
   const s = view.settings;
   const showOther = isOccasion(type) && (otherMode || !view.events.includes(event));
   const waiting = isOccasion(type) && !event.trim();
-  const marked = view.children.filter((c) => c.status).length;
   const when = date < todayStr() ? `📅 Back-dated entry for ${fmtDate(date)}` : date > todayStr() ? `📅 Future date: ${fmtDate(date)}` : '';
   $('#attendance').innerHTML = `
     <div class="card">
@@ -122,9 +121,10 @@ function renderAttendance() {
     ${pendingHtml(view.pending)}
     ${when ? `<div class="banner">${when}</div>` : ''}
     ${waiting ? '<div class="empty">Type the occasion name above to start.</div>' : `
-    <div class="row between"><span class="muted">${marked} of ${view.children.length} marked</span>
-      <button class="btn small" id="allPresent">Mark all present</button></div>`}
-    ${waiting ? '' : view.children.length ? view.children.map(childRow).join('') : '<div class="empty">Add children in the Children tab first.</div>'}`;
+    <div class="row between"><span class="muted" id="sumline">${summaryText()}</span>
+      <button class="btn small" id="allPresent">Mark all present</button></div>
+    <div class="muted legend"><b>P</b> Present · <b>A</b> Absent · <b>ML</b> Medical leave · <b>⋯</b> remarks &amp; notes</div>
+    <div class="card att-list">${view.children.length ? view.children.map(childRow).join('') : '<div class="empty">Add children in the Children tab first.</div>'}</div>`}`;
   $('#type').value = type;
   $('#date').addEventListener('change', (e) => {
     if (!e.target.value) return;
@@ -152,25 +152,55 @@ function renderAttendance() {
   $('#attendance').querySelectorAll('[data-child]').forEach(wireRow);
 }
 
-function childRow(c) {
-  const st = (k, label) => `<button class="${k}${c.status === k ? ' on' : ''}" data-set="${k}" aria-pressed="${c.status === k}">${label}</button>`;
-  const open = c.remarks.length || c.note ? ' open' : '';
+const openRows = new Set(); // children whose remarks panel is expanded
+
+function summaryText() {
+  const n = (k) => view.children.filter((c) => c.status === k).length;
+  const left = view.children.filter((c) => !c.status).length;
+  return `P ${n('present')} · A ${n('absent')} · ML ${n('excused')} · ${left} not marked`;
+}
+
+function extraHtml(c) {
   return `
-    <div class="card" data-child="${esc(c.id)}">
-      <div class="row between">
-        <span class="row">${avatarHtml(c)}<button class="link" data-open="${esc(c.id)}">${esc(c.name)}</button></span>
-        ${leaveBadge(c.leaves, view.settings.maxLeaves, c.exceeded)}
-      </div>
-      ${c.exceeded ? overNote(c) : ''}
-      <div class="status">${st('present', 'Present')}${st('absent', 'Absent')}${st('excused', '🏥 Medical')}</div>
-      ${c.status === 'excused' ? `<select class="reason" aria-label="Medical reason" style="margin-top:8px"><option value="">Reason (optional)</option>${view.excuseReasons.map((r) => `<option${c.reason === r ? ' selected' : ''}>${esc(r)}</option>`).join('')}</select>
-        <div class="muted">Medical absences never count as a leave.</div>` : ''}
-      <details class="remarks"${open}>
-        <summary>Behaviour remarks${c.remarks.length ? ` (${c.remarks.length})` : ''}</summary>
-        ${view.remarkOptions.map((r) => `<label class="chk"><input type="checkbox" value="${esc(r)}"${c.remarks.includes(r) ? ' checked' : ''}> ${esc(r)}</label>`).join('')}
-        <textarea rows="2" maxlength="500" placeholder="Private note (parents can't see this)">${esc(c.note)}</textarea>
-      </details>
+    <div class="att-extra">
+      ${c.status === 'excused' ? `<label class="field">Medical reason
+        <select class="reason"><option value="">Optional</option>${view.excuseReasons.map((r) => `<option${c.reason === r ? ' selected' : ''}>${esc(r)}</option>`).join('')}</select></label>
+        <div class="muted">Medical leave never counts as a leave.</div>` : ''}
+      <div class="chk-grid">${view.remarkOptions.map((r) => `<label class="chk"><input type="checkbox" value="${esc(r)}"${c.remarks.includes(r) ? ' checked' : ''}> ${esc(r)}</label>`).join('')}</div>
+      <textarea rows="2" maxlength="500" placeholder="Private note (parents can't see this)">${esc(c.note)}</textarea>
     </div>`;
+}
+
+function childRow(c) {
+  const b = (k, label, title) => `<button class="pa ${k}${c.status === k ? ' on' : ''}" data-set="${k}" aria-pressed="${c.status === k}" aria-label="${title}" title="${title}">${label}</button>`;
+  const open = openRows.has(c.id);
+  const hasExtra = c.remarks.length || c.note || c.reason;
+  return `
+    <div class="att-row" data-child="${esc(c.id)}">
+      <div class="att-main">
+        ${avatarHtml(c, 'sm')}
+        <div class="att-name">
+          <button class="link" data-open="${esc(c.id)}">${esc(c.name)}</button>
+          <div class="att-meta">${leaveBadge(c.leaves, view.settings.maxLeaves, c.exceeded)}${c.status === 'excused' && c.reason ? ` <span class="badge info">${esc(c.reason)}</span>` : ''}</div>
+        </div>
+        <div class="pam">
+          ${b('present', 'P', 'Present')}${b('absent', 'A', 'Absent')}${b('excused', 'ML', 'Medical leave')}
+          <button class="more${open ? ' on' : ''}${hasExtra ? ' has' : ''}" data-more aria-expanded="${open}" aria-label="Remarks and notes" title="Remarks and notes">⋯</button>
+        </div>
+      </div>
+      ${c.exceeded ? `<div class="att-over">${overNote(c)}</div>` : ''}
+      ${open ? extraHtml(c) : ''}
+    </div>`;
+}
+
+function replaceRow(el, c) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = childRow(c);
+  const fresh = tmp.firstElementChild;
+  el.replaceWith(fresh);
+  wireRow(fresh);
+  const sum = $('#sumline');
+  if (sum) sum.textContent = summaryText();
 }
 
 function wireRow(el) {
@@ -179,26 +209,23 @@ function wireRow(el) {
     await call('teacher/mark', { method: 'PUT', body: { date, type, event, childId: c.id, status: c.status, reason: c.reason, remarks: c.remarks, note: c.note } });
     const qs = new URLSearchParams({ date, type, ...(isOccasion(type) ? { event } : {}) });
     view = await call(`teacher/session?${qs}`); // refresh leave tallies
-    const next = view.children.find((x) => x.id === c.id);
-    const wasOpen = $('details', el).open;
-    const tmp = document.createElement('div');
-    tmp.innerHTML = childRow(next);
-    el.replaceWith(tmp.firstElementChild);
-    const fresh = document.querySelector(`[data-child="${CSS.escape(c.id)}"]`);
-    $('details', fresh).open = wasOpen;
-    wireRow(fresh);
+    replaceRow(document.querySelector(`[data-child="${CSS.escape(c.id)}"]`), view.children.find((x) => x.id === c.id));
   });
   el.querySelectorAll('[data-set]').forEach((b) => b.addEventListener('click', () => {
     c.status = c.status === b.dataset.set ? null : b.dataset.set; // tap again to clear
     if (c.status !== 'excused') c.reason = '';
     save();
   }));
+  $('[data-more]', el).addEventListener('click', () => {
+    if (openRows.has(c.id)) openRows.delete(c.id); else openRows.add(c.id);
+    replaceRow(el, c);
+  });
   $('.reason', el)?.addEventListener('change', (e) => { c.reason = e.target.value; save(); });
   el.querySelectorAll('input[type=checkbox]').forEach((i) => i.addEventListener('change', () => {
     c.remarks = [...el.querySelectorAll('input[type=checkbox]:checked')].map((x) => x.value);
     save();
   }));
-  $('textarea', el).addEventListener('change', (e) => { c.note = e.target.value; save(); });
+  $('textarea', el)?.addEventListener('change', (e) => { c.note = e.target.value; save(); });
 }
 
 // Any element with data-open opens that child's details.
@@ -254,7 +281,9 @@ async function loadChildren() {
   $('#children').innerHTML = `
     ${pendingHtml(pending)}
     <div class="row between"><h3 style="margin:8px 0">${children.filter((c) => c.active).length} children</h3>
-      <button class="btn primary" id="addChild">＋ Add child</button></div>
+      <div class="row"><button class="btn primary" id="addChild">＋ Add child</button>
+        <button class="btn" id="addMany">＋ Add many</button>
+        <button class="btn" id="parentLinks">🔗 Parent links</button></div></div>
     ${children.map((c) => `
       <div class="card row">
         ${avatarHtml(c)}
@@ -263,6 +292,8 @@ async function loadChildren() {
         ${c.active ? '' : '<span class="badge">left choir</span>'}
       </div>`).join('') || '<div class="empty">No children yet — tap “Add child”.</div>'}`;
   $('#addChild').addEventListener('click', () => run(() => openChild(null)));
+  $('#addMany').addEventListener('click', openBulk);
+  $('#parentLinks').addEventListener('click', () => run(openLinks));
 }
 
 // ---- child details dialog ----
@@ -278,6 +309,63 @@ async function resizeToJpeg(file, size = 480) {
   canvas.height = size;
   canvas.getContext('2d').drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, size, size);
   return canvas.toDataURL('image/jpeg', 0.85);
+}
+
+// ---- add many children at once ----
+
+function openBulk() {
+  $('#dlgBody').innerHTML = `
+    <div class="row between"><h2 style="margin:0">Add many children</h2><button class="btn small" id="close" aria-label="Close">✕</button></div>
+    <p class="muted">Type or paste one child per line. Add the standard after a comma if you like, e.g. <b>Ben Fernandes, 5th</b>. Photos and other details can be added later by tapping a name.</p>
+    <form id="bulkForm">
+      <textarea name="text" rows="10" required placeholder="Anna Dias&#10;Ben Fernandes, 5th&#10;Chloe Pereira, 6th"></textarea>
+      <div class="row"><label class="field grow">Standard for everyone (optional)<input name="standard" maxlength="20"></label>
+        <label class="field grow">Year joined<input name="joinedYear" type="number" min="1990" max="2100" value="${new Date().getFullYear()}"></label></div>
+      <div class="row"><button class="btn primary">Add children</button><span id="bulkMsg" class="muted" aria-live="polite"></span></div>
+    </form>
+    <div id="bulkResult"></div>`;
+  if (!dlg.open) dlg.showModal();
+  $('#close').addEventListener('click', () => { dlg.close(); refreshVisible(); });
+  $('#bulkForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(e.target));
+    try {
+      const r = await call('teacher/bulk-children', { method: 'POST', body });
+      $('#bulkResult').innerHTML = `
+        <div class="alert ok"><b>Added ${r.added.length} ${r.added.length === 1 ? 'child' : 'children'}.</b>
+          ${r.added.length ? 'Each one has a private parent link.' : ''}</div>
+        ${r.skipped.length ? `<div class="alert warn"><b>Skipped ${r.skipped.length}:</b>${r.skipped.map((x) => `<div>${esc(x.line)} — ${esc(x.reason)}</div>`).join('')}</div>` : ''}
+        <div class="row"><button class="btn primary" id="toLinks">🔗 Get parent links</button><button class="btn" id="done">Done</button></div>`;
+      $('#bulkForm').hidden = true;
+      $('#done').addEventListener('click', () => { dlg.close(); refreshVisible(); });
+      $('#toLinks').addEventListener('click', () => run(openLinks));
+    } catch (err) { $('#bulkMsg').textContent = `⚠️ ${err.message}`; }
+  });
+}
+
+// ---- every parent's private link in one place ----
+
+async function openLinks() {
+  const { children } = await call('teacher/children');
+  const list = children.filter((c) => c.active).map((c) => ({ ...c, link: `${location.origin}/?c=${c.code}` }));
+  const msg = (c) => `Hi! Here is ${c.name}'s private choir page: ${c.link}`;
+  $('#dlgBody').innerHTML = `
+    <div class="row between"><h2 style="margin:0">Parent links</h2><button class="btn small" id="close" aria-label="Close">✕</button></div>
+    <p class="muted">Each link opens <b>only that child's</b> page, where the parent can see attendance and edit their own contact details. Send each family their own link. Nobody can open or edit another child.</p>
+    <button class="btn" id="copyAll">Copy all (name + link)</button>
+    <div class="links-list">${list.map((c) => `
+      <div class="row between">
+        <span class="row">${avatarHtml(c, 'sm')}<span><b>${esc(c.name)}</b><div class="muted">${c.code.slice(0, 4)}-${c.code.slice(4)}</div></span></span>
+        <span class="row"><button class="btn small" data-copy="${esc(c.id)}">Copy link</button>
+          <a class="btn small" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(msg(c))}">WhatsApp</a></span>
+      </div>`).join('') || '<div class="empty">No children yet.</div>'}</div>`;
+  if (!dlg.open) dlg.showModal();
+  $('#close').addEventListener('click', () => dlg.close());
+  const copy = async (text, btn, done) => {
+    try { await navigator.clipboard.writeText(text); const old = btn.textContent; btn.textContent = done; setTimeout(() => { btn.textContent = old; }, 1500); } catch { prompt('Copy this:', text); }
+  };
+  $('#copyAll').addEventListener('click', (e) => copy(list.map((c) => `${c.name}\t${c.link}`).join('\n'), e.target, 'Copied ✓'));
+  $('#dlgBody').querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', () => copy(list.find((c) => c.id === b.dataset.copy).link, b, 'Copied ✓')));
 }
 
 function decisionPanel(d) {

@@ -14,9 +14,9 @@ npm test
 Save your logo as **`public/logo.png`** (square PNG, at least 256×256). It appears in the page header and as the browser icon. Until then a 🎵 is shown.
 
 ## For the teacher (`/teacher`)
-- **Attendance:** Present / Absent / Medical per child, plus a behaviour-remarks dropdown and a private note. Pick any date for **back-dated** entries (quick buttons: Today, Last Saturday, Last Sunday). Tap a child's name to open their details.
+- **Attendance:** one compact list of all children with **P** / **A** / **ML** (medical leave) buttons, plus a behaviour-remarks dropdown and a private note. Pick any date for **back-dated** entries (quick buttons: Today, Last Saturday, Last Sunday). Tap a child's name to open their details.
 - **Occasions:** feast practices and masses (Christmas, New Year, Maundy Thursday, Good Friday, Easter, Mother Mary's Feast, Communion, Confirmation, or "Other…"). Each practice earns points. The Occasions tab shows who attended each practice and mass.
-- **Children:** name, standard, year joined, contact, address, parent name and number, and a photo (take it with the phone camera or choose a file).
+- **Children:** add one child, or **Add many** (paste one name per line, optionally `Name, Standard`). **Parent links** lists every child's private link with Copy / WhatsApp buttons. Details per child: name, standard, year joined, contact, address, parent name and number, and a photo (take it with the phone camera or choose a file).
 - **Leaderboard:** preview of what parents see, plus your private prize race (Easter in the first year, December afterwards). Parents never see prize information.
 - **Settings:** points, leave limit, late-points share, whether Sunday absences count.
 
