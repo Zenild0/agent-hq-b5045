@@ -79,6 +79,12 @@ function clientIp(req) {
 // The "this computer is the teacher" shortcut is switched off, so the teacher area always needs CHOIR_PIN.
 const PUBLIC_MODE = process.env.CHOIR_PUBLIC === '1';
 
+// Online, the PIN is the only thing between the internet and children's details: refuse weak ones.
+if (PUBLIC_MODE && PIN_ENV && PIN_ENV.length < 8) {
+  console.error('\nCHOIR_PIN is too short for online use. Choose 8 or more letters/digits.\n(If you use start-choir-online.bat, delete choir-pin.txt and run it again.)\n');
+  process.exit(1);
+}
+
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 function isLocal(req) {
   if (PUBLIC_MODE) return false;

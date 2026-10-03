@@ -384,3 +384,12 @@ test('public mode: no "this computer" shortcut, even from localhost', async () =
     assert.equal((await fetch(`${url}/api/teacher/children`, { headers: { 'x-pin': 'my-secret-pin' } })).status, 200);
   });
 });
+
+test('public mode refuses to start with a weak PIN', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const r = spawnSync(process.execPath, [new URL('../server.js', import.meta.url).pathname], {
+    env: { ...process.env, PORT: '0', CHOIR_DATA: join(dir, 'weak', 'db.json'), CHOIR_PUBLIC: '1', CHOIR_PIN: '1234' }, encoding: 'utf8', timeout: 8000,
+  });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /too short/);
+});
