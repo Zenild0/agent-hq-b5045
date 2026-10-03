@@ -135,6 +135,12 @@ test('teacher can add many children at once; duplicates and bad lines are skippe
 test('static files and path traversal', async () => {
   assert.equal((await fetch(`${base}/`)).status, 200);
   assert.equal((await fetch(`${base}/teacher`)).status, 200);
+  const man = await fetch(`${base}/manifest.webmanifest`);
+  assert.equal(man.status, 200);
+  assert.match(man.headers.get('content-type'), /manifest\+json/);
+  assert.equal((await man.json()).display, 'standalone');
+  assert.equal((await fetch(`${base}/sw.js`)).status, 200);
+  assert.equal((await fetch(`${base}/icon.svg`)).status, 200);
   assert.equal((await fetch(`${base}/../server.js`)).status, 404);
   assert.equal((await fetch(`${base}/photos/../../server.js`)).status, 404);
 });

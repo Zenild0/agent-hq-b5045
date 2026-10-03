@@ -249,3 +249,5 @@ api('public')
   })
   .catch((e) => { $('#board').innerHTML = `<div class="alert bad">${esc(e.message)}</div>`; });
 if (!code) codeForm();
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});

@@ -1,0 +1,12 @@
+{
+  "id": "/teacher",
+  "name": "Choir Teacher",
+  "short_name": "Choir Teacher",
+  "description": "Attendance, occasions, children and hymns",
+  "start_url": "/teacher",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#fff8ee",
+  "theme_color": "#3a1fa8",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

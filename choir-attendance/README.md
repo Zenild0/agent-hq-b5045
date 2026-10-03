@@ -12,6 +12,10 @@ npm test
 ## Your logo
 Save your logo as **`public/logo.png`** (square PNG, at least 256×256). It appears in the page header and as the browser icon. Until then a 🎵 is shown.
 
+## Make it feel like an app
+- **Teacher (Windows):** double-click **`start-choir.bat`** in the `choir-attendance` folder. It starts the app and opens the teacher page. Right-click it, **Send to → Desktop (create shortcut)** for a desktop icon.
+- **Installable:** in Chrome or Edge, open the page and choose **Install** (the icon at the right of the address bar, or ⋮ → *Cast, save and share → Install page as app*). Parents can do the same on a phone: ⋮ → **Add to Home screen / Install app**. The teacher page installs separately as "Choir Teacher".
+
 ## Privacy: no PIN, teacher area is for this computer only
 There is no PIN. The teacher pages (children's details and parent codes) open **only on the computer that runs the app**: `http://localhost:3000/teacher`. Anyone coming through the shared parent link, over the network or through a proxy is refused. Parents only ever see the leaderboard, achievers and, with a code, their own child. (If you later host the app online and want to reach the teacher pages from another device, start it with `CHOIR_PIN=yourpin`, and the teacher pages will ask for that PIN there.)
 

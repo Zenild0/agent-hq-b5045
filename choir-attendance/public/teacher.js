@@ -815,3 +815,5 @@ run(async () => {
   if (meta.pinRequired && !pin) return askPin();
   await loadAttendance();
 });
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
