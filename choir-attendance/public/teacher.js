@@ -432,7 +432,7 @@ function openBulk() {
 // ---- parent access: ONE shared link for everybody + a private code per child ----
 
 async function openLinks() {
-  const { children, settings } = await call('teacher/children');
+  const { children, settings, lockedOut } = await call('teacher/children');
   const base = settings.publicUrl || location.origin;
   const list = children.filter((c) => c.active && !c.guest);
   const hello = `Hi parents! Open ${base} , tap "My child" and enter the code I give you for your child.`;
@@ -445,6 +445,9 @@ async function openLinks() {
       <button class="btn small" id="copyBase">Copy link</button>
       <a class="btn small" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(hello)}">WhatsApp</a></div>
     ${settings.publicUrl ? '' : `<div class="muted">This is the address you're using now. Once the app is online, set the real web address in <b>Settings</b>.</div>`}
+    <div class="alert ${lockedOut ? 'warn' : 'ok'}" id="lockBox" style="margin-top:14px">
+      ${lockedOut ? `<b>🔒 ${lockedOut === 1 ? 'A device is' : 'Some devices are'} locked out</b> after too many wrong codes.` : '<b>No one is locked out.</b> After 5 wrong codes a device waits half an hour.'}
+      <div class="row" style="margin-top:6px"><button class="btn small" id="unlock">🔓 Unlock everyone now</button><span class="muted" id="unlockMsg" aria-live="polite"></span></div></div>
     <h3 style="margin:16px 0 4px">2. A private code for each child</h3>
     <div class="muted">Like a roll number. Parents open the link above, tap <b>My child</b> and type the code. A code opens only that child. Only you can see this list, so give each parent only their own code.</div>
     <div class="row" style="margin:8px 0"><button class="btn small" id="toggleAll">Show codes</button><button class="btn small" id="copyAll">Copy all (name + code)</button></div>
@@ -459,6 +462,11 @@ async function openLinks() {
   const copy = async (text, btn, done) => {
     try { await navigator.clipboard.writeText(text); const old = btn.textContent; btn.textContent = done; setTimeout(() => { btn.textContent = old; }, 1500); } catch { prompt('Copy this:', text); }
   };
+  $('#unlock').addEventListener('click', () => run(async () => {
+    const r = await call('teacher/unlock-codes', { method: 'POST', body: {} });
+    $('#unlockMsg').textContent = r.cleared ? 'Unlocked. Parents can try again now.' : 'Nobody was locked, all clear.';
+    $('#lockBox').className = 'alert ok';
+  }));
   $('#copyBase').addEventListener('click', (e) => copy(base, e.target, 'Copied ✓'));
   $('#copyAll').addEventListener('click', (e) => copy(list.map((c) => `${c.name}\t${codeText(c.code)}`).join('\n'), e.target, 'Copied ✓'));
   $('#toggleAll').addEventListener('click', (e) => {

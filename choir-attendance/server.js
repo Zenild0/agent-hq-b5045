@@ -178,6 +178,14 @@ function publicOverview(q) {
 // ---- parent access: one private code per child ---------------------------
 
 const failures = new Map(); // ip -> { n, resetAt }
+// How many devices are currently locked out (teacher sees this and can unlock everyone).
+function lockedOutCount() {
+  const now = Date.now();
+  let n = 0;
+  for (const [ip, f] of failures) if (f.resetAt > now && f.n >= (ip === '*all*' ? 100 : 5)) n += 1;
+  return n;
+}
+
 function childByCode(req) {
   const ip = req.socket.remoteAddress || '?';
   // Short codes are easier to guess, so wrong tries are limited strictly.
@@ -446,7 +454,7 @@ async function teacherApi(req, res, q, parts) {
       return send(res, 200, {
         children: [...store.db.children].sort(compareNames).map(childOut),
         settings: store.db.settings, firstSeason: firstSeason(store.db, today()),
-        pending: pendingDecisions(seasonOf(today())),
+        pending: pendingDecisions(seasonOf(today())), lockedOut: lockedOutCount(),
       });
     }
     if (b === 'child' && id) return send(res, 200, { ...childDetail(child, seasonFromQuery(q), { teacher: true }), code: child.code, active: child.active, guest: Boolean(child.guest) });
@@ -472,6 +480,11 @@ async function teacherApi(req, res, q, parts) {
     if (req.method === 'POST' && !id) return send(res, 201, createOccasion(body));
     if (req.method === 'PUT' && occ) return send(res, 200, updateOccasion(occ, body));
     if (req.method === 'DELETE' && occ) { deleteOccasion(occ); return send(res, 200, { ok: true }); }
+  }
+  if (req.method === 'POST' && b === 'unlock-codes') {
+    const cleared = lockedOutCount();
+    failures.clear();
+    return send(res, 200, { cleared });
   }
   if (req.method === 'PUT' && b === 'settings') { updateSettings(body); return send(res, 200, store.db.settings); }
   if (b === 'children') {

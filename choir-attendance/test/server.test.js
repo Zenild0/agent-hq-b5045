@@ -218,3 +218,15 @@ test('older long codes are shortened once on startup, short ones are left alone'
   const again = openStore(file).db; // second start: nothing changes
   assert.equal(again.children[0].code, first.children[0].code);
 });
+
+test('five wrong codes lock a device out; the teacher can unlock everyone', async () => {
+  await j('/api/teacher/unlock-codes', { method: 'POST', body: {} }); // start clean
+  for (let i = 0; i < 5; i += 1) assert.equal((await j('/api/me', { code: `ZZ${i}9` })).status, 401);
+  assert.equal((await j('/api/me', { code: 'ZZ99' })).status, 429);
+  assert.equal((await j('/api/me', { code: anna.code })).status, 429); // even the right code waits
+  assert.equal((await j('/api/teacher/children')).data.lockedOut, 1);
+  const r = await j('/api/teacher/unlock-codes', { method: 'POST', body: {} });
+  assert.equal(r.data.cleared, 1);
+  assert.equal((await j('/api/teacher/children')).data.lockedOut, 0);
+  assert.equal((await j('/api/me', { code: anna.code })).status, 200);
+});

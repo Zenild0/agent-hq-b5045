@@ -19,7 +19,7 @@ There is no PIN. The teacher pages (children's details and parent codes) open **
 - **Attendance:** one compact A–Z list with **P** / **A** / **ML** (medical leave) buttons, a **⋯** panel for behaviour remarks and a private note, and any date for **back-dated** entries.
 - **Occasions** (Christmas, New Year, Maundy Thursday, Good Friday, Easter, Mother Mary's Feast, Communion, Confirmation, or your own name): create an occasion, tick which main-group children take part, and add **guests** who are not in the choir. Practices and the mass are marked from Attendance (Special practice / Special mass) for just those people, and points add to the leaderboard for main-group children. Guests appear only in their occasion; **⬆ Main group** moves a guest across when their remarks are good.
 - **Children:** add one, or **Add many** (one name per line, optionally `Name, Standard`). Details per child: name, standard, year joined, contact, address, parent name and number, and a photo.
-- **Parent access:** one link for everybody plus a short private code per child (4 characters, or choose your own like `1001` or `CC01`). Codes are hidden until you tap Show. Wrong guesses are limited to 5 per half hour.
+- **Parent access:** one link for everybody plus a short private code per child (4 characters, or choose your own like `1001` or `CC01`). Codes are hidden until you tap Show. Wrong guesses are limited to 5 per half hour per device; **Parent access → Unlock everyone now** clears any lockout instantly.
 - **Leaderboard:** preview of what parents see, plus your private prize race (Easter in the first year, December afterwards).
 - **Settings:** points, leave limit, late-points share, website address for parents.
 
