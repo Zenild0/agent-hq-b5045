@@ -815,7 +815,8 @@ async function api(req, res, url) {
   return teacherApi(req, res, q, parts);
 }
 
-async function serveFile(res, file, headers = {}) {
+// App files are never cached by browsers or Cloudflare, so an update shows up on the next page load.
+async function serveFile(res, file, headers = { 'cache-control': 'no-store' }) {
   try {
     const data = await readFile(file);
     res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream', ...headers });
