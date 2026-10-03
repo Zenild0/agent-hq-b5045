@@ -27,14 +27,19 @@ You bought **zenildodias.com** at Cloudflare (about $10.46 a year, renews at the
    - Leave the external IP as **Ephemeral** (don't reserve a static IP, it costs money)
 3. Check the price box on the right: it should show the free-tier discount. Then **Create**.
 
-## Part 4: Install the app (one paste)
-1. In the VM list, click **SSH** next to `choir-server`. A browser terminal opens.
-2. Paste this whole line and press Enter:
+## Part 4: Install the app
+1. In the VM list, click **SSH** next to `choir-server`. A browser terminal opens (click **Authorize** if asked).
+2. Paste these **two lines, one at a time**, pressing Enter after each:
    ```
-   curl -fsSL https://raw.githubusercontent.com/Zenild0/agent-hq-b5045/claude/childrens-choir-attendance-r3d2st/choir-attendance/deploy/setup.sh | sudo bash
+   curl -fsSL https://raw.githubusercontent.com/Zenild0/agent-hq-b5045/claude/childrens-choir-attendance-r3d2st/choir-attendance/deploy/setup.sh -o setup.sh
    ```
-3. It installs everything (a few minutes) and asks you to **choose a teacher PIN** (8+ letters/digits). Write it down. It finishes with `SUCCESS: the choir app is running`.
+   ```
+   sudo bash setup.sh
+   ```
+   (Do **not** pipe it as `curl ... | sudo bash`: then the terminal can't read your PIN.)
+3. It installs everything (a few minutes) and asks you to **choose a teacher PIN** (8+ letters/digits, no spaces). What you type is visible for a moment, then the screen is cleared. Write the PIN down. It finishes with `SUCCESS: the choir app is running`.
    (The PIN is saved only on the server, never on GitHub.)
+   If the PIN prompt does not accept typing, pass the PIN in the command instead: `sudo CHOIR_PIN=yourpin123 bash setup.sh`.
 
 ## Part 5: Connect it to the domain (Cloudflare Tunnel)
 The tunnel connects the server to Cloudflare, so no ports are open to the internet.

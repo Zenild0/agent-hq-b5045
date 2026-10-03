@@ -4,6 +4,17 @@
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "Please run with sudo:  curl -fsSL <url> | sudo bash"; exit 1; }
 
+# The script asks for your PIN, so it must be able to read your keyboard: do not pipe it into bash.
+if [ ! -f /etc/choir.env ] && [ -z "${CHOIR_PIN:-}" ] && [ ! -t 0 ]; then
+  cat <<'MSG'
+This installer asks you to choose a PIN, so run it in two steps instead of piping it:
+
+  curl -fsSL https://raw.githubusercontent.com/Zenild0/agent-hq-b5045/claude/childrens-choir-attendance-r3d2st/choir-attendance/deploy/setup.sh -o setup.sh
+  sudo bash setup.sh
+MSG
+  exit 1
+fi
+
 REPO="${REPO:-https://github.com/Zenild0/agent-hq-b5045.git}"
 BRANCH="${BRANCH:-claude/childrens-choir-attendance-r3d2st}"
 APP_DIR=/opt/choir
@@ -46,14 +57,19 @@ mkdir -p "$DATA_DIR"
 chown -R choir:choir "$DATA_DIR"
 
 if [ ! -f /etc/choir.env ]; then
-  echo
-  echo "Choose your TEACHER PIN. You will type it on your phone to open the teacher pages."
-  echo "Use 8 or more letters/digits, no spaces. Keep it private."
-  while :; do
-    read -rsp "Teacher PIN: " PIN </dev/tty; echo
-    if [[ "$PIN" =~ ^[A-Za-z0-9]{8,}$ ]]; then break; fi
-    echo "Too short, or has spaces/symbols. Try again."
-  done
+  PIN="${CHOIR_PIN:-}"
+  if [ -z "$PIN" ]; then
+    echo
+    echo "Choose your TEACHER PIN. You will type it on your phone to open the teacher pages."
+    echo "Use 8 or more letters/digits, no spaces. Keep it private."
+    echo "(What you type is visible for a moment so you can check it. The screen is cleared afterwards.)"
+    while :; do
+      read -rp "Teacher PIN: " PIN
+      if [[ "$PIN" =~ ^[A-Za-z0-9]{8,}$ ]]; then break; fi
+      echo "Too short, or has spaces/symbols. Try again."
+    done
+  fi
+  [[ "$PIN" =~ ^[A-Za-z0-9]{8,}$ ]] || { echo "CHOIR_PIN must be 8 or more letters/digits."; exit 1; }
   umask 077
   cat > /etc/choir.env <<ENV
 CHOIR_PIN=$PIN
@@ -62,6 +78,8 @@ CHOIR_TRUST_PROXY=1
 CHOIR_DATA=$DATA_DIR/db.json
 PORT=3000
 ENV
+  command -v clear >/dev/null && clear || true
+  echo "PIN saved."
 fi
 
 echo "==> Creating the services"
