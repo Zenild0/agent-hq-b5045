@@ -40,7 +40,12 @@ test('points: Saturday 1, Sunday 2, late earns half', () => {
   const s = DEFAULT_SETTINGS;
   assert.equal(pointsFor(e('present'), 'saturday', s), 1);
   assert.equal(pointsFor(e('present'), 'sunday', s), 2);
-  assert.equal(pointsFor(e('present', ['Late']), 'sunday', s), 1);
+  assert.equal(pointsFor(e('present', ['Late']), 'sunday', s), 1.5); // late = negative remark: 2 - 0.5
+  assert.equal(pointsFor(e('present', ['Late', 'Talking / disruptive', 'Not paying attention']), 'sunday', s), 1.5); // several negatives still cost only 0.5
+  assert.equal(pointsFor(e('present', ['Well behaved']), 'saturday', s), 1.25);
+  assert.equal(pointsFor(e('present', ['Well behaved', 'Helped others']), 'saturday', s), 1.5);
+  assert.equal(pointsFor(e('present', ['Well behaved', 'Talking / disruptive']), 'saturday', s), 0.75);
+  assert.equal(pointsFor(e('absent', ['Well behaved']), 'saturday', s), 0);
   assert.equal(pointsFor(e('absent'), 'sunday', s), 0);
   assert.equal(pointsFor(e('excused'), 'saturday', s), 0);
 });
@@ -112,7 +117,7 @@ test('feast practices and masses add points but never cost a leave', () => {
   const s = DEFAULT_SETTINGS;
   assert.equal(pointsFor(e('present'), 'practice', s), 1);
   assert.equal(pointsFor(e('present'), 'feast', s), 2);
-  assert.equal(pointsFor(e('present', ['Late']), 'feast', s), 1);
+  assert.equal(pointsFor(e('present', ['Late']), 'feast', s), 1.5);
   assert.equal(isLeave(e('absent'), 'practice', s), false);
   assert.equal(isLeave(e('absent'), 'feast', s), false);
 });
@@ -190,7 +195,7 @@ test('guests join an occasion only: never on the main leaderboard, but their poi
   assert.ok(!monthlyAchievers(db, 2026, '2026-12-31')[0].winners.some((w) => w.name === 'Guest Gita'));
   const [xmas] = occasions(db, 2026);
   const gita = xmas.children.find((c) => c.name === 'Guest Gita');
-  assert.deepEqual([gita.guest, gita.attended, gita.points, gita.good], [true, 2, 2, 3]);
+  assert.deepEqual([gita.guest, gita.attended, gita.points, gita.good], [true, 2, 2.75, 3]);
   assert.deepEqual(xmas.children.map((c) => c.name), ['Anna', 'Guest Gita']); // alphabetical
   gita && (db.children.find((c) => c.id === 'g').guest = false); // promoted
   assert.ok(scoreboard(db, 2026, '2026-04-01', '2027-03-31').some((r) => r.name === 'Guest Gita'));

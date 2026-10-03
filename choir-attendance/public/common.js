@@ -4,7 +4,7 @@ export const $ = (sel, el = document) => el.querySelector(sel);
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-export const fmtPts = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+export const fmtPts = (n) => (Number.isInteger(n) ? String(n) : String(+n.toFixed(2)));
 
 export const ptsText = (n) => `${fmtPts(n)} ${n === 1 ? 'pt' : 'pts'}`;
 
@@ -151,6 +151,8 @@ export function leaveBadge(leaves, max, exceeded) {
   return `<span class="badge ${cls}">${leaves}/${max} leaves</span>`;
 }
 
+export const isGood = (r) => r === 'Well behaved' || r === 'Helped others';
+
 const statusLabel = (h) => (h.status === 'excused' ? `Excused – ${h.reason ? h.reason.toLowerCase() : 'medical'}` : h.status === 'present' ? 'Present' : 'Absent');
 
 export function historyHtml(history) {
@@ -159,9 +161,9 @@ export function historyHtml(history) {
     <tr>
       <td>${fmtDate(h.date)}<div class="muted">${esc(typeLabel(h.type, h.event))}</div></td>
       <td><span class="badge ${h.status === 'present' ? 'ok' : h.status === 'absent' ? 'bad' : 'info'}">${esc(statusLabel(h))}</span>
-        ${h.remarks.map((r) => `<span class="badge ${r === 'Well behaved' || r === 'Helped others' ? 'ok' : 'warn'}">${esc(r)}</span>`).join(' ')}
+        ${h.remarks.map((r) => `<span class="badge ${isGood(r) ? 'ok' : 'warn'}">${esc(r)}</span>`).join(' ')}
         ${h.note ? `<div class="muted">📝 ${esc(h.note)}</div>` : ''}</td>
-      <td class="num">${h.points ? `+${fmtPts(h.points)}` : '0'}</td>
+      <td class="num">${h.points ? `+${fmtPts(h.points)}` : '0'}${h.bonus ? `<div class="muted">+${fmtPts(h.bonus)} good remarks</div>` : ''}${h.deduction ? `<div class="muted">−${fmtPts(h.deduction)} for remarks</div>` : ''}</td>
     </tr>`).join('')}</tbody></table>`;
 }
 
@@ -192,4 +194,89 @@ export function leaveAlertHtml(d, { teacher = false } = {}) {
     return `<div class="alert warn"><b>Careful:</b> ${left} this year. Please try to attend every practice.</div>`;
   }
   return '';
+}
+
+// Teacher's student view: every remark and note, with the date it was given.
+export function remarksLogHtml(log) {
+  if (!log?.length) return '<div class="empty">No remarks or notes yet.</div>';
+  const all = log.flatMap((x) => x.remarks);
+  const good = all.filter(isGood).length;
+  const bad = all.length - good;
+  const lost = log.reduce((n, x) => n + (x.deduction || 0), 0);
+  const gained = log.reduce((n, x) => n + (x.bonus || 0), 0);
+  return `
+    <div class="muted" style="margin-bottom:6px">👍 ${good} good · ⚠️ ${bad} to improve${gained ? ` · +${fmtPts(gained)} gained` : ''}${lost ? ` · −${fmtPts(lost)} lost` : ''}</div>
+    ${log.map((x) => `
+      <div class="rlog">
+        <div class="row between"><b>${fmtDate(x.date)}</b><span class="muted">${esc(typeLabel(x.type, x.event))}${x.status === 'absent' ? ' · absent' : x.status === 'excused' ? ' · medical' : ''}</span></div>
+        <div>${x.remarks.map((r) => `<span class="badge ${isGood(r) ? 'ok' : 'warn'}">${esc(r)}</span>`).join(' ')}${x.bonus ? ` <span class="badge ok">+${fmtPts(x.bonus)}</span>` : ''}${x.deduction ? ` <span class="badge bad">−${fmtPts(x.deduction)}</span>` : ''}</div>
+        ${x.note ? `<div class="muted">📝 ${esc(x.note)}</div>` : ''}
+      </div>`).join('')}`;
+}
+
+// ---------- hymn viewer: large, readable, with a full-screen button ----------
+
+let viewer;
+const readSize = () => { try { return Number(localStorage.getItem('choir-hv-size')) || 1.4; } catch { return 1.4; } };
+
+export function openHymnViewer(h, categoryLabel = '') {
+  if (!viewer) {
+    viewer = document.createElement('dialog');
+    viewer.className = 'hv';
+    document.body.appendChild(viewer);
+    viewer.addEventListener('close', () => {
+      viewer.querySelector('audio')?.pause();
+      if (document.fullscreenElement) document.exitFullscreen?.();
+    });
+    document.addEventListener('fullscreenchange', () => {
+      const b = viewer.querySelector('[data-hv=full]');
+      if (b) b.textContent = document.fullscreenElement ? '⤢ Exit full screen' : '⛶ Full screen';
+    });
+  }
+  const link = /^https?:\/\//i.test(h.link || '') ? h.link : '';
+  viewer.innerHTML = `
+    <div class="hv-bar">
+      <button class="btn small" data-hv="close">✕ Close</button>
+      <span class="grow"></span>
+      <button class="btn small" data-hv="smaller" aria-label="Smaller text">A−</button>
+      <button class="btn small" data-hv="bigger" aria-label="Bigger text">A+</button>
+      ${document.fullscreenEnabled ? '<button class="btn small primary" data-hv="full">⛶ Full screen</button>' : ''}
+    </div>
+    <div class="hv-body" style="--hv-size:${readSize()}rem">
+      ${categoryLabel ? `<div class="muted">${esc(categoryLabel)}</div>` : ''}
+      <h2 class="hv-title">${esc(h.title)}</h2>
+      ${h.notes ? `<div class="muted">${esc(h.notes)}</div>` : ''}
+      ${h.audio ? `<audio controls preload="none" src="${esc(h.audio)}"></audio>` : ''}
+      ${link ? `<p><a class="btn small" href="${esc(link)}" target="_blank" rel="noopener noreferrer">🔗 Open music link</a></p>` : ''}
+      ${h.lyrics ? `<div class="hv-lyrics">${esc(h.lyrics)}</div>` : '<div class="muted" style="margin-top:14px">No lyrics have been added for this hymn yet.</div>'}
+    </div>`;
+  const body = viewer.querySelector('.hv-body');
+  const resize = (delta) => {
+    const next = Math.min(3.4, Math.max(0.9, readSize() + delta));
+    try { localStorage.setItem('choir-hv-size', String(next)); } catch { /* private mode */ }
+    body.style.setProperty('--hv-size', `${next}rem`);
+  };
+  viewer.querySelector('[data-hv=close]').addEventListener('click', () => viewer.close());
+  viewer.querySelector('[data-hv=smaller]').addEventListener('click', () => resize(-0.2));
+  viewer.querySelector('[data-hv=bigger]').addEventListener('click', () => resize(0.2));
+  viewer.querySelector('[data-hv=full]')?.addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else viewer.requestFullscreen?.().catch(() => {});
+  });
+  if (!viewer.open) viewer.showModal();
+  viewer.scrollTo?.(0, 0);
+}
+
+// WhatsApp link that opens the chat with this number directly (message pre-filled).
+// No country code given: 10-digit numbers are treated as Indian (+91). No number saved: falls back to the contact picker.
+export function waLink(phone, text) {
+  let d = String(phone ?? '').trim();
+  const plus = d.startsWith('+');
+  d = d.replace(/\D/g, '');
+  if (!plus) {
+    if (d.startsWith('00')) d = d.slice(2);
+    else if (d.length === 11 && d.startsWith('0')) d = `91${d.slice(1)}`;
+    else if (d.length === 10) d = `91${d}`;
+  }
+  return `https://wa.me/${d.length >= 8 ? d : ''}?text=${encodeURIComponent(text)}`;
 }

@@ -393,3 +393,17 @@ test('public mode refuses to start with a weak PIN', async () => {
   assert.equal(r.status, 1);
   assert.match(r.stderr, /too short/);
 });
+
+test('remarks: one flat penalty per day, a bonus per good remark, dated log for the teacher, hymn lyrics', async () => {
+  const mark = (date, remarks) => j('/api/teacher/mark', { method: 'PUT', body: { date, type: 'saturday', event: '', childId: ben.id, status: 'present', remarks, note: 'n' } });
+  assert.equal((await mark('2026-06-06', ['Late', 'Talking / disruptive', 'Not paying attention'])).status, 200);
+  assert.equal((await mark('2026-06-13', ['Well behaved', 'Helped others'])).status, 200);
+  const t = (await j(`/api/teacher/child/${ben.id}?season=2026`)).data;
+  const hist = Object.fromEntries(t.history.map((h) => [h.date, h]));
+  assert.deepEqual([hist['2026-06-06'].points, hist['2026-06-06'].deduction], [0.5, 0.5]);
+  assert.deepEqual([hist['2026-06-13'].points, hist['2026-06-13'].bonus], [1.5, 0.5]);
+  assert.deepEqual(t.remarkLog.map((x) => x.date).slice(0, 2), ['2026-06-13', '2026-06-06']);
+  const h = await j('/api/teacher/hymns', { method: 'POST', body: { category: 'Entrance', title: 'Lyric Hymn', lyrics: 'Line one\nLine two' } });
+  assert.equal(h.data.lyrics, 'Line one\nLine two');
+  assert.equal((await j('/api/hymns')).data.hymns.find((x) => x.title === 'Lyric Hymn').lyrics, 'Line one\nLine two');
+});

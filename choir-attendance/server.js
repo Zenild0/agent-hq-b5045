@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
   REMARKS, STATUSES, EXCUSE_REASONS, TYPES, EVENTS, OCCASION_TYPES, isValidDate, defaultType, seasonOf, seasonRange,
   seasonLabel, prizeInfo, firstSeason, childStats, scoreboard, monthRange, monthLabel, pointsFor,
-  isLeave, sessionKey, photoUrl, monthlyAchievers, yearlyAchievers, occasions, seasonsWithData,
+  isLeave, remarkDeduction, remarkBonus, sessionKey, photoUrl, monthlyAchievers, yearlyAchievers, occasions, seasonsWithData,
   compareNames, findOccasion, slug,
 } from './lib/logic.js';
 import { openStore, newCode } from './lib/store.js';
@@ -153,6 +153,21 @@ function seasonFromQuery(q) {
 
 // ---- shared child detail (attendance history + stats) --------------------
 
+// Every remark / note given to a child, with its date (all years), newest first. Teacher only.
+function remarkLogFor(child) {
+  const { db } = store;
+  return Object.values(db.sessions)
+    .filter((s) => { const e = s.entries[child.id]; return e && (e.remarks?.length || e.note); })
+    .sort((a, b) => b.date.localeCompare(a.date) || b.type.localeCompare(a.type))
+    .map((s) => {
+      const e = s.entries[child.id];
+      return {
+        date: s.date, type: s.type, event: s.event, status: e.status, remarks: e.remarks || [], note: e.note || '',
+        deduction: remarkDeduction(e, db.settings), bonus: remarkBonus(e, db.settings),
+      };
+    });
+}
+
 function childDetail(child, season, { teacher = false } = {}) {
   const { db } = store;
   const range = seasonRange(season);
@@ -163,7 +178,7 @@ function childDetail(child, season, { teacher = false } = {}) {
       const e = s.entries[child.id];
       return {
         date: s.date, type: s.type, event: s.event, status: e.status, reason: e.reason || '', remarks: e.remarks || [],
-        points: pointsFor(e, s.type, db.settings), leave: isLeave(e, s.type, db.settings),
+        points: pointsFor(e, s.type, db.settings), deduction: remarkDeduction(e, db.settings), bonus: remarkBonus(e, db.settings), leave: isLeave(e, s.type, db.settings),
         ...(teacher ? { note: e.note || '' } : {}),
       };
     });
@@ -174,6 +189,7 @@ function childDetail(child, season, { teacher = false } = {}) {
   return {
     ...profileOf(child), season, seasonLabel: seasonLabel(season), settings: db.settings,
     stats: childStats(db, child.id, season), history,
+    ...(teacher ? { remarkLog: remarkLogFor(child) } : {}),
     yearRank: yearBoard.find((r) => r.id === child.id)?.rank ?? null, yearRanked: yearBoard.length,
     monthRank: monthBoard.find((r) => r.id === child.id)?.rank ?? null, monthLabel: monthLabel(month),
   };
@@ -190,7 +206,7 @@ function publicOverview(q) {
   const strip = (rows) => rows.map(({ id, name, photo, points, rank }) => ({ id, name, photo, points, rank }));
   return {
     season, seasonLabel: seasonLabel(season), seasons: seasonsWithData(db, today()),
-    settings: { satPoints: db.settings.satPoints, sunPoints: db.settings.sunPoints, feastPoints: db.settings.feastPoints, practicePoints: db.settings.practicePoints },
+    settings: { satPoints: db.settings.satPoints, sunPoints: db.settings.sunPoints, feastPoints: db.settings.feastPoints, practicePoints: db.settings.practicePoints, remarkPenalty: db.settings.remarkPenalty, remarkBonus: db.settings.remarkBonus },
     month, monthLabel: monthLabel(month),
     monthBoard: strip(scoreboard(db, season, mr.start, mr.end, { hideOut: true })),
     yearBoard: strip(scoreboard(db, season, range.start, range.end, { hideOut: true })),
@@ -330,6 +346,8 @@ function updateSettings(body) {
   }
   if ('maxLeaves' in body) s.maxLeaves = Math.round(num(body.maxLeaves, 0, 100));
   if ('latePointsFactor' in body) s.latePointsFactor = num(body.latePointsFactor, 0, 1);
+  if ('remarkPenalty' in body) s.remarkPenalty = num(body.remarkPenalty, 0, 5);
+  if ('remarkBonus' in body) s.remarkBonus = num(body.remarkBonus, 0, 5);
   if ('countSundayAbsences' in body) s.countSundayAbsences = Boolean(body.countSundayAbsences);
   if ('firstSeason' in body) s.firstSeason = body.firstSeason === null || body.firstSeason === '' ? null : Math.round(num(body.firstSeason, 2000, 2200));
   store.save();
@@ -459,7 +477,7 @@ const HYMNS_DIR = join(dirname(DATA_FILE), 'hymns');
 const MAX_AUDIO = 25_000_000;
 
 const hymnOut = (h) => ({
-  id: h.id, title: h.title, category: h.category, link: h.link, notes: h.notes,
+  id: h.id, title: h.title, category: h.category, link: h.link, notes: h.notes, lyrics: h.lyrics ?? '',
   audio: h.audioExt ? `/hymns/${h.id}.${h.audioExt}?v=${h.audioVersion}` : null,
 });
 
@@ -484,10 +502,11 @@ function applyHymn(h, body) {
     h.link = l;
   }
   if ('notes' in body) h.notes = text(body.notes, 300, 'Notes');
+  if ('lyrics' in body) h.lyrics = text(body.lyrics, 6000, 'Lyrics');
 }
 
 const sameHymn = (a, b) => a.category === b.category && a.title.toLowerCase() === b.title.toLowerCase();
-const newHymn = () => ({ id: randomUUID().slice(0, 8), title: '', category: '', link: '', notes: '', audioExt: '', audioVersion: 0 });
+const newHymn = () => ({ id: randomUUID().slice(0, 8), title: '', category: '', link: '', notes: '', lyrics: '', audioExt: '', audioVersion: 0 });
 
 function createHymn(body) {
   const h = newHymn();

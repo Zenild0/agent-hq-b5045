@@ -259,3 +259,14 @@ dialog .dlg { padding: 16px 18px 20px; overflow: auto; max-height: 92vh; }
 .hymn .acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; align-items: center; }
 a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* ---------- remarks log + hymn viewer ---------- */
+.rlog { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.rlog:last-child { border-bottom: 0; }
+dialog.hv { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; padding: 0; border: 0; border-radius: 0; background: var(--bg); color: var(--ink); overflow: auto; }
+dialog.hv::backdrop { background: #000; }
+.hv-bar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--card); border-bottom: 1px solid var(--line); }
+.hv-body { max-width: 900px; margin: 0 auto; padding: 18px 18px 80px; }
+.hv-title { font: 800 calc(var(--hv-size, 1.4rem) * 1.5) / 1.15 var(--font-head); margin: 4px 0 10px; }
+.hv-lyrics { white-space: pre-wrap; font-size: var(--hv-size, 1.4rem); line-height: 1.6; margin-top: 18px; overflow-wrap: anywhere; }
+.hv-body audio { width: 100%; margin: 10px 0; }

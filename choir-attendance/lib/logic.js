@@ -38,7 +38,9 @@ export const DEFAULT_SETTINGS = {
   practicePoints: 1, // each rehearsal for a feast / special mass
   feastPoints: 2, // the feast / special mass itself
   maxLeaves: 5, // more than this in a season => out until next April
-  latePointsFactor: 0.5, // a "Late" present earns this share of the points
+  latePointsFactor: 1, // share of the points a "Late" present earns (1 = full; the remark penalty below applies on top)
+  remarkPenalty: 0.5, // points taken off a session that has one OR MORE negative remarks (charged once, never per remark)
+  remarkBonus: 0.25, // points added for EACH positive remark (Well behaved, Helped others)
   countSundayAbsences: false, // by default only Saturday practice absences are leaves
   firstSeason: null, // season (start year) whose private prize date is Easter; null = auto
   publicUrl: '', // address shared with parents (e.g. https://choir.example.com)
@@ -59,6 +61,7 @@ export function defaultType(date) {
 export const compareNames = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
 
 export const GOOD_REMARKS = ['Well behaved', 'Helped others'];
+export const NEGATIVE_REMARKS = REMARKS.filter((r) => !GOOD_REMARKS.includes(r));
 
 export const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
@@ -117,10 +120,25 @@ export function prizeInfo(db, season, today) {
 
 const BASE_POINTS = { saturday: 'satPoints', sunday: 'sunPoints', practice: 'practicePoints', feast: 'feastPoints' };
 
+// Points lost to negative remarks (Late, Not paying attention, Book incomplete, Talking / disruptive):
+// one flat penalty per session, however many negative remarks were given.
+export function remarkDeduction(entry, settings) {
+  if (!entry || entry.status !== 'present') return 0;
+  return (entry.remarks ?? []).some((r) => NEGATIVE_REMARKS.includes(r)) ? (settings.remarkPenalty ?? 0) : 0;
+}
+
+// Points gained from positive remarks (Well behaved, Helped others): each one adds remarkBonus.
+export function remarkBonus(entry, settings) {
+  if (!entry || entry.status !== 'present') return 0;
+  return (entry.remarks ?? []).filter((r) => GOOD_REMARKS.includes(r)).length * (settings.remarkBonus ?? 0);
+}
+
+// Base points + positive-remark bonus - the (single) negative-remark penalty; never below 0 for one session.
 export function pointsFor(entry, type, settings) {
   if (!entry || entry.status !== 'present') return 0;
   const base = settings[BASE_POINTS[type]] ?? 0;
-  return entry.remarks?.includes('Late') ? base * settings.latePointsFactor : base;
+  const earned = entry.remarks?.includes('Late') ? base * settings.latePointsFactor : base;
+  return Math.max(0, earned + remarkBonus(entry, settings) - remarkDeduction(entry, settings));
 }
 
 // Only compulsory sessions can cost a leave; sick / hospital (excused) never does.

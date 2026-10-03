@@ -1,6 +1,6 @@
-import {
+import { waLink,
   $, api, esc, fmtPts, fmtDate, typeLabel, headerHtml, footerHtml, avatarHtml, leaveBadge,
-  renderBoard, statsHtml, historyHtml, leaveAlertHtml,
+  renderBoard, statsHtml, historyHtml, leaveAlertHtml, remarksLogHtml, openHymnViewer,
 } from './common.js';
 
 let pin = '';
@@ -456,7 +456,7 @@ async function openLinks() {
       <div class="row between">
         <span class="row">${avatarHtml(c, 'sm')}<span><b>${esc(c.name)}</b><div class="code-mask" data-code="${esc(c.id)}">${mask(c.code)}</div></span></span>
         <span class="row"><button class="btn small" data-copy="${esc(c.id)}">Copy code</button>
-          <a class="btn small" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(msg(c))}">WhatsApp</a></span>
+          <a class="btn small" target="_blank" rel="noopener" href="${waLink(c.contact, msg(c))}" title="${c.contact ? `Opens WhatsApp chat with ${esc(c.contact)}` : 'No number saved: pick a contact in WhatsApp'}">WhatsApp</a></span>
       </div>`).join('') || '<div class="empty">No children yet.</div>'}</div>`;
   if (!dlg.open) dlg.showModal();
   $('#close').addEventListener('click', () => dlg.close());
@@ -521,7 +521,7 @@ async function openChild(id) {
       <div class="card" style="margin-top:6px">
         <div class="row between"><span class="code-mask" id="codeShown" data-shown="0">${mask(d.code)}</span>
           <span class="row"><button class="btn small" id="reveal">Show</button><button class="btn small" id="copyCode">Copy code</button>
-            <a class="btn small" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(`Hi! Open ${base} , tap "My child" and enter this code for ${d.name}: ${codeText(d.code)}`)}">WhatsApp</a></span></div>
+            <a class="btn small" target="_blank" rel="noopener" href="${waLink(d.contact, `Hi! Open ${base} , tap \"My child\" and enter this code for ${d.name}: ${codeText(d.code)}`)}">WhatsApp</a></span></div>
         <div class="row" style="margin-top:8px"><button class="btn small" id="editCode">Choose my own code</button>
           <button class="btn small danger" id="newCode">Make a new code</button></div>
         <div class="muted">Only you can see this code. Give it privately to this child's parent. Make a new code if it was shared by mistake.</div>
@@ -529,7 +529,8 @@ async function openChild(id) {
       ${decisionPanel(d)}
       ${leaveAlertHtml(d, { teacher: true })}
       <h3 style="margin-top:20px">This year</h3>${statsHtml(d)}
-      <h3 style="margin-top:20px">Attendance</h3><div class="card">${historyHtml(d.history)}</div>
+      <h3 style="margin-top:20px">Remarks log <span class="muted">(all dates)</span></h3><div class="card">${remarksLogHtml(d.remarkLog)}</div>
+      <h3 style="margin-top:20px">Attendance this year</h3><div class="card">${historyHtml(d.history)}</div>
       <button class="btn danger" id="toggle">${d.active ? 'Remove from choir' : 'Add back to choir'}</button>` : ''}`;
   if (!dlg.open) dlg.showModal();
   $('#close').addEventListener('click', () => dlg.close());
@@ -650,7 +651,9 @@ async function loadSettings() {
       ${num('practicePoints', 'Points per feast practice (Christmas, Easter…)', s.practicePoints)}
       ${num('feastPoints', 'Points for the feast mass itself', s.feastPoints)}
       ${num('maxLeaves', 'Leaves allowed per year (April–April)', s.maxLeaves, 'step="1"')}
-      ${num('latePointsFactor', 'Share of points when late (0 to 1)', s.latePointsFactor, 'step="0.1" max="1"')}
+      ${num('remarkPenalty', 'Points taken off a session with any negative remark (charged once, however many)', s.remarkPenalty)}
+      ${num('remarkBonus', 'Points added for each positive remark (well behaved, helped others)', s.remarkBonus)}
+      ${num('latePointsFactor', 'Share of points when late (1 = full points; the remark penalty applies on top)', s.latePointsFactor, 'step="0.1" max="1"')}
       <label class="chk"><input name="countSundayAbsences" type="checkbox"${s.countSundayAbsences ? ' checked' : ''}> Missing Sunday mass also counts as a leave</label>
       <label class="field">Website address to share with parents<input name="publicUrl" type="url" placeholder="https://your-choir-app.example.com" value="${esc(s.publicUrl || '')}"></label>
       <label class="field">First year (starts April of)<input name="firstSeason" type="number" placeholder="${firstSeason}" value="${s.firstSeason ?? ''}"></label>
@@ -696,7 +699,7 @@ async function loadSettings() {
     e.preventDefault();
     const f = new FormData(e.target);
     run(async () => {
-      const body = Object.fromEntries(['satPoints', 'sunPoints', 'practicePoints', 'feastPoints', 'maxLeaves', 'latePointsFactor'].map((k) => [k, f.get(k)]));
+      const body = Object.fromEntries(['satPoints', 'sunPoints', 'practicePoints', 'feastPoints', 'maxLeaves', 'latePointsFactor', 'remarkPenalty', 'remarkBonus'].map((k) => [k, f.get(k)]));
       body.countSundayAbsences = f.get('countSundayAbsences') === 'on';
       body.firstSeason = f.get('firstSeason') || null;
       body.publicUrl = f.get('publicUrl') || '';
@@ -734,13 +737,17 @@ function drawHymnsTab() {
           <div class="hymn row between">
             <div class="grow"><div class="ht">${esc(h.title)}</div>
               <div>${h.audio ? '<span class="badge ok">🎧 recording</span> ' : ''}${h.link ? '<span class="badge info">🔗 link</span>' : ''}</div></div>
-            <button class="btn small" data-hedit="${esc(h.id)}">Edit</button>
+            <span class="row"><button class="btn small" data-hview="${esc(h.id)}">⛶ View</button><button class="btn small" data-hedit="${esc(h.id)}">Edit</button></span>
           </div>`).join('') || '<div class="hymn muted">No hymns here yet.</div>'}
       </details>`;
     }).join('')}`;
   $('#hq').addEventListener('input', () => { drawHymnsTab(); const el = $('#hq'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); });
   $('#addHymn').addEventListener('click', () => openHymn(null));
   $('#addHymns').addEventListener('click', openHymnBulk);
+  $('#hymns').querySelectorAll('[data-hview]').forEach((b) => b.addEventListener('click', () => {
+    const h = hymns.find((x) => x.id === b.dataset.hview);
+    openHymnViewer(h, categories.find((c) => c.id === h.category)?.label);
+  }));
   $('#hymns').querySelectorAll('[data-hedit]').forEach((b) => b.addEventListener('click', () => openHymn(b.dataset.hedit)));
   $('#hymns').querySelectorAll('details.hcat').forEach((d) => d.addEventListener('toggle', () => {
     if (term) return;
@@ -759,6 +766,7 @@ function openHymn(id) {
       <label class="field">Category<select name="category">${catOptions(h.category)}</select></label>
       <label class="field">Link to the music (optional)<input name="link" type="url" placeholder="https://…" maxlength="500" value="${esc(h.link)}"></label>
       <label class="field">Notes (optional)<input name="notes" maxlength="300" placeholder="e.g. Key of D, verses 1 and 3" value="${esc(h.notes)}"></label>
+      <label class="field">Lyrics (optional, shown large and full screen for the children)<textarea name="lyrics" rows="8" maxlength="6000" placeholder="Paste the words here">${esc(h.lyrics || '')}</textarea></label>
       <div class="row"><button class="btn primary">${id ? 'Save' : 'Add hymn'}</button><span id="hmsg" class="muted" aria-live="polite"></span></div>
     </form>
     ${id ? `

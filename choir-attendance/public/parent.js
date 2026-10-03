@@ -1,6 +1,6 @@
 import {
   $, api, esc, fmtPts, headerHtml, footerHtml, renderBoard, achieversHtml, avatarHtml,
-  statsHtml, historyHtml, leaveAlertHtml,
+  statsHtml, historyHtml, leaveAlertHtml, openHymnViewer,
 } from './common.js';
 
 const store = {
@@ -76,7 +76,7 @@ function boardTab() {
       <h3>How to earn points</h3>
       <div class="muted">Saturday practice = <b>${fmtPts(o.settings.satPoints)}</b> point · Sunday mass = <b>${fmtPts(o.settings.sunPoints)}</b> points ·
       Feast practices = <b>${fmtPts(o.settings.practicePoints)}</b> point each · Feast mass = <b>${fmtPts(o.settings.feastPoints)}</b> points.
-      Arriving late earns fewer points!</div>
+      A day with any remark to improve (late, not paying attention, incomplete book, talking) takes off <b>${fmtPts(o.settings.remarkPenalty ?? 0.5)}</b> in total, however many. Each good remark (well behaved, helped others) adds <b>${fmtPts(o.settings.remarkBonus ?? 0.25)}</b>.</div>
     </div>`;
   drawBoard();
   $('#goChild')?.addEventListener('click', () => show('child'));
@@ -128,14 +128,19 @@ function drawHymns() {
         <summary><span>${esc(c.label)}</span><span class="badge info">${items.length}</span></summary>
         ${items.length ? items.map((h) => `
           <div class="hymn">
-            <div class="ht">${esc(h.title)}</div>
+            <button class="link ht" data-hv="${esc(h.id)}">${esc(h.title)}</button>
             ${h.notes ? `<div class="muted">${esc(h.notes)}</div>` : ''}
             ${h.audio ? `<audio controls preload="none" src="${esc(h.audio)}"></audio>` : ''}
-            ${safeLink(h.link) ? `<div class="acts"><a class="btn small" href="${esc(safeLink(h.link))}" target="_blank" rel="noopener noreferrer">🔗 Open music link</a></div>` : ''}
+            <div class="acts"><button class="btn small primary" data-hv="${esc(h.id)}">⛶ Open${h.lyrics ? ' lyrics' : ''} full screen</button>
+              ${safeLink(h.link) ? `<a class="btn small" href="${esc(safeLink(h.link))}" target="_blank" rel="noopener noreferrer">🔗 Music link</a>` : ''}</div>
           </div>`).join('') : '<div class="hymn muted">No hymns here yet.</div>'}
       </details>`;
   }).join('');
   $('#hlist').innerHTML = html || '<div class="empty">No hymns match your search.</div>';
+  $('#hlist').querySelectorAll('[data-hv]').forEach((b) => b.addEventListener('click', () => {
+    const h = hymnData.hymns.find((x) => x.id === b.dataset.hv);
+    openHymnViewer(h, hymnData.categories.find((c) => c.id === h.category)?.label);
+  }));
   $('#hlist').querySelectorAll('details').forEach((d) => d.addEventListener('toggle', () => {
     if (term) return;
     if (d.open) openCats.add(d.dataset.cat); else openCats.delete(d.dataset.cat);

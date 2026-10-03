@@ -32,6 +32,15 @@ function migrate(db) {
     if (c.joinedYear === null && c.joinedOn) { c.joinedYear = Number(c.joinedOn.slice(0, 4)); changed = true; }
     if (!c.code) { c.code = newCode(db); changed = true; }
   }
+  for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) {
+    if (!(k in db.settings)) { db.settings[k] = v; changed = true; }
+  }
+  // One-time: remarks now cost points directly, so the old default "late earns half" is retired.
+  if (!db.latePolicyV2) {
+    if (db.settings.latePointsFactor === 0.5) db.settings.latePointsFactor = 1;
+    db.latePolicyV2 = true;
+    changed = true;
+  }
   // One-time: older versions made longer codes. Shorten them (the teacher can still edit any code).
   if (!db.codesShortened) {
     for (const c of db.children) if (c.code.length > 4) c.code = newCode(db);
@@ -57,7 +66,7 @@ function migrate(db) {
 }
 
 // Tiny JSON-file store. Writes are atomic (tmp file + rename).
-const blank = () => ({ settings: { ...DEFAULT_SETTINGS }, children: [], sessions: {}, occasions: [], hymns: [], codesShortened: false });
+const blank = () => ({ settings: { ...DEFAULT_SETTINGS }, children: [], sessions: {}, occasions: [], hymns: [], codesShortened: false, latePolicyV2: true });
 const withDefaults = (saved) => ({ ...blank(), ...saved, settings: { ...DEFAULT_SETTINGS, ...saved.settings } });
 
 export function openStore(file) {
