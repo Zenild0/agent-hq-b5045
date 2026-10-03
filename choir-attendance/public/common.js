@@ -6,6 +6,8 @@ export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&a
 
 export const fmtPts = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
+export const ptsText = (n) => `${fmtPts(n)} ${n === 1 ? 'pt' : 'pts'}`;
+
 export const fmtDate = (d) =>
   new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
@@ -38,7 +40,7 @@ const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce
 export function headerHtml(title, subtitle = '') {
   return `
     <header class="top"><div class="top-inner">
-      <img class="logo" src="/logo.png" alt="Choir logo" onerror="this.outerHTML='<div class=\\'logo-fallback\\' aria-hidden=\\'true\\'>🎵</div>'">
+      <img class="logo" src="/logo.png" width="60" height="60" alt="Children's Choir ZD logo" onerror="this.outerHTML='<div class=\\'logo-fallback\\' aria-hidden=\\'true\\'>🎵</div>'">
       <div class="grow"><h1>${esc(title)}</h1><small>${subtitle}</small></div>
     </div></header>`;
 }
@@ -86,7 +88,7 @@ export function boardHtml(rows, { meId = null, empty = 'No points yet — the fi
         ${r.rank === 1 ? '<span class="crown" aria-hidden="true">👑</span>' : ''}
         ${bobbleHtml(r, idx === 0 ? 96 : 78)}
         <div class="name">${esc(r.name)}</div>
-        <div class="pts">${fmtPts(r.points)} pts</div>
+        <div class="pts">${ptsText(r.points)}</div>
         <div class="step r${idx + 1}" aria-label="Rank ${r.rank}">${r.rank}</div>
       </div>`;
   }).join('');
@@ -102,7 +104,7 @@ function restHtml(rows, max, meId, offset) {
       <div class="rank">${r.rank ?? '–'}</div>
       ${bobbleHtml(r, 46)}
       <div class="who"><div class="nm">${esc(r.name)}</div><div class="bar"><i style="width:${max ? Math.max(4, (r.points / max) * 100) : 0}%"></i></div></div>
-      <div class="score">${fmtPts(r.points)}<small>pts</small></div>
+      <div class="score">${fmtPts(r.points)}<small>${r.points === 1 ? 'pt' : 'pts'}</small></div>
     </div>`).join('')}</div>`;
 }
 
@@ -129,7 +131,7 @@ export function renderBoard(el, rows, opts) {
 function winnersHtml(winners) {
   if (!winners.length) return '<div class="muted">No points yet</div>';
   return `<div class="winners">${winners.map((w) => `
-    <div class="w"><span class="crown" aria-hidden="true">👑</span>${bobbleHtml(w, 64)}${esc(w.name)}<small>${fmtPts(w.points)} pts</small></div>`).join('')}</div>`;
+    <div class="w"><span class="crown" aria-hidden="true">👑</span>${bobbleHtml(w, 64)}${esc(w.name)}<small>${ptsText(w.points)}</small></div>`).join('')}</div>`;
 }
 
 export function achieversHtml(list, { kind, empty }) {

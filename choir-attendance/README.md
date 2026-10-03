@@ -1,4 +1,4 @@
-# Children's Choir App
+# Children's Choir ZD
 
 Attendance, behaviour remarks, a bobble-head leaderboard and achievers for a children's choir.
 Created by Zenildo Dias. Zero dependencies (Node 18+).
@@ -10,7 +10,7 @@ npm test
 ```
 
 ## Your logo
-Save your logo as **`public/logo.png`** (square PNG, at least 256×256). It appears in the page header and as the browser icon. Until then a 🎵 is shown.
+The logo is `public/logo.png` (header) with app icons `icon-192.png`, `icon-512.png`, `icon-maskable-512.png` and `apple-touch-icon.png`. To change it, replace those files (keep the names).
 
 ## Make it feel like an app
 - **Teacher (Windows):** double-click **`start-choir.bat`** in the `choir-attendance` folder. It starts the app and opens the teacher page. Right-click it, **Send to → Desktop (create shortcut)** for a desktop icon.

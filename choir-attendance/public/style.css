@@ -43,7 +43,7 @@ a { color: var(--brand-dark); }
   color: #fff; padding: 14px 16px 18px;
 }
 .top-inner { max-width: 820px; margin: 0 auto; display: flex; align-items: center; gap: 12px; }
-.logo { width: 52px; height: 52px; border-radius: 14px; object-fit: contain; background: #fff; padding: 4px; flex: none; }
+.logo { width: 60px; height: 60px; border-radius: 16px; object-fit: contain; background: #fff; padding: 3px; flex: none; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
 .logo-fallback { width: 52px; height: 52px; border-radius: 14px; background: rgba(255,255,255,.18); display: grid; place-items: center; font-size: 28px; flex: none; }
 .top h1 { margin: 0; font: 800 1.45rem/1.1 var(--font-head); }
 .top small { opacity: .9; display: block; }

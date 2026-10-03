@@ -140,7 +140,8 @@ test('static files and path traversal', async () => {
   assert.match(man.headers.get('content-type'), /manifest\+json/);
   assert.equal((await man.json()).display, 'standalone');
   assert.equal((await fetch(`${base}/sw.js`)).status, 200);
-  assert.equal((await fetch(`${base}/icon.svg`)).status, 200);
+  assert.equal((await fetch(`${base}/icon-512.png`)).status, 200);
+  assert.equal((await fetch(`${base}/logo.png`)).status, 200);
   assert.equal((await fetch(`${base}/../server.js`)).status, 404);
   assert.equal((await fetch(`${base}/photos/../../server.js`)).status, 404);
 });

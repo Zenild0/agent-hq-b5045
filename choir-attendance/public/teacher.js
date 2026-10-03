@@ -17,7 +17,7 @@ function lastWeekday(dow) { // most recent Saturday (6) / Sunday (0), today incl
 
 const app = $('#app');
 app.innerHTML = `
-  ${headerHtml('Teacher', '<a href="/">Parent view</a>')}
+  ${headerHtml("Children's Choir ZD", 'Teacher area · <a href="/">Parent view</a>')}
   <main>
     <nav class="tabs">
       <button data-tab="attendance" class="on">✅ Attendance</button>

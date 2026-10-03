@@ -28,7 +28,7 @@ const app = $('#app');
 
 function shell() {
   app.innerHTML = `
-    ${headerHtml("Children's Choir", `<span id="season"></span>`)}
+    ${headerHtml("Children's Choir ZD", "Our Lady of Lourdes, Kalyan West")}
     <main>
       <nav class="tabs" role="tablist">
         <button data-tab="board">🏆 Leaderboard</button>
@@ -61,12 +61,11 @@ function drawBoard() {
 
 function boardTab() {
   const o = overview;
-  $('#season').textContent = `Year ${o.seasonLabel}`;
   $('#board').innerHTML = `
     ${code ? '' : `<div class="card row between"><span><b>Parent?</b> See your child's attendance and contact details.</span><button class="btn primary small" id="goChild">Enter your child's code</button></div>`}
     <div class="stage">
       <h2>🎤 Leaderboard</h2>
-      <div class="sub">Come to every practice, and on time, to climb!</div>
+      <div class="sub">Choir year ${esc(o.seasonLabel)}<br>Come to every practice, and on time, to climb!</div>
       <div class="toggle">
         <button class="pill ${range === 'month' ? 'on' : ''}" data-range="month">${esc(o.monthLabel)}</button>
         <button class="pill ${range === 'year' ? 'on' : ''}" data-range="year">This year</button>
