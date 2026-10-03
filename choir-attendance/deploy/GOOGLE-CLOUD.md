@@ -1,6 +1,6 @@
-# Free always-on hosting: Google Cloud + Cloudflare (zendias.com)
+# Free always-on hosting: Google Cloud + Cloudflare (zenildodias.com)
 
-Result: `https://choir.zendias.com` works on every phone and tablet, 24/7, even when your laptop is off. The app updates itself from GitHub, and a backup is made every night.
+Result: `https://choir.zenildodias.com` works on every phone and tablet, 24/7, even when your laptop is off. The app updates itself from GitHub, and a backup is made every night.
 
 > I (Claude) wrote and tested the update and backup scripts on a practice copy, but I could **not** test the Google and Cloudflare screens. Their button names change. If something doesn't match, stop and send me a screenshot.
 
@@ -8,10 +8,8 @@ Result: `https://choir.zendias.com` works on every phone and tablet, 24/7, even 
 
 ---
 
-## Part 1: Get the domain (Cloudflare)
-1. Create a free account at **cloudflare.com** and turn on **two-step sign-in** (Profile → Authentication).
-2. **Domain Registration → Register Domains**, search `zendias.com`. It shows right away if it is free and the price. Buy it and turn on **auto-renew**. (If it's taken, tell me and we'll pick another.)
-3. After you buy it, the domain appears under **Websites**. DNS is already managed by Cloudflare.
+## Part 1: The domain (done)
+You bought **zenildodias.com** at Cloudflare (about $10.46 a year, renews at the same price). Keep **auto-renew on**, verify the email Cloudflare sent you, and keep two-step sign-in on. Check it any time: Cloudflare → **Domains → Overview** shows **Active**.
 
 ## Part 2: Google Cloud account (and a spending alert)
 1. Go to **console.cloud.google.com**, sign in with your Google account, and accept the terms. Add a card when asked (it is a check; you are not charged inside the free limits). You may get free trial credits: when the trial ends, upgrade the account (the Always Free server stays free).
@@ -43,12 +41,12 @@ The tunnel connects the server to Cloudflare, so no ports are open to the intern
 1. In Cloudflare open **Zero Trust** (left menu). If asked, choose the **Free** plan (it may ask for a payment method to verify you).
 2. **Networks → Tunnels → Create a tunnel → Cloudflared** → name it `choir-server` → Save.
 3. Choose **Debian**, **64-bit**. Copy the command shown that starts with `sudo cloudflared service install ...` and paste it into the **SSH window** from Part 4. When it says it is connected, go back to Cloudflare and click **Next**.
-4. **Public hostname:** Subdomain `choir`, Domain `zendias.com`, **Type HTTP**, **URL** `localhost:3000` → Save.
+4. **Public hostname:** Subdomain `choir`, Domain `zenildodias.com`, **Type HTTP**, **URL** `localhost:3000` → Save.
 
 ## Part 6: First use
-1. Open **https://choir.zendias.com/teacher**, enter your PIN.
+1. Open **https://choir.zenildodias.com/teacher**, enter your PIN.
 2. **Settings → Restore from backup** and pick the backup file you downloaded from your laptop app (Settings → Download backup). Your children, photos and hymns appear.
-3. **Settings → Website address to share with parents:** `https://choir.zendias.com` → save.
+3. **Settings → Website address to share with parents:** `https://choir.zenildodias.com` → save.
 4. **Children → Parent access:** share the link and codes.
 5. On phones and tablets: open the address → Add to Home screen. (Remove the older Tailscale shortcut.)
 
