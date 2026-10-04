@@ -1,13 +1,13 @@
 // Rules, scores, badges and leaderboards for the singing game. Pure functions on plain data, so they can be tested.
 // Only small numbers are kept per child: no audio and no recordings, ever.
-import { LEVELS, DAILY_COUNT, starsFor } from '../public/levels.js';
+import { LEVELS, DAILY_COUNT, STAGES, stageSpec, starsFor } from '../public/levels.js';
 import { IST_OFFSET_MIN } from './schedule.js';
 
 export const PASS_SHARE = 0.7;
 export class GameError extends Error {}
 
 export const emptyGame = () => ({ kids: {}, daily: {} });
-export const emptyKid = () => ({ cleared: [], best: {}, weekly: {}, badges: {}, dailyDays: [] });
+export const emptyKid = () => ({ cleared: [], stages: {}, best: {}, weekly: {}, badges: {}, dailyDays: [] });
 
 const dayMs = 86400000;
 const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
@@ -53,6 +53,8 @@ export function scoreRound(results) {
 const better = (a, b) => !b || a.won > b.won || (a.won === b.won && a.ms < b.ms);
 
 export const maxPlayable = (kid) => Math.min(LEVELS.length, Math.max(0, ...kid.cleared) + 1);
+// The highest stage of a level that can be played now (1 to 3), or 0 if the level is still locked.
+export const maxStage = (kid, level) => (level > maxPlayable(kid) ? 0 : Math.min(STAGES.length, (kid.stages?.[level] ?? 0) + 1));
 
 function longestRun(results) {
   let best = 0, run = 0;
@@ -60,36 +62,43 @@ function longestRun(results) {
   return best;
 }
 
-// Records a finished level round. Returns { score, newBadges }. Throws GameError if the round is not allowed.
-export function applyRound(game, childId, level, rawResults, today) {
+// Records a finished stage of a level. Returns { score, newBadges, levelCleared }. Throws GameError if it is not allowed.
+export function applyRound(game, childId, level, stage, rawResults, today) {
   const lv = LEVELS.find((l) => l.id === level);
-  if (!lv) throw new GameError('Unknown level');
+  if (!lv || !STAGES.some((s) => s.stage === stage)) throw new GameError('Unknown level');
   const kid = (game.kids[childId] ??= emptyKid());
-  if (level > maxPlayable(kid)) throw new GameError('Clear the level before this one first');
-  const results = checkResults(rawResults, lv.count);
+  kid.stages ??= {};
+  if (stage > maxStage(kid, level)) throw new GameError(level > maxPlayable(kid) ? 'Clear the level before this one first' : 'Clear the stage before this one first');
+  const results = checkResults(rawResults, stageSpec(level, stage).count);
   const score = scoreRound(results);
   const week = weekKeyOf(today);
+  const key = `${level}.${stage}`;
 
-  if (better(score, kid.best[level])) kid.best[level] = { won: score.won, ms: score.ms, stars: score.stars, on: today };
-  else if (kid.best[level] && score.stars > kid.best[level].stars) kid.best[level].stars = score.stars;
-  kid.weekly[week] ??= {};
-  if (better(score, kid.weekly[week][level])) kid.weekly[week][level] = { won: score.won, ms: score.ms };
+  if (better(score, kid.best[key])) kid.best[key] = { won: score.won, ms: score.ms, stars: score.stars, on: today };
+  else if (kid.best[key] && score.stars > kid.best[key].stars) kid.best[key].stars = score.stars;
+  if (stage === STAGES.length) { // only the full showdown counts for the weekly board
+    kid.weekly[week] ??= {};
+    if (better(score, kid.weekly[week][level])) kid.weekly[week][level] = { won: score.won, ms: score.ms };
+  }
   for (const w of Object.keys(kid.weekly)) if (w < weekKeyOf(iso(Date.parse(`${today}T00:00:00Z`) - 28 * dayMs))) delete kid.weekly[w]; // keep about a month
-  if (score.pass && !kid.cleared.includes(level)) kid.cleared.push(level);
+  let levelCleared = false;
+  if (score.pass && (kid.stages[level] ?? 0) < stage) kid.stages[level] = stage;
+  if (score.pass && stage === STAGES.length && !kid.cleared.includes(level)) { kid.cleared.push(level); levelCleared = true; }
 
   const earned = [];
   const give = (id) => { if (!kid.badges[id]) { kid.badges[id] = today; earned.push(id); } };
+  const showdown = stage === STAGES.length;
   if (score.won > 0) give('first_note');
-  if (score.pass && level >= 2 && results.every((r) => r.hints === 0)) give('no_hints');
+  if (score.pass && showdown && level >= 2 && results.every((r) => r.hints === 0)) give('no_hints');
   if (longestRun(results) >= 10) give('ten_in_row');
   const wins = results.filter((r) => r.won);
   if (level >= 3 && wins.length >= 5 && wins.every((r) => r.err != null && r.err <= 10)) give('perfect_pitch');
-  if (level >= 3 && score.stars === 3) give('triple_star');
-  if (score.pass && level >= 6) give('amateur');
-  if (score.pass && level >= 9) give('pro');
-  if (score.pass && level >= 11) give('expert');
-  if (score.pass && level >= 12) give('legend');
-  return { score, newBadges: earned };
+  if (level >= 3 && showdown && score.stars === 3) give('triple_star');
+  if (score.pass && showdown && level >= 6) give('amateur');
+  if (score.pass && showdown && level >= 9) give('pro');
+  if (score.pass && showdown && level >= 11) give('expert');
+  if (score.pass && showdown && level >= 12) give('legend');
+  return { score, newBadges: earned, levelCleared };
 }
 
 // One try per child per day at the daily Legend challenge. Later tries are ignored (and reported).
@@ -127,6 +136,7 @@ export function rankRows(rows) {
   return rows;
 }
 
+// Weekly board for a level: each child's best showdown (stage 3) this week.
 export function weeklyBoard(game, children, week, level) {
   const rows = [];
   for (const c of children) {

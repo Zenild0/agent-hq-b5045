@@ -378,3 +378,33 @@ details[open] > summary .chev { transform: rotate(180deg); }
 .wu-meter b { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: var(--ok); }
 .wu-meter i { position: absolute; left: calc(50% - 3px); top: 0; bottom: 0; width: 6px; border-radius: 3px; background: var(--brand); will-change: transform; transition: transform .08s; }
 .wu-lab { display: flex; justify-content: space-between; width: 240px; font-size: .75rem; font-weight: 800; color: var(--muted); }
+
+/* journey, levels and stages */
+.gm-hero { display: grid; gap: 8px; text-align: center; }
+.gm-title { margin: 0; font: 800 2rem/1.1 var(--font-head); color: var(--brand-dark); }
+.gm-tip { font-size: .8rem; }
+.gm-cta { height: 52px; font-size: 1.05rem; }
+.gm-hero .row { justify-content: center; }
+.gm-piano { width: 100%; max-width: 380px; margin: 4px auto; display: block; touch-action: manipulation; }
+.gm-piano g { cursor: pointer; }
+.gm-piano .pk { stroke: #b9ae9a; stroke-width: 1.5; }
+.gm-piano .pk.w { fill: #fffdf7; }
+.gm-piano .pk.b { fill: #2a2450; stroke: #1b1738; }
+.gm-piano .pk.got.w { fill: #ffd25a; stroke: #d99a00; }
+.gm-piano .pk.got.b { fill: #e0a000; stroke: #8a6100; }
+.gm-piano .pk.now { stroke: var(--brand); stroke-width: 3.5; }
+.gm-piano .pn { font: 800 13px var(--font-head); fill: #6a6590; pointer-events: none; }
+.gm-piano .pn.pb { fill: #d8d3f5; }
+.gm-piano .got + .pn { fill: #4a3300; }
+.gm-list { display: grid; gap: 8px; margin-top: 10px; }
+.gm-lvcard { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 14px; background: var(--card); text-align: left; font: inherit; color: inherit; cursor: pointer; width: 100%; }
+.gm-lvcard.lock { opacity: .55; }
+.gm-lvcard.done { border-color: var(--sun); background: #fff9e6; }
+.gm-n { width: 2rem; height: 2rem; border-radius: 50%; background: var(--tint, #f1edff); display: grid; place-items: center; font: 800 1rem var(--font-head); flex: none; }
+.gm-lvt { flex: 1; display: grid; min-width: 0; }
+.gm-lvt small { color: var(--muted); }
+.gm-pips { letter-spacing: .15em; color: var(--brand); font-weight: 800; }
+.gm-stages { display: grid; gap: 8px; margin-top: 8px; }
+.gm-stage { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1.5px solid var(--line); border-radius: 12px; padding: 10px; }
+.gm-stage.done { border-color: var(--ok); background: #eefaf4; }
+.gm-stage.lock { opacity: .55; }

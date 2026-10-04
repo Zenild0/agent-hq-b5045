@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LEVELS, buildDeck, makeTracker, centsTo, NAMES } from '../public/levels.js';
+import { LEVELS, buildDeck, makeTracker, centsTo, NAMES, stageSpec, titleFor, PIANO_KEYS } from '../public/levels.js';
 
 const rng = (seed = 1) => () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 
@@ -17,7 +17,7 @@ test('every level builds a sensible round', () => {
     for (const c of deck) {
       assert.ok(c.targets.length >= 1 && c.targets.every((t) => t >= 0 && t < 12));
       assert.ok(c.limit >= 5 && c.hold >= 400);
-      assert.equal(c.tol, lv.tol);
+      assert.equal(c.tol, stageSpec(lv.id, 3).tol);
       assert.ok(c.play.type);
     }
   }
@@ -98,4 +98,23 @@ test('a long steady hold needs the whole time', () => {
   feedFor(wobbly, 0, 2000, 67); feedFor(wobbly, 2016, 2100, 67.3);
   assert.equal(feedFor(wobbly, 2116, 4500, 67).done, false);
   assert.equal(feedFor(wobbly, 4516, 5200, 67).done, true);
+});
+
+test('three stages per level: shorter and gentler first, the full level last', () => {
+  for (const lv of LEVELS) {
+    const [a, b, c] = [1, 2, 3].map((st) => stageSpec(lv.id, st));
+    assert.ok(a.count >= 3 && a.count <= b.count && b.count <= c.count, `level ${lv.id} counts`);
+    assert.equal(c.count, lv.count);
+    assert.ok(a.tol >= b.tol && b.tol >= c.tol, `level ${lv.id} margins shrink`);
+    assert.ok(c.tol >= 10 && a.tol <= 50);
+    assert.equal(buildDeck(lv.id, rng(3), 1).length, a.count);
+    assert.equal(buildDeck(lv.id, rng(3), 2).length, b.count);
+  }
+  assert.deepEqual(buildDeck(1, rng(1), 1).map((c) => c.targets[0]), [0, 2, 4, 5]); // the first notes of C to B
+});
+
+test('your title follows the highest level cleared, and every level has a piano key', () => {
+  assert.equal(titleFor(0), 'Newcomer');
+  assert.deepEqual([1, 3, 4, 6, 7, 9, 10, 11, 12].map(titleFor), ['Beginner', 'Beginner', 'Amateur', 'Amateur', 'Pro', 'Pro', 'Expert', 'Expert', 'Legend']);
+  assert.equal(PIANO_KEYS.length, LEVELS.length);
 });

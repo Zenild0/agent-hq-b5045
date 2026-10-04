@@ -7,86 +7,11 @@
   <title>Voice game test · Children's Choir ZD</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&family=Nunito:wght@400;600;700;800&display=swap">
   <link rel="stylesheet" href="style.css">
-  <style>
-    /* Every box below has a fixed size, so nothing moves or flickers while a child sings. */
-    #app { max-width: 460px; margin-inline: auto; }
-    .hud { display: grid; gap: 8px; }
-    .ladder { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
-    .ladder button { padding: 6px 0; line-height: 1.1; font-weight: 800; position: relative; }
-    .ladder button small { display: block; font-size: .65rem; opacity: .8; }
-    .ladder button.on { background: var(--brand); color: #fff; border-color: var(--brand); }
-    .ladder button.cleared::after { content: "✓"; position: absolute; top: 1px; right: 5px; font-size: .7rem; color: var(--ok); }
-    .ladder button.on.cleared::after { color: #fff; }
-    .tiers { display: grid; grid-template-columns: 3fr 3fr 3fr 2fr 1fr; font-size: .65rem; font-weight: 800; color: var(--muted); text-align: center; letter-spacing: .04em; height: 1em; }
-    .lvinfo { height: 4.4em; font-size: .92rem; overflow: hidden; }
-    .lvinfo b { font: 800 1.1rem var(--font-head); }
-    .dots { display: flex; gap: 5px; height: 14px; }
-    .dots i { flex: 1; height: 10px; border-radius: 99px; background: var(--line); }
-    .dots i.done { background: var(--ok); } .dots i.miss { background: var(--bad); } .dots i.now { background: var(--brand); }
-    .stats { display: flex; justify-content: space-between; font-weight: 800; height: 24px; }
-    .arena { height: 410px; display: grid; justify-items: center; align-content: start; gap: 10px; padding-top: 6px; overflow: hidden; }
-    .target { font: 800 1.9rem/1.1 var(--font-head); height: 1.2em; color: var(--brand-dark); text-align: center; max-width: 100%; white-space: nowrap; overflow: hidden; }
-    .how { font-weight: 800; height: 1.3em; color: var(--muted); text-align: center; }
-    .ring {
-      --w: 0; --hold: 0;
-      width: 200px; height: 200px; border-radius: 50%; display: grid; place-items: center; text-align: center;
-      background: conic-gradient(var(--ok) calc(var(--hold) * 1turn), var(--line) 0);
-      position: relative; contain: strict; transition: box-shadow .15s;
-      box-shadow: 0 0 calc(var(--w) * 38px) calc(var(--w) * 8px) rgba(255, 140, 0, calc(var(--w) * .55));
-    }
-    .ring::before { content: ""; position: absolute; inset: 12px; border-radius: 50%; background: var(--card); }
-    .ring > div { position: relative; width: 150px; height: 150px; display: grid; place-content: center; }
-    .ring small { display: block; height: 1.2em; font-weight: 700; color: var(--muted); }
-    .ring .big { font: 800 3.4rem/1 var(--font-head); width: 3.2ch; text-align: center; height: 1.05em; white-space: nowrap; }
-    .ring .sub { font-weight: 800; height: 1.3em; color: var(--brand); letter-spacing: .15em; }
-    .warm { width: 240px; height: 16px; border-radius: 99px; background: linear-gradient(90deg, #4aa8ff, #ffc83d, #ff6f59); position: relative; overflow: hidden; }
-    .warm i { position: absolute; inset: 0; background: var(--card); transform-origin: right; transform: scaleX(1); opacity: .88; will-change: transform; }
-    .warmlab { display: flex; justify-content: space-between; width: 240px; font-size: .75rem; font-weight: 800; color: var(--muted); height: 1.1em; }
-    .msg { height: 3.2em; width: 100%; text-align: center; font: 800 1.1rem/1.25 var(--font-head); }
-    .msg.ok { color: var(--ok); } .msg.bad { color: var(--bad); }
-    .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .acts .go { grid-column: 1 / -1; height: 54px; font-size: 1.1rem; }
-    .acts button { height: 44px; }
-    .fine { font-size: .9rem; color: var(--muted); min-height: 3em; }
-  </style>
+  <style>#app { max-width: 460px; margin-inline: auto; } #gameRoot { display: grid; gap: 14px; }</style>
 </head>
 <body>
   <header class="top"><div class="top-inner"><div class="grow"><h1>Voice game test</h1><small>The phone listens live. Nothing is recorded or sent anywhere.</small></div></div></header>
-  <main id="app">
-    <div class="card" id="startCard">
-      <p><b>How it works.</b> Twelve levels, from Little Lark to Legend. Press Start, listen to what the phone plays, then sing the note. The clock starts when the sound stops, and hearing it again simply uses up time. The faster you finish the round, the better your score.</p>
-      <div class="row"><button class="btn primary" id="start">🎤 Allow microphone and begin</button><button class="btn" id="warmBtn">🔥 Warm-up first</button></div>
-      <div class="muted" id="err" role="alert"></div>
-    </div>
-
-    <div id="warm" hidden></div>
-
-    <div id="game" hidden>
-      <div class="card hud">
-        <div class="tiers"><span>BEGINNER</span><span>AMATEUR</span><span>PRO</span><span>EXPERT</span><span>★</span></div>
-        <div class="ladder" id="ladder" role="group" aria-label="Level"></div>
-        <div class="lvinfo" id="lvInfo"></div>
-        <div class="dots" id="dots" aria-label="Progress"></div>
-        <div class="stats"><span id="chordNo">&nbsp;</span><span id="streak">&nbsp;</span><span id="clock">Total 0.0 s</span></div>
-      </div>
-
-      <div class="card arena" id="arena">
-        <div class="target" id="target">&nbsp;</div>
-        <div class="how" id="how">&nbsp;</div>
-        <div class="ring" id="ring"><div><small id="ringLab">Ready</small><div class="big" id="note">♪</div><div class="sub" id="ringSub">&nbsp;</div></div></div>
-        <div><div class="warm"><i id="warmCover"></i></div><div class="warmlab"><span>cold</span><span>hot</span></div></div>
-        <div class="msg" id="msg" aria-live="polite"></div>
-      </div>
-
-      <div class="acts">
-        <button class="btn primary go" id="go">▶ Start</button>
-        <button class="btn" id="again" disabled>🔁 Hear it again</button>
-        <button class="btn" id="hint" disabled>🎶 Singer hint</button>
-      </div>
-      <div class="fine" id="fine">&nbsp;</div>
-      <div class="row"><button class="btn small" id="stop">Stop microphone</button><button class="btn small" id="warmBtn2">🔥 Warm-up</button></div>
-    </div>
-  </main>
+  <main id="app"><div id="gameRoot"></div></main>
   <script type="module" src="voice-test.js"></script>
 </body>
 </html>

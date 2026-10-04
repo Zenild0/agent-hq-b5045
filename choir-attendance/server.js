@@ -12,7 +12,7 @@ import {
 } from './lib/logic.js';
 import { openStore, newCode } from './lib/store.js';
 import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, GameError } from './lib/game.js';
-import { LEVELS, DAILY_COUNT } from './public/levels.js';
+import { LEVELS, DAILY_COUNT, STAGES, stageSpec } from './public/levels.js';
 import { istNow, isDate, isTime, scheduleDays, nextPractice, shiftDate } from './lib/schedule.js';
 import { createTar, readTar } from './lib/tar.js';
 
@@ -267,8 +267,8 @@ function gameState(child, q) {
   const week = weekKeyOf(today);
   const daily = db.game.daily[today]?.[child.id] ?? null;
   return {
-    levels: LEVELS.map(({ id, tier, emoji, name, how, tol, hold, count }) => ({ id, tier, emoji, name, how, tol, hold, count })),
-    me: { id: child.id, name: child.name, cleared: kid.cleared, best: kid.best, badges: kid.badges, maxPlayable: maxPlayable(kid), dailyStreak: dailyStreak(kid, today) },
+    levels: LEVELS.map(({ id, tier, name, how, tol, hold, count }) => ({ id, tier, name, how, tol, hold, count, stages: STAGES.map((st) => stageSpec(id, st.stage)) })),
+    me: { id: child.id, name: child.name, cleared: kid.cleared, stages: kid.stages ?? {}, best: kid.best, badges: kid.badges, maxPlayable: maxPlayable(kid), dailyStreak: dailyStreak(kid, today) },
     daily: { date: today, seed: dailySeed(today), count: DAILY_COUNT, mine: daily, board: boardOut(dailyBoard(db.game, gameChildren(), today), child.id) },
     weekly: { week, level, board: boardOut(weeklyBoard(db.game, gameChildren(), week, level), child.id) },
   };
@@ -281,7 +281,7 @@ async function gameApi(req, res, q, child, action) {
   gameThrottle(child.id);
   try {
     let out;
-    if (action === 'round') out = applyRound(store.db.game, child.id, Number(body.level), body.results, istDate());
+    if (action === 'round') out = applyRound(store.db.game, child.id, Number(body.level), Number(body.stage), body.results, istDate());
     else if (action === 'daily') out = applyDaily(store.db.game, child.id, istDate(), body.results);
     else throw new HttpError(404, 'Not found');
     store.save();

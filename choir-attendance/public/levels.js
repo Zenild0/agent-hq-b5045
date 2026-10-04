@@ -59,9 +59,31 @@ function make(kind, lv, r, { pc = Math.floor(r() * 12), quality = 'major', blind
   throw new Error(`unknown kind ${kind}`);
 }
 
-// The list of challenges for one round of a level.
-export function buildDeck(levelId, r = Math.random) {
+// Every level has three stages. Stage 1 is a gentle practice round, stage 2 is shorter than the full level,
+// and stage 3 is the full showdown at the level's own margin (it clears the level, and counts for the weekly board).
+export const STAGES = [
+  { stage: 1, name: 'Practice', share: 0.5, tolDelta: +10 },
+  { stage: 2, name: 'Challenge', share: 0.75, tolDelta: 0 },
+  { stage: 3, name: 'Showdown', share: 1, tolDelta: -3 },
+];
+export function stageSpec(levelId, stage) {
   const lv = LEVELS.find((l) => l.id === levelId);
+  const st = STAGES.find((s) => s.stage === stage);
+  if (!lv || !st) throw new Error('unknown stage');
+  return { stage, name: st.name, count: Math.min(lv.count, Math.max(3, Math.ceil(lv.count * st.share))), tol: Math.min(50, Math.max(10, lv.tol + st.tolDelta)) };
+}
+
+// Who you are on the journey, from the highest level cleared.
+export const titleFor = (maxCleared) => (maxCleared ? LEVELS.find((l) => l.id === maxCleared).tier : 'Newcomer');
+
+// The piano keys, one per level: C, C#, D ... B. Black keys are the sharps.
+export const PIANO_KEYS = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+
+// The list of challenges for one round of a level stage (stage 3 is the full level).
+export function buildDeck(levelId, r = Math.random, stage = 3) {
+  const lv0 = LEVELS.find((l) => l.id === levelId);
+  const spec = lv0 && stageSpec(levelId, stage);
+  const lv = lv0 && { ...lv0, tol: spec.tol };
   const pcs = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
   const q = () => (r() < 0.5 ? 'major' : 'minor');
   const deck = [];
@@ -84,7 +106,7 @@ export function buildDeck(levelId, r = Math.random) {
     }
     default: throw new Error('unknown level');
   }
-  return deck.map((c) => (c.kind === 'hold' ? { ...c, hold: levelId === 12 ? 2000 : lv.hold } : c));
+  return deck.slice(0, spec.count).map((c) => (c.kind === 'hold' ? { ...c, hold: levelId === 12 ? 2000 : lv.hold } : c));
 }
 
 // Cents between a sung pitch (as a fractional MIDI number) and a note name, in any octave (0..600).
