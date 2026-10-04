@@ -48,7 +48,10 @@ async function readBody(req, limit = 100_000) {
     chunks.push(c);
   }
   if (!chunks.length) return {};
-  try { return JSON.parse(Buffer.concat(chunks).toString()); } catch { throw new HttpError(400, 'Invalid JSON'); }
+  let body;
+  try { body = JSON.parse(Buffer.concat(chunks).toString()); } catch { throw new HttpError(400, 'Invalid JSON'); }
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'Please send a JSON object'); // null, a number or a list would crash the handlers
+  return body;
 }
 
 // The teacher area has no PIN: it simply opens only on the computer that runs the app.

@@ -65,7 +65,7 @@ function shell() {
         <button data-tab="game" id="gameTab" hidden>🎤 Vocals</button>
         <button data-tab="child">👧 My child</button>
       </nav>
-      <section id="board"></section>
+      <section id="board"><div class="empty">Loading…</div></section>
       <section id="ach" hidden></section>
       <section id="hymns" hidden></section>
       <section id="game" hidden></section>

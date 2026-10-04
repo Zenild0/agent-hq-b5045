@@ -44,7 +44,7 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
   const notes = deck.map(() => ({ won: false, ms: 0, err: null, hints: 0, tried: false }));
   let idx = 0, phase = 'ready', streak = 0, tracker = null, cur = deck[0]; // phase: ready | playing | listening | reveal | done
   let startAt = 0, muteUntil = 0, lastMidi = null, lastAt = 0, recent = [], raf = 0, timer = 0;
-  let errSum = 0, errN = 0, stepErrs = [], micReady = false, dead = false;
+  let errSum = 0, errN = 0, stepErrs = [], micReady = false, dead = false, starting = false;
 
   const spentOn = (i, now) => notes[i].ms + (phase === 'listening' && i === idx ? now - startAt : 0);
   const totalMs = (now) => notes.reduce((n, _, i) => n + spentOn(i, now), 0);
@@ -83,9 +83,11 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
     if (phase !== 'ready') return;
     if (untimed && notes[idx].won) return;
     if (!micReady) {
-      try { await audio.enableMic(); micReady = true; loop(); } catch (e) { setMsg(micMessage(e)); return; }
+      if (starting) return; // a second tap while the microphone permission is pending must not start a second chord
+      starting = true;
+      try { await audio.enableMic(); micReady = true; loop(); } catch (e) { setMsg(micMessage(e)); return; } finally { starting = false; }
     }
-    if (dead) return;
+    if (dead || phase !== 'ready') return;
     phase = 'playing'; recent = []; lastMidi = null; errSum = errN = 0; stepErrs = []; cur = deck[idx];
     setMsg('🎹 Listen carefully…');
     const ms = audio.sound.play(cur);

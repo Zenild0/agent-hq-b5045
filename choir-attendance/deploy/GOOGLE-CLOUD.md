@@ -86,3 +86,9 @@ sudo journalctl -u choir -n 40 --no-pager           # app messages
 ## Later: using your `main` branch
 Right now the server follows the branch `claude/childrens-choir-attendance-r3d2st`. When you want, ask me to merge it into `main`, then on the server run:
 `echo main | sudo tee /etc/choir-branch` and `sudo choir-update`.
+
+
+## Safety nets when the app updates itself
+- Before each update the updater copies the data file to `/var/lib/choir-update/db-before-update.json`, so it can be put back by hand if ever needed.
+- A new version only counts as started if both `/healthz` and `/api/public` answer. Otherwise it rolls back to the previous version and remembers the bad one.
+- Two updates never run at the same time.

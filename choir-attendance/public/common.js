@@ -19,7 +19,10 @@ export const typeLabel = (type, event) => ({
 }[type] || type);
 
 export async function api(path, { method = 'GET', body, pin, code } = {}) {
-  const res = await fetch(`/api/${path}`, {
+  let res;
+  try {
+    res = await fetch(`/api/${path}`, {
+    signal: AbortSignal.timeout?.(20000), // a server that never answers must not leave a blank screen for ever
     method,
     headers: {
       ...(body ? { 'content-type': 'application/json' } : {}),
@@ -27,7 +30,10 @@ export async function api(path, { method = 'GET', body, pin, code } = {}) {
       ...(code ? { 'x-code': code } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
-  });
+    });
+  } catch (e) {
+    throw Object.assign(new Error(e?.name === 'TimeoutError' ? 'The server is taking too long to answer. Please try again.' : 'Could not reach the server. Please check your internet connection.'), { network: true });
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw Object.assign(new Error(data.error || 'Something went wrong'), { status: res.status });
   return data;

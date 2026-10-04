@@ -600,3 +600,12 @@ test('teacher can reset the free Warm-up sessions for one child or for everyone'
   assert.equal((await j(`/api/teacher/child/${dan.id}`)).data.warmupLeft, 3);
   await j('/api/teacher/settings', { method: 'PUT', body: { gameEnabled: false } });
 });
+
+test('a request body that is not a JSON object is a 400, never a crash', async () => {
+  for (const raw of ['null', '[]', '123', '"text"', 'true']) {
+    for (const [path, method] of [['/api/teacher/children', 'POST'], ['/api/teacher/mark', 'PUT'], ['/api/teacher/settings', 'PUT'], ['/api/teacher/schedule/day', 'PUT']]) {
+      const r = await fetch(base + path, { method, headers: { 'content-type': 'application/json' }, body: raw });
+      assert.equal(r.status, 400, `${method} ${path} with ${raw}`);
+    }
+  }
+});
