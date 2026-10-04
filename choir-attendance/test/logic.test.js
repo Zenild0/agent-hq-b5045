@@ -200,3 +200,16 @@ test('guests join an occasion only: never on the main leaderboard, but their poi
   gita && (db.children.find((c) => c.id === 'g').guest = false); // promoted
   assert.ok(scoreboard(db, 2026, '2026-04-01', '2027-03-31').some((r) => r.name === 'Guest Gita'));
 });
+
+test('ranks are sequential: three tied for 1st are followed by 2nd, not 4th', () => {
+  const db = { ...mkDb([
+    ['2026-05-02', 'saturday', { a: e('present'), b: e('present'), c: e('present'), d: e('absent'), x: e('present', ['Late']) }],
+    ['2026-05-09', 'saturday', { a: e('present'), b: e('present'), c: e('present'), d: e('present'), x: e('absent') }],
+  ]) };
+  db.children = ['a', 'b', 'c', 'd', 'x'].map((id) => ({ id, name: id.toUpperCase(), active: true }));
+  const rows = scoreboard(db, 2026, '2026-04-01', '2027-03-31');
+  const byName = Object.fromEntries(rows.map((r) => [r.name, [r.points, r.rank]]));
+  assert.deepEqual([byName.A[1], byName.B[1], byName.C[1]], [1, 1, 1]);
+  assert.equal(byName.D[1], 2); // next after a three-way tie
+  assert.deepEqual(byName.X, [0.5, 3]); // late costs 0.5; then 3rd, never skipping a rank
+});

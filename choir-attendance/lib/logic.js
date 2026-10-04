@@ -196,7 +196,8 @@ export function isOut(child, season, to) {
   return d?.status === 'out' && d.on <= to;
 }
 
-// Ranked board for [from, to]. Ties share a rank.
+// Ranked board for [from, to]. Ties share a rank, and ranks are sequential:
+// three children tied for 1st are followed by 2nd (not 4th).
 //   hideOut: drop children who are out (parent-facing boards)
 //   includeInactive: also rank children who have left the choir (history)
 export function scoreboard(db, season, from, to, { hideOut = false, includeInactive = false } = {}) {
@@ -218,7 +219,7 @@ export function scoreboard(db, season, from, to, { hideOut = false, includeInact
   rows.forEach((r, i) => {
     const prev = rows[i - 1];
     const tied = prev && prev.eligible === r.eligible && prev.points === r.points; // equal points share a rank
-    if (!tied) rank = i + 1;
+    if (!tied) rank += 1;
     r.rank = r.eligible ? rank : null;
   });
   return rows;

@@ -78,23 +78,30 @@ export function boardHtml(rows, { meId = null, empty = 'No points yet — the fi
   if (!scored.length) {
     return `<div class="empty" style="color:#fff">${esc(empty)}</div>${rows.length ? restHtml(rows, 0, meId, 0) : ''}`;
   }
-  const top = scored.slice(0, 3);
-  const slotOrder = [1, 0, 2]; // 2nd, 1st, 3rd
-  const slots = slotOrder.map((idx) => {
-    const r = top[idx];
-    if (!r) return '<div></div>';
+  // Podium slots by rank (silver, gold, bronze). Everyone sharing a rank stands on the same step.
+  const groups = [2, 1, 3].map((rk) => scored.filter((r) => r.rank === rk));
+  const short = (n) => { const w = n.trim().split(/\s+/); return w.length > 1 ? `${w[0]} ${w[w.length - 1][0]}.` : w[0]; };
+  const slots = groups.map((g, i) => {
+    const rk = [2, 1, 3][i];
+    if (!g.length) return '<div></div>';
+    const many = g.length > 1;
+    const size = g.length === 1 ? (rk === 1 ? 96 : 78) : g.length === 2 ? 64 : g.length === 3 ? 54 : 46;
     return `
-      <div class="slot s${idx + 1} rise ${r.id === meId ? 'me-row' : ''}" data-flip="${esc(r.id)}" style="--i:${3 - idx}">
-        ${r.rank === 1 ? '<span class="crown" aria-hidden="true">👑</span>' : ''}
-        ${bobbleHtml(r, idx === 0 ? 96 : 78)}
-        <div class="name">${esc(r.name)}</div>
-        <div class="pts">${ptsText(r.points)}</div>
-        <div class="step r${idx + 1}" aria-label="Rank ${r.rank}">${r.rank}</div>
+      <div class="slot s${rk} rise" style="--i:${4 - rk}">
+        <div class="grp${rk === 1 && g.length > 2 ? ' tall' : ''}">${g.map((r) => `
+          <div class="pp ${r.id === meId ? 'me-row' : ''}" data-flip="${esc(r.id)}" style="--size:${size}px">
+            ${rk === 1 ? '<span class="crown" aria-hidden="true">👑</span>' : ''}
+            ${bobbleHtml(r, size)}
+            <div class="name${many ? ' sm' : ''}" title="${esc(r.name)}">${esc(many ? short(r.name) : r.name)}</div>
+          </div>`).join('')}</div>
+        <div class="pts">${ptsText(g[0].points)}</div>
+        <div class="step r${rk}" aria-label="Rank ${rk}">${rk}</div>
       </div>`;
   }).join('');
-  const rest = rows.filter((r) => !top.includes(r));
+  const weights = groups.map((g, i) => Math.max(1, g.length) * (i === 1 ? 1.15 : 1));
+  const rest = scored.filter((r) => r.rank > 3).concat(rows.filter((r) => r.points <= 0));
   const max = scored[0].points;
-  return `<div class="podium">${slots}</div>${restHtml(rest, max, meId, 3)}`;
+  return `<div class="podium" style="grid-template-columns:${weights.map((w) => `${w}fr`).join(' ')}">${slots}</div>${restHtml(rest, max, meId, 3)}`;
 }
 
 function restHtml(rows, max, meId, offset) {
