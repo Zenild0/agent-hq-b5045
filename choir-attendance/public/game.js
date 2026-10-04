@@ -97,18 +97,22 @@ export function mountGame(root, { code = '', preview = false } = {}) {
   function unlockHtml() {
     const p = state.pay || {};
     const price = p.price ?? 500;
-    const upiLink = p.upi ? `upi://pay?pa=${encodeURIComponent(p.upi)}&pn=${encodeURIComponent("Children's Choir")}&am=${price}&cu=INR&tn=${encodeURIComponent('Choir singing game')}` : '';
+    const kid = state.me.name || '';
+    const upiLink = p.upi ? `upi://pay?pa=${encodeURIComponent(p.upi)}&pn=${encodeURIComponent("Children's Choir")}&am=${price}&cu=INR&tn=${encodeURIComponent(`Choir game: ${kid}`)}` : '';
     return `
       <div class="card gm-unlock">
         <h3 style="margin:0">Unlock the full game · ₹${esc(price)}</h3>
         <div>Warm-up and Level 1 are free. The full game adds <b>Level 2 to Legend</b>, the <b>daily Legend challenge</b> and the <b>weekly leaderboards</b>.</div>
+        <div class="gm-note">This paid feature is to cover the expenses of building and maintaining this app. It is a vocal training feature.<br>Thank you for your support in helping to make this a better app for the kids. 🙏</div>
         ${p.mobile || p.upi ? `
           <div class="gm-pay">
-            ${p.mobile ? `<div>Pay <b>₹${esc(price)}</b> to mobile number <b>${esc(p.mobile)}</b> <button class="btn small" data-copy="${esc(p.mobile)}">Copy number</button></div>` : ''}
-            ${p.upi ? `<div>UPI ID: <b>${esc(p.upi)}</b> <button class="btn small" data-copy="${esc(p.upi)}">Copy UPI ID</button></div>
+            <div><b>Pay ₹${esc(price)} using either:</b></div>
+            ${p.mobile ? `<div>Mobile number <b>${esc(p.mobile)}</b> <button class="btn small" data-copy="${esc(p.mobile)}">Copy number</button></div>` : ''}
+            ${p.upi ? `<div>UPI ID <b>${esc(p.upi)}</b> <button class="btn small" data-copy="${esc(p.upi)}">Copy UPI ID</button></div>
               <a class="btn small primary" href="${esc(upiLink)}">Open my UPI app</a>` : ''}
+            <div><b>Please send ${esc(kid) || "your child's name"}'s name</b> with the payment (as the payment note, or by message), so your child can be unlocked.</div>
           </div>` : '<div class="muted">Please ask your choir teacher how to pay.</div>'}
-        <div class="muted">After you pay, tell your choir teacher. They will unlock the full game for your child.</div>
+        <div class="muted">After you pay, your choir teacher will unlock the full game for your child.</div>
       </div>`;
   }
 

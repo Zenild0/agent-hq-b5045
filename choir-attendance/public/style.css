@@ -410,3 +410,4 @@ details[open] > summary .chev { transform: rotate(180deg); }
 .gm-stage.lock { opacity: .55; }
 .gm-unlock { display: grid; gap: 8px; background: #fff9e6; border-color: var(--sun); margin: 8px 0; }
 .gm-pay { display: grid; gap: 6px; }
+.gm-note { background: #fff; border-radius: 12px; padding: 8px 10px; font-size: .92rem; border: 1px dashed var(--sun); }
