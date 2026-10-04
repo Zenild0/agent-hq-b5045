@@ -5,9 +5,21 @@ import { IST_OFFSET_MIN } from './schedule.js';
 
 export const PASS_SHARE = 0.7;
 export class GameError extends Error {}
+// Thrown when a child has not been unlocked yet: Warm-up and Level 1 are free, the rest of the game is paid.
+export class PaywallError extends GameError {}
+export const FREE_LEVELS = 1;
 
 export const emptyGame = () => ({ kids: {}, daily: {} });
-export const emptyKid = () => ({ cleared: [], stages: {}, best: {}, weekly: {}, badges: {}, dailyDays: [] });
+export const emptyKid = () => ({ cleared: [], stages: {}, best: {}, weekly: {}, badges: {}, dailyDays: [], paid: false, paidOn: '' });
+
+// The teacher unlocks (or locks) the full game for one child, after the parent has paid.
+export function setPaid(game, childId, paid, today) {
+  const kid = (game.kids[childId] ??= emptyKid());
+  kid.paid = Boolean(paid);
+  kid.paidOn = kid.paid ? today : '';
+  return kid;
+}
+export const isPaid = (kid) => Boolean(kid?.paid);
 
 const dayMs = 86400000;
 const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
@@ -68,6 +80,7 @@ export function applyRound(game, childId, level, stage, rawResults, today) {
   if (!lv || !STAGES.some((s) => s.stage === stage)) throw new GameError('Unknown level');
   const kid = (game.kids[childId] ??= emptyKid());
   kid.stages ??= {};
+  if (level > FREE_LEVELS && !isPaid(kid)) throw new PaywallError('Unlock the full game to play this level');
   if (stage > maxStage(kid, level)) throw new GameError(level > maxPlayable(kid) ? 'Clear the level before this one first' : 'Clear the stage before this one first');
   const results = checkResults(rawResults, stageSpec(level, stage).count);
   const score = scoreRound(results);
@@ -106,6 +119,7 @@ export function applyDaily(game, childId, today, rawResults) {
   const results = checkResults(rawResults, DAILY_COUNT);
   const day = (game.daily[today] ??= {});
   const kid = (game.kids[childId] ??= emptyKid());
+  if (!isPaid(kid)) throw new PaywallError('Unlock the full game to play the daily challenge');
   if (day[childId]) return { already: true, score: day[childId], newBadges: [] };
   const score = scoreRound(results);
   day[childId] = { won: score.won, ms: score.ms, stars: score.stars };

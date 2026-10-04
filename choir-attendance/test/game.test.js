@@ -1,12 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyGame, applyRound, applyDaily, weeklyBoard, dailyBoard, weekKeyOf, dailySeed, maxPlayable, maxStage, GameError, dailyStreak } from '../lib/game.js';
+import { emptyGame, setPaid, isPaid, PaywallError, applyRound, applyDaily, weeklyBoard, dailyBoard, weekKeyOf, dailySeed, maxPlayable, maxStage, GameError, dailyStreak } from '../lib/game.js';
 import { LEVELS, DAILY_COUNT, stageSpec } from '../public/levels.js';
 
 const round = (n, { won = n, ms = 3000, err = 20, hints = 0, limit = 15000 } = {}) =>
   Array.from({ length: n }, (_, i) => ({ won: i < won, ms: i < won ? ms : limit, err: i < won ? err : null, hints, limit }));
 const count = (lv, st = 3) => stageSpec(lv, st).count;
-const play = (g, id, lv, st, date, opts = {}) => applyRound(g, id, lv, st, round(opts.n ?? count(lv, st), opts), date);
+const play = (g, id, lv, st, date, opts = {}) => {
+  if (lv > 1 && !opts.unpaid) setPaid(g, id, true, date); // Level 1 is free; the rest needs the teacher's unlock
+  return applyRound(g, id, lv, st, round(opts.n ?? count(lv, st), opts), date);
+};
 const clearLevel = (g, id, lv, date, opts) => [1, 2, 3].map((st) => play(g, id, lv, st, date, opts));
 
 test('three stages per level, each one unlocks the next, and stage 3 clears the level', () => {
@@ -100,6 +103,7 @@ test('daily challenge: one try a day, same seed for everyone, streak badges', ()
   const g = emptyGame();
   assert.equal(dailySeed('2026-10-05'), dailySeed('2026-10-05'));
   assert.notEqual(dailySeed('2026-10-05'), dailySeed('2026-10-06'));
+  setPaid(g, 'a', true, '2026-10-05'); setPaid(g, 'b', true, '2026-10-05');
   const first = applyDaily(g, 'a', '2026-10-05', round(DAILY_COUNT, { won: 3 }));
   assert.equal(first.already, false);
   const again = applyDaily(g, 'a', '2026-10-05', round(DAILY_COUNT, { won: 6 }));
@@ -118,10 +122,28 @@ test('daily challenge: one try a day, same seed for everyone, streak badges', ()
 
 test('old data is tidied away', () => {
   const g = emptyGame();
+  setPaid(g, 'a', true, '2026-08-01');
   applyDaily(g, 'a', '2026-09-01', round(DAILY_COUNT));
   applyDaily(g, 'a', '2026-10-20', round(DAILY_COUNT));
   assert.ok(!g.daily['2026-09-01']);
   clearLevel(g, 'a', 1, '2026-08-01');
   play(g, 'a', 1, 3, '2026-10-20');
   assert.deepEqual(Object.keys(g.kids.a.weekly), [weekKeyOf('2026-10-20')]);
+});
+
+test('Warm-up and Level 1 are free; level 2 onwards and the daily challenge need the teacher\'s unlock', () => {
+  const g = emptyGame();
+  clearLevel(g, 'a', 1, '2026-10-05'); // free
+  assert.equal(isPaid(g.kids.a), false);
+  assert.throws(() => applyRound(g, 'a', 2, 1, round(count(2, 1)), '2026-10-05'), PaywallError);
+  assert.throws(() => applyDaily(g, 'a', '2026-10-05', round(DAILY_COUNT)), PaywallError);
+  assert.equal(g.daily['2026-10-05']?.a, undefined, 'nothing recorded for the refused try');
+  setPaid(g, 'a', true, '2026-10-06');
+  assert.equal(g.kids.a.paidOn, '2026-10-06');
+  applyRound(g, 'a', 2, 1, round(count(2, 1)), '2026-10-06');
+  assert.equal(applyDaily(g, 'a', '2026-10-06', round(DAILY_COUNT, { won: 2 })).already, false);
+  setPaid(g, 'a', false, '2026-10-07'); // locked again: progress is kept, play stops
+  assert.deepEqual(g.kids.a.cleared, [1]);
+  assert.throws(() => applyRound(g, 'a', 2, 2, round(count(2, 2)), '2026-10-07'), PaywallError);
+  assert.equal(g.kids.a.paidOn, '');
 });

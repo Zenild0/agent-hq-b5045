@@ -364,6 +364,7 @@ async function loadChildren() {
       <div class="grow"><button class="link" data-open="${esc(c.id)}">${esc(c.name)}</button>
         <div class="muted">${c.standard ? `Std ${esc(c.standard)}` : 'No standard yet'}${c.joinedYear ? ` · joined ${c.joinedYear}` : ''}</div></div>
       ${c.active ? '' : '<span class="badge">left choir</span>'}
+      ${c.gamePaid ? '<span class="badge ok" title="Full singing game unlocked">🎮 unlocked</span>' : ''}
       ${c.guest ? `<button class="btn small" data-promote="${esc(c.id)}">⬆ Move to main group</button>` : ''}
     </div>`;
   $('#children').innerHTML = `
@@ -528,6 +529,10 @@ async function openChild(id) {
           <button class="btn small danger" id="newCode">Make a new code</button></div>
         <div class="muted">Only you can see this code. Give it privately to this child's parent. Make a new code if it was shared by mistake.</div>
       </div>
+      <h3 style="margin-top:20px">Singing game</h3>
+      <div class="card row between" style="margin-top:6px">
+        <span>${d.gamePaid ? '✅ Full game unlocked' : '🔒 Free version only (Warm-up and Level 1)'}</span>
+        <button class="btn small ${d.gamePaid ? '' : 'primary'}" id="gamePaid">${d.gamePaid ? 'Lock again' : 'Unlock after payment'}</button></div>
       ${decisionPanel(d)}
       ${leaveAlertHtml(d, { teacher: true })}
       <h3 style="margin-top:20px">This year</h3>${statsHtml(d)}
@@ -536,6 +541,10 @@ async function openChild(id) {
       <button class="btn danger" id="toggle">${d.active ? 'Remove from choir' : 'Add back to choir'}</button>` : ''}`;
   if (!dlg.open) dlg.showModal();
   $('#close').addEventListener('click', () => dlg.close());
+  $('#gamePaid')?.addEventListener('click', () => run(async () => {
+    await call(`teacher/children/${id}/game`, { method: 'PUT', body: { paid: !d.gamePaid } });
+    await openChild(id);
+  }));
 
   const setPhoto = async (file) => {
     if (!file) return;
@@ -656,6 +665,10 @@ async function loadSettings() {
       ${num('remarkPenalty', 'Points taken off a session with any negative remark (charged once, however many)', s.remarkPenalty)}
       ${num('remarkBonus', 'Points added for each positive remark (well behaved, helped others)', s.remarkBonus)}
       ${num('latePointsFactor', 'Share of points when late (1 = full points; the remark penalty applies on top)', s.latePointsFactor, 'step="0.1" max="1"')}
+      <div class="muted" style="margin-top:10px"><b>Full singing game: how parents pay.</b> Warm-up and Level 1 are free. Parents pay you directly, then you unlock their child (Children → the child → Singing game).</div>
+      <label class="field">Price (₹)<input name="gamePrice" type="number" min="0" step="1" value="${s.gamePrice ?? 500}"></label>
+      <label class="field">Mobile number to pay (UPI or phone)<input name="gamePayMobile" type="tel" maxlength="20" value="${esc(s.gamePayMobile ?? '')}"></label>
+      <label class="field">UPI ID (optional, like name@bank)<input name="gameUpi" maxlength="60" value="${esc(s.gameUpi ?? '')}"></label>
       <label class="chk"><input name="gameEnabled" type="checkbox"${s.gameEnabled ? ' checked' : ''}> 🎮 Singing game is on for parents</label>
       <label class="chk"><input name="countSundayAbsences" type="checkbox"${s.countSundayAbsences ? ' checked' : ''}> Missing Sunday mass also counts as a leave</label>
       <label class="field">Website address to share with parents<input name="publicUrl" type="url" placeholder="https://your-choir-app.example.com" value="${esc(s.publicUrl || '')}"></label>
@@ -705,6 +718,9 @@ async function loadSettings() {
       const body = Object.fromEntries(['satPoints', 'sunPoints', 'practicePoints', 'feastPoints', 'maxLeaves', 'latePointsFactor', 'remarkPenalty', 'remarkBonus'].map((k) => [k, f.get(k)]));
       body.countSundayAbsences = f.get('countSundayAbsences') === 'on';
       body.gameEnabled = f.get('gameEnabled') === 'on';
+      body.gamePrice = f.get('gamePrice');
+      body.gamePayMobile = f.get('gamePayMobile') || '';
+      body.gameUpi = f.get('gameUpi') || '';
       body.firstSeason = f.get('firstSeason') || null;
       body.publicUrl = f.get('publicUrl') || '';
       await call('teacher/settings', { method: 'PUT', body });

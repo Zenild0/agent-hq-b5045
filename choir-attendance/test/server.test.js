@@ -452,7 +452,7 @@ test('singing game: off by default, unlocks level by level, one daily try, board
   const spec = s0.levels[0].stages;
   assert.deepEqual(spec.map((x) => x.count), [4, 6, 7]);
   const post = (code, level, stage, n, won) => game('/round', { method: 'POST', code, body: { level, stage, results: round(n, won) } });
-  assert.equal((await post(anna.code, 2, 1, 4)).status, 400, 'level 2 is locked');
+  assert.equal((await post(anna.code, 2, 1, 4)).status, 403, 'level 2 is behind the unlock');
   assert.equal((await post(anna.code, 1, 2, 6)).status, 400, 'stage 2 is locked');
   assert.equal((await post(anna.code, 1, 1, 3)).status, 400, 'incomplete round');
   const st1 = await post(anna.code, 1, 1, 4);
@@ -463,6 +463,19 @@ test('singing game: off by default, unlocks level by level, one daily try, board
   await post(anna.code, 1, 2, 6);
   const ok = await post(anna.code, 1, 3, 7);
   assert.equal(ok.data.levelCleared, true);
+  // Level 1 is free; the rest of the game needs the teacher's unlock after the parent pays
+  assert.equal((await post(anna.code, 2, 1, 4)).status, 403, 'level 2 is paid');
+  assert.equal((await game('/daily', { method: 'POST', code: anna.code, body: { results: round(6) } })).status, 403, 'daily is paid');
+  const free = (await game('?level=1', { code: anna.code })).data;
+  assert.deepEqual([free.paid, free.daily, free.weekly.board], [false, null, null]);
+  assert.deepEqual(free.pay, { price: 500, mobile: '', upi: '' });
+  assert.equal((await j('/api/teacher/settings', { method: 'PUT', body: { gamePayMobile: '98200 11111', gameUpi: 'choir@upi', gamePrice: 500 } })).status, 200);
+  assert.equal((await j('/api/teacher/settings', { method: 'PUT', body: { gameUpi: 'not a upi id' } })).status, 400);
+  assert.equal((await game('', { code: anna.code })).data.pay.upi, 'choir@upi');
+  assert.equal((await j(`/api/teacher/children/${anna.id}/game`, { method: 'PUT', body: { paid: true } })).data.gamePaid, true);
+  assert.equal((await j(`/api/teacher/children/${ben.id}/game`, { method: 'PUT', body: { paid: true } })).data.gamePaid, true);
+  assert.equal((await j(`/api/teacher/child/${anna.id}`)).data.gamePaid, true);
+  assert.equal((await game('', { code: anna.code })).data.pay, null, 'no payment details once unlocked');
   assert.deepEqual(ok.data.state.me.cleared, [1]);
   assert.equal(ok.data.state.me.maxPlayable, 2);
   for (const [n, w] of [[4, 4], [6, 6], [7, 5]]) await post(ben.code, 1, [4, 6, 7].indexOf(n) + 1, n, w);

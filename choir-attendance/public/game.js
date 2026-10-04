@@ -27,9 +27,12 @@ export function mountGame(root, { code = '', preview = false } = {}) {
   const call = (path, opts = {}) => api(`game${path}`, { code, ...opts });
   function previewState() {
     const p = read(PREVIEW, { cleared: [], stages: {}, best: {}, badges: {} });
+    const paid = read('choir-preview-paid', true);
     return {
+      paid,
+      pay: paid ? null : { price: 500, mobile: '98200 00000', upi: 'choir@upi' },
       levels: LEVELS.map((l) => ({ ...l, stages: STAGES.map((st) => stageSpec(l.id, st.stage)) })),
-      me: { id: 'preview', name: 'Tester', cleared: p.cleared, stages: p.stages, best: p.best, badges: p.badges, maxPlayable: maxPlayableOf(p.cleared), dailyStreak: 0 },
+      me: { id: 'preview', name: 'Tester', paid, cleared: p.cleared, stages: p.stages, best: p.best, badges: p.badges, maxPlayable: maxPlayableOf(p.cleared), dailyStreak: 0 },
       daily: null, weekly: { level: selected, board: { top: [], me: null, total: 0 } },
     };
   }
@@ -75,7 +78,9 @@ export function mountGame(root, { code = '', preview = false } = {}) {
   }
 
   // ---------- helpers ----------
-  const unlocked = (level, stage = 1) => preview || (level <= state.me.maxPlayable && (state.me.stages[level] ?? 0) >= stage - 1);
+  const paid = () => Boolean(state.me.paid);
+  const behindPay = (level) => level > 1 && !paid(); // Level 1 and the Warm-up are free
+  const unlocked = (level, stage = 1) => !behindPay(level) && (preview || (level <= state.me.maxPlayable && (state.me.stages[level] ?? 0) >= stage - 1));
   const nextTarget = () => { // what "Continue" plays: the next stage on the road
     const level = state.me.maxPlayable;
     return { level, stage: Math.min(3, (state.me.stages[level] ?? 0) + 1) };
@@ -87,6 +92,25 @@ export function mountGame(root, { code = '', preview = false } = {}) {
         <span class="gm-score">${r.won}${count ? `/${count}` : ''} · ${fmtMs(r.ms)}</span></div>`).join('')}
       ${b.me ? `<div class="gm-row me"><span class="gm-rank">${b.me.rank}</span><span class="gm-name">You</span><span class="gm-score">${b.me.won}${count ? `/${count}` : ''} · ${fmtMs(b.me.ms)}</span></div>` : ''}
     </div>`;
+
+  // How to pay: parents pay the teacher directly, then the teacher unlocks their child.
+  function unlockHtml() {
+    const p = state.pay || {};
+    const price = p.price ?? 500;
+    const upiLink = p.upi ? `upi://pay?pa=${encodeURIComponent(p.upi)}&pn=${encodeURIComponent("Children's Choir")}&am=${price}&cu=INR&tn=${encodeURIComponent('Choir singing game')}` : '';
+    return `
+      <div class="card gm-unlock">
+        <h3 style="margin:0">Unlock the full game · ₹${esc(price)}</h3>
+        <div>Warm-up and Level 1 are free. The full game adds <b>Level 2 to Legend</b>, the <b>daily Legend challenge</b> and the <b>weekly leaderboards</b>.</div>
+        ${p.mobile || p.upi ? `
+          <div class="gm-pay">
+            ${p.mobile ? `<div>Pay <b>₹${esc(price)}</b> to mobile number <b>${esc(p.mobile)}</b> <button class="btn small" data-copy="${esc(p.mobile)}">Copy number</button></div>` : ''}
+            ${p.upi ? `<div>UPI ID: <b>${esc(p.upi)}</b> <button class="btn small" data-copy="${esc(p.upi)}">Copy UPI ID</button></div>
+              <a class="btn small primary" href="${esc(upiLink)}">Open my UPI app</a>` : ''}
+          </div>` : '<div class="muted">Please ask your choir teacher how to pay.</div>'}
+        <div class="muted">After you pay, tell your choir teacher. They will unlock the full game for your child.</div>
+      </div>`;
+  }
 
   // The journey: one piano key per level. A cleared level lights its key.
   function pianoHtml() {
@@ -113,16 +137,17 @@ export function mountGame(root, { code = '', preview = false } = {}) {
     const allDone = me.cleared.length >= LEVELS.length;
     const d = state.daily;
     root.innerHTML = `
-      ${preview ? '<div class="alert warn">Test version: every level is open, and your progress stays on this phone only.</div>' : ''}
+      ${preview ? `<div class="alert warn">Test version: your progress stays on this phone only. You are viewing the <b>${paid() ? 'paid' : 'free'}</b> game. <button class="btn small" data-a="togglePaid">Show the ${paid() ? 'free' : 'paid'} game</button></div>` : ''}
       <div class="card gm-hero">
         <div class="muted">Your journey</div>
         <h2 class="gm-title">${esc(titleFor(top))}</h2>
         <div class="muted">${me.cleared.length} of ${LEVELS.length} levels cleared${!preview && me.dailyStreak > 1 ? ` · 🔥 ${me.dailyStreak} days in a row` : ''}${offline ? ' · offline' : ''}</div>
         ${pianoHtml()}
         <div class="muted gm-tip">Each cleared level lights a piano key. Tap a key to open that level.</div>
-        ${allDone ? '<div class="gm-new">You have cleared every level. Legend!</div>' : `<button class="btn primary gm-cta" data-a="continue">▶ Continue: ${esc(lv.name)}, Stage ${t.stage}</button>`}
+        ${allDone ? '<div class="gm-new">You have cleared every level. Legend!</div>' : behindPay(t.level) ? '<button class="btn primary gm-cta" data-a="unlock">🔓 Unlock the full game to keep going</button>' : `<button class="btn primary gm-cta" data-a="continue">▶ Continue: ${esc(lv.name)}, Stage ${t.stage}</button>`}
         <div class="row"><button class="btn" data-a="levels">All levels</button><button class="btn" data-a="warm">🔥 Warm-up</button></div>
       </div>
+      ${!paid() ? `<div id="unlock">${unlockHtml()}</div>` : ''}
       ${d ? `<div class="card">
         <h3 style="margin:0 0 4px">Today's Legend challenge</h3>
         ${d.mine ? `<div>You scored <b>${d.mine.won} of ${d.count}</b> in ${fmtMs(d.mine.ms)} ${stars(d.mine.stars)}</div><div class="muted">One try a day. Come back tomorrow!</div>`
@@ -148,7 +173,7 @@ export function mountGame(root, { code = '', preview = false } = {}) {
           return `<button class="gm-lvcard${open ? '' : ' lock'}${done ? ' done' : ''}" data-lv="${l.id}" aria-label="Level ${l.id} ${esc(l.name)}${open ? '' : ', locked'}">
             <span class="gm-n">${l.id}</span>
             <span class="gm-lvt"><b>${esc(l.name)}</b><small>${esc(l.tier)}</small></span>
-            <span class="gm-pips" aria-label="${got} of 3 stages cleared">${open ? [1, 2, 3].map((s) => (s <= got ? '●' : '○')).join('') : '🔒'}</span></button>`;
+            <span class="gm-pips" aria-label="${got} of 3 stages cleared">${open ? [1, 2, 3].map((s) => (s <= got ? '●' : '○')).join('') : behindPay(l.id) ? '🔒 Full game' : '🔒'}</span></button>`;
         }).join('')}</div>
       </div>`;
   }
@@ -161,13 +186,14 @@ export function mountGame(root, { code = '', preview = false } = {}) {
         <div class="row between"><h2 style="margin:0">Level ${l.id}: ${esc(l.name)}</h2><button class="btn small" data-a="levels">← Levels</button></div>
         <div class="muted">${esc(l.tier)}</div>
         <div style="margin:6px 0">${esc(l.how)}</div>
+        ${behindPay(l.id) ? unlockHtml() : ''}
         <div class="gm-stages">${l.stages.map((s) => {
           const open = unlocked(l.id, s.stage), best = me.best[`${l.id}.${s.stage}`], got = (me.stages[l.id] ?? 0) >= s.stage;
           return `<div class="gm-stage${got ? ' done' : ''}${open ? '' : ' lock'}">
             <div><b>Stage ${s.stage}: ${esc(s.name)}</b> ${got ? '✓' : ''}<div class="muted">${s.count} challenges · margin ±${s.tol} cents${best ? ` · best ${best.won}/${s.count} in ${fmtMs(best.ms)} ${stars(best.stars)}` : ''}</div></div>
             ${open ? `<button class="btn ${got ? '' : 'primary'} small" data-play="${s.stage}">${got ? 'Play again' : '▶ Play'}</button>` : '<span class="muted">🔒</span>'}</div>`;
         }).join('')}</div>
-        ${preview ? '' : `<h4 style="margin:12px 0 4px">This week's showdowns</h4>
+        ${preview || !state.weekly?.board ? '' : `<h4 style="margin:12px 0 4px">This week's showdowns</h4>
         ${boardHtml(state.weekly.level === id ? state.weekly.board : null, me.id, l.count)}
         <div class="muted">Only Stage 3 counts for the weekly board.</div>`}
       </div>`;
@@ -227,16 +253,24 @@ export function mountGame(root, { code = '', preview = false } = {}) {
   }
 
   root.addEventListener('click', (e) => {
+    const cp = e.target.closest('[data-copy]');
+    if (cp) { // copy a number or UPI ID; if the phone refuses, show it to select
+      const text = cp.dataset.copy;
+      navigator.clipboard?.writeText(text).then(() => { cp.textContent = 'Copied ✓'; }, () => { cp.textContent = text; });
+      return;
+    }
     const b = e.target.closest('[data-a], [data-lv], [data-play]');
     if (!b) return;
     if (b.dataset.play) return play('level', Number(b.dataset.lvl) || selected, Number(b.dataset.play));
-    if (b.dataset.lv) return unlocked(Number(b.dataset.lv)) ? openLevel(Number(b.dataset.lv)) : undefined;
+    if (b.dataset.lv) { const id = Number(b.dataset.lv); return unlocked(id) || behindPay(id) ? openLevel(id) : undefined; }
     const a = b.dataset.a;
     if (a === 'home') return home();
     if (a === 'levels') return levels();
     if (a === 'continue') { const t = nextTarget(); selected = t.level; return play('level', t.level, t.stage); }
     if (a === 'daily') return play('daily', 12, 3);
     if (a === 'back') return back();
+    if (a === 'unlock') { home(); return document.getElementById('unlock')?.scrollIntoView({ behavior: 'smooth' }); }
+    if (a === 'togglePaid') { write('choir-preview-paid', !paid()); return load().then(home); }
     if (a === 'toLevel') return openLevel(Number(b.dataset.lvl) || selected);
     if (a === 'warm') { const w = mountWarmup(root, { onExit: () => { w.destroy(); home(); } }); current = w; }
   });

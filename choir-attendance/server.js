@@ -11,7 +11,7 @@ import {
   compareNames, findOccasion, slug,
 } from './lib/logic.js';
 import { openStore, newCode } from './lib/store.js';
-import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, GameError } from './lib/game.js';
+import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, setPaid, isPaid, GameError, PaywallError } from './lib/game.js';
 import { LEVELS, DAILY_COUNT, STAGES, stageSpec } from './public/levels.js';
 import { istNow, isDate, isTime, scheduleDays, nextPractice, shiftDate } from './lib/schedule.js';
 import { createTar, readTar } from './lib/tar.js';
@@ -192,7 +192,7 @@ function childDetail(child, season, { teacher = false } = {}) {
   return {
     ...profileOf(child), season, seasonLabel: seasonLabel(season), settings: db.settings,
     stats: childStats(db, child.id, season), history,
-    ...(teacher ? { remarkLog: remarkLogFor(child) } : {}),
+    ...(teacher ? { remarkLog: remarkLogFor(child), gamePaid: isPaid(db.game.kids[child.id]) } : {}),
     yearRank: yearBoard.find((r) => r.id === child.id)?.rank ?? null, yearRanked: yearBoard.length,
     monthRank: monthBoard.find((r) => r.id === child.id)?.rank ?? null, monthLabel: monthLabel(month),
   };
@@ -266,11 +266,15 @@ function gameState(child, q) {
   const level = Math.min(LEVELS.length, Math.max(1, Number(q.get('level')) || Math.min(LEVELS.length, maxPlayable(kid))));
   const week = weekKeyOf(today);
   const daily = db.game.daily[today]?.[child.id] ?? null;
+  const paid = isPaid(kid);
   return {
+    paid,
+    pay: paid ? null : { price: db.settings.gamePrice, mobile: db.settings.gamePayMobile, upi: db.settings.gameUpi },
     levels: LEVELS.map(({ id, tier, name, how, tol, hold, count }) => ({ id, tier, name, how, tol, hold, count, stages: STAGES.map((st) => stageSpec(id, st.stage)) })),
-    me: { id: child.id, name: child.name, cleared: kid.cleared, stages: kid.stages ?? {}, best: kid.best, badges: kid.badges, maxPlayable: maxPlayable(kid), dailyStreak: dailyStreak(kid, today) },
-    daily: { date: today, seed: dailySeed(today), count: DAILY_COUNT, mine: daily, board: boardOut(dailyBoard(db.game, gameChildren(), today), child.id) },
-    weekly: { week, level, board: boardOut(weeklyBoard(db.game, gameChildren(), week, level), child.id) },
+    me: { id: child.id, name: child.name, paid, cleared: kid.cleared, stages: kid.stages ?? {}, best: kid.best, badges: kid.badges, maxPlayable: maxPlayable(kid), dailyStreak: dailyStreak(kid, today) },
+    // the daily challenge and the weekly boards are part of the full game
+    daily: paid ? { date: today, seed: dailySeed(today), count: DAILY_COUNT, mine: daily, board: boardOut(dailyBoard(db.game, gameChildren(), today), child.id) } : null,
+    weekly: paid ? { week, level, board: boardOut(weeklyBoard(db.game, gameChildren(), week, level), child.id) } : { week, level, board: null },
   };
 }
 async function gameApi(req, res, q, child, action) {
@@ -287,6 +291,7 @@ async function gameApi(req, res, q, child, action) {
     store.save();
     return send(res, 200, { ...out, state: gameState(child, new URLSearchParams({ level: String(Number(body.level) || '') })) });
   } catch (e) {
+    if (e instanceof PaywallError) throw new HttpError(403, e.message);
     if (e instanceof GameError) throw new HttpError(400, e.message);
     throw e;
   }
@@ -445,6 +450,13 @@ function updateSettings(body) {
   if ('remarkPenalty' in body) s.remarkPenalty = num(body.remarkPenalty, 0, 5);
   if ('remarkBonus' in body) s.remarkBonus = num(body.remarkBonus, 0, 5);
   if ('gameEnabled' in body) s.gameEnabled = Boolean(body.gameEnabled);
+  if ('gamePrice' in body) s.gamePrice = Math.round(num(body.gamePrice, 0, 100000));
+  if ('gamePayMobile' in body) s.gamePayMobile = phone(body.gamePayMobile ?? '', 'Payment number');
+  if ('gameUpi' in body) {
+    const u = text(body.gameUpi ?? '', 60, 'UPI ID');
+    if (u && !/^[\w.\-]{2,}@[\w.\-]{2,}$/.test(u)) throw new HttpError(400, 'A UPI ID looks like name@bank');
+    s.gameUpi = u;
+  }
   if ('countSundayAbsences' in body) s.countSundayAbsences = Boolean(body.countSundayAbsences);
   if ('firstSeason' in body) s.firstSeason = body.firstSeason === null || body.firstSeason === '' ? null : Math.round(num(body.firstSeason, 2000, 2200));
   store.save();
@@ -492,7 +504,7 @@ function createChildren(text, { standard = '', joinedYear = null, guest = false 
   return { added, skipped };
 }
 
-const childOut = (c) => ({ ...profileOf(c), code: c.code, active: c.active, guest: Boolean(c.guest) });
+const childOut = (c) => ({ ...profileOf(c), code: c.code, active: c.active, guest: Boolean(c.guest), gamePaid: isPaid(store.db.game.kids[c.id]) });
 
 // Teacher-chosen code (e.g. 1001 or CC01): 3-8 letters/digits, unique.
 function customCode(value, child) {
@@ -882,6 +894,11 @@ async function teacherApi(req, res, q, parts) {
       else throw new HttpError(400, 'Decision must be keep, out or null');
       store.save();
       return send(res, 200, { decision: child.leaveDecisions[season] ?? null });
+    }
+    if (req.method === 'PUT' && id && action === 'game') {
+      setPaid(store.db.game, child.id, body.paid, istDate());
+      store.save();
+      return send(res, 200, { gamePaid: isPaid(store.db.game.kids[child.id]) });
     }
     if (req.method === 'POST' && id && action === 'new-code') {
       child.code = newCode(store.db);
