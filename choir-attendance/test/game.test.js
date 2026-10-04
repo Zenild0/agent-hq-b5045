@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyGame, setPaid, isPaid, useWarmup, warmupsLeft, PaywallError, applyRound, applyDaily, weeklyBoard, dailyBoard, weekKeyOf, dailySeed, maxPlayable, maxStage, GameError, dailyStreak } from '../lib/game.js';
+import { emptyGame, setPaid, isPaid, paidUntilOf, daysLeft, useWarmup, warmupsLeft, PaywallError, applyRound, applyDaily, weeklyBoard, dailyBoard, weekKeyOf, dailySeed, maxPlayable, maxStage, GameError, dailyStreak } from '../lib/game.js';
 import { LEVELS, DAILY_COUNT, stageSpec } from '../public/levels.js';
 
 const round = (n, { won = n, ms = 3000, err = 20, hints = 0, limit = 15000 } = {}) =>
@@ -188,4 +188,30 @@ test('every stage keeps the best three scores with the date only', () => {
   assert.deepEqual(Object.keys(top[0]).sort(), ['stars', 'ms', 'on', 'won'].sort(), 'only scores and the date: no time of day, nothing else');
   assert.deepEqual(g.kids.a.best['1.1'], top[0], 'the single best stays in step');
   assert.ok(!g.kids.a.top['1.2'], 'each stage has its own list');
+});
+
+test('the full game is for one year: it ends after 365 days and can be renewed', () => {
+  const g = emptyGame();
+  clearLevel(g, 'a', 1, '2026-10-05');
+  setPaid(g, 'a', true, '2026-10-05');
+  const kid = g.kids.a;
+  assert.equal(paidUntilOf(kid), '2027-10-05');
+  assert.equal(isPaid(kid, '2027-10-04'), true, 'the last day of the year is still included');
+  assert.equal(isPaid(kid, '2027-10-05'), false, '365 days later it has ended');
+  assert.equal(daysLeft(kid, '2027-09-05'), 30);
+  applyRound(g, 'a', 2, 1, round(count(2, 1)), '2027-10-04');
+  assert.throws(() => applyRound(g, 'a', 2, 2, round(count(2, 2)), '2027-10-05'), PaywallError, 'level 2 needs a renewal');
+  assert.throws(() => applyDaily(g, 'a', '2027-10-05', round(DAILY_COUNT)), PaywallError);
+  assert.deepEqual(g.kids.a.cleared, [1], 'progress is kept when the year ends');
+  assert.equal(g.kids.a.best['2.1'].won, count(2, 1), 'and so are the scores');
+  // renewing after it ended: a new year from the renewal day
+  setPaid(g, 'a', true, '2027-11-01');
+  assert.equal(paidUntilOf(kid), '2028-10-31'); // 365 days (2028 is a leap year)
+  assert.doesNotThrow(() => applyRound(g, 'a', 2, 2, round(count(2, 2)), '2027-11-02'));
+  // renewing early adds a year to the end date, so nothing is lost
+  setPaid(g, 'a', true, '2028-10-15');
+  assert.equal(paidUntilOf(kid), '2029-10-31');
+  setPaid(g, 'a', false, '2028-10-16');
+  assert.equal(isPaid(kid, '2028-10-16'), false);
+  assert.equal(kid.paidUntil, '');
 });

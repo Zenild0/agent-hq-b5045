@@ -12,28 +12,47 @@ export const FREE_LEVELS = 1;
 export const FREE_WARMUPS = 3; // free Warm-up sessions (one per day) before it becomes part of the full game
 
 export const emptyGame = () => ({ kids: {}, daily: {} });
-export const emptyKid = () => ({ cleared: [], stages: {}, best: {}, top: {}, weekly: {}, badges: {}, dailyDays: [], paid: false, paidOn: '', warmups: 0, warmupLast: '' });
+export const emptyKid = () => ({ cleared: [], stages: {}, best: {}, top: {}, weekly: {}, badges: {}, dailyDays: [], paid: false, paidOn: '', paidUntil: '', warmups: 0, warmupLast: '' });
 
-// The teacher unlocks (or locks) the full game for one child, after the parent has paid.
+// The full game is paid for one year at a time (365 days).
+export const YEAR_DAYS = 365;
+const addDays = (date, n) => iso(Date.parse(`${date}T00:00:00Z`) + n * dayMs);
+
+// Is the full game unlocked for this child on this date? (Expires after a year; the date is the day it ends.)
+export function isPaid(kid, today = istDate()) {
+  if (!kid?.paid) return false;
+  const until = kid.paidUntil || addDays(kid.paidOn || '1970-01-01', YEAR_DAYS); // older records: a year from the day it was unlocked
+  return today < until;
+}
+export const paidUntilOf = (kid) => (kid?.paid ? kid.paidUntil || addDays(kid.paidOn || '1970-01-01', YEAR_DAYS) : '');
+export const daysLeft = (kid, today = istDate()) => (kid?.paid ? Math.round((Date.parse(`${paidUntilOf(kid)}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / dayMs) : 0);
+export const wasPaid = (kid) => Boolean(kid?.paid); // true even after the year ended: shown as "expired, renew"
+
+// The teacher unlocks (or locks) the full game for one child after a payment. Unlocking gives 365 days;
+// renewing while it is still running adds a year to the end date.
 export function setPaid(game, childId, paid, today) {
   const kid = (game.kids[childId] ??= emptyKid());
-  kid.paid = Boolean(paid);
-  kid.paidOn = kid.paid ? today : '';
+  if (paid) {
+    const active = isPaid(kid, today);
+    const base = active ? paidUntilOf(kid) : today;
+    kid.paidOn = active ? kid.paidOn : today;
+    kid.paid = true;
+    kid.paidUntil = addDays(base, YEAR_DAYS);
+  } else { kid.paid = false; kid.paidOn = ''; kid.paidUntil = ''; }
   return kid;
 }
-export const isPaid = (kid) => Boolean(kid?.paid);
 
 // Free Warm-up sessions still available (null = unlimited, the child has the full game).
-export const warmupsLeft = (kid) => (isPaid(kid) ? null : Math.max(0, FREE_WARMUPS - (kid?.warmups ?? 0)));
+export const warmupsLeft = (kid, today = istDate()) => (isPaid(kid, today) ? null : Math.max(0, FREE_WARMUPS - (kid?.warmups ?? 0)));
 
 // Opening the Warm-up room. One session per day: opening it again the same day is the same session.
 export function useWarmup(game, childId, today) {
   const kid = (game.kids[childId] ??= emptyKid());
-  if (isPaid(kid) || kid.warmupLast === today) return { left: warmupsLeft(kid) };
+  if (isPaid(kid, today) || kid.warmupLast === today) return { left: warmupsLeft(kid, today) };
   if ((kid.warmups ?? 0) >= FREE_WARMUPS) throw new PaywallError('The free Warm-up sessions are used up. Unlock the full game to keep warming up');
   kid.warmups = (kid.warmups ?? 0) + 1;
   kid.warmupLast = today;
-  return { left: warmupsLeft(kid) };
+  return { left: warmupsLeft(kid, today) };
 }
 
 const dayMs = 86400000;
@@ -95,7 +114,7 @@ export function applyRound(game, childId, level, stage, rawResults, today) {
   if (!lv || !STAGES.some((s) => s.stage === stage)) throw new GameError('Unknown level');
   const kid = (game.kids[childId] ??= emptyKid());
   kid.stages ??= {};
-  if (level > FREE_LEVELS && !isPaid(kid)) throw new PaywallError('Unlock the full game to play this level');
+  if (level > FREE_LEVELS && !isPaid(kid, today)) throw new PaywallError('Unlock the full game to play this level');
   if (stage > maxStage(kid, level)) throw new GameError(level > maxPlayable(kid) ? 'Clear the level before this one first' : 'Clear the stage before this one first');
   const results = checkResults(rawResults, stageSpec(level, stage).count, isTimed(level));
   const score = scoreRound(results);
@@ -139,7 +158,7 @@ export function applyDaily(game, childId, today, rawResults) {
   const results = checkResults(rawResults, DAILY_COUNT);
   const day = (game.daily[today] ??= {});
   const kid = (game.kids[childId] ??= emptyKid());
-  if (!isPaid(kid)) throw new PaywallError('Unlock the full game to play the daily challenge');
+  if (!isPaid(kid, today)) throw new PaywallError('Unlock the full game to play the daily challenge');
   if (day[childId]) return { already: true, score: day[childId], newBadges: [] };
   const score = scoreRound(results);
   day[childId] = { won: score.won, ms: score.ms, stars: score.stars };

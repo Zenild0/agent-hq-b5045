@@ -11,7 +11,7 @@ import {
   compareNames, findOccasion, slug,
 } from './lib/logic.js';
 import { openStore, newCode } from './lib/store.js';
-import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, setPaid, isPaid, warmupsLeft, useWarmup, GameError, PaywallError } from './lib/game.js';
+import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, setPaid, isPaid, paidUntilOf, daysLeft, wasPaid, warmupsLeft, useWarmup, GameError, PaywallError } from './lib/game.js';
 import { LEVELS, DAILY_COUNT, STAGES, stageSpec, isTimed } from './public/levels.js';
 import { istNow, isDate, isTime, scheduleDays, nextPractice, shiftDate } from './lib/schedule.js';
 import { createTar, readTar } from './lib/tar.js';
@@ -192,7 +192,7 @@ function childDetail(child, season, { teacher = false } = {}) {
   return {
     ...profileOf(child), season, seasonLabel: seasonLabel(season), settings: db.settings,
     stats: childStats(db, child.id, season), history,
-    ...(teacher ? { remarkLog: remarkLogFor(child), gamePaid: isPaid(db.game.kids[child.id]) } : {}),
+    ...(teacher ? { remarkLog: remarkLogFor(child), ...gameAccess(child.id) } : {}),
     yearRank: yearBoard.find((r) => r.id === child.id)?.rank ?? null, yearRanked: yearBoard.length,
     monthRank: monthBoard.find((r) => r.id === child.id)?.rank ?? null, monthLabel: monthLabel(month),
   };
@@ -243,6 +243,12 @@ function removeScheduleDay(date) {
 // ---- singing game (scores only: no audio is ever sent or stored) -------------
 
 const GAME_GAP_MS = Number(process.env.CHOIR_GAME_GAP_MS ?? 8000);
+// What the teacher sees for one child: unlocked until when, or expired.
+function gameAccess(id) {
+  const kid = store.db.game.kids[id];
+  const today = istDate();
+  return { gamePaid: isPaid(kid, today), gamePaidUntil: paidUntilOf(kid), gameExpired: wasPaid(kid) && !isPaid(kid, today) };
+}
 const roundGate = new Map(); // child id -> { last, day, n } to stop floods
 function gameOn() { if (!store.db.settings.gameEnabled) throw new HttpError(403, 'The singing game is switched off right now'); }
 function gameThrottle(id) {
@@ -266,11 +272,15 @@ function gameState(child, q) {
   const level = Math.min(LEVELS.length, Math.max(1, Number(q.get('level')) || Math.min(LEVELS.length, maxPlayable(kid))));
   const week = weekKeyOf(today);
   const daily = db.game.daily[today]?.[child.id] ?? null;
-  const paid = isPaid(kid);
+  const paid = isPaid(kid, today);
+  const left = daysLeft(kid, today);
   return {
     paid,
-    warmupLeft: warmupsLeft(kid),
-    pay: paid ? null : { price: db.settings.gamePrice, mobile: db.settings.gamePayMobile, upi: db.settings.gameUpi },
+    warmupLeft: warmupsLeft(kid, today),
+    paidUntil: paidUntilOf(kid), // empty if never unlocked; a past date means the year has ended
+    expired: wasPaid(kid) && !paid,
+    renewSoon: paid && left <= 30, // within 30 days of the end: the renew card shows
+    pay: !paid || left <= 30 ? { price: db.settings.gamePrice, mobile: db.settings.gamePayMobile, upi: db.settings.gameUpi } : null,
     levels: LEVELS.map(({ id, tier, name, how, tol, hold, count }) => ({ id, tier, name, how, tol, hold, count, timed: isTimed(id), stages: STAGES.map((st) => stageSpec(id, st.stage)) })),
     me: { id: child.id, name: child.name, paid, cleared: kid.cleared, stages: kid.stages ?? {}, best: kid.best, top: kid.top ?? {}, badges: kid.badges, maxPlayable: maxPlayable(kid), dailyStreak: dailyStreak(kid, today) },
     // the daily challenge and the weekly boards are part of the full game
@@ -509,7 +519,7 @@ function createChildren(text, { standard = '', joinedYear = null, guest = false 
   return { added, skipped };
 }
 
-const childOut = (c) => ({ ...profileOf(c), code: c.code, active: c.active, guest: Boolean(c.guest), gamePaid: isPaid(store.db.game.kids[c.id]) });
+const childOut = (c) => ({ ...profileOf(c), code: c.code, active: c.active, guest: Boolean(c.guest), gamePaid: isPaid(store.db.game.kids[c.id], istDate()) });
 
 // Teacher-chosen code (e.g. 1001 or CC01): 3-8 letters/digits, unique.
 function customCode(value, child) {
@@ -903,7 +913,7 @@ async function teacherApi(req, res, q, parts) {
     if (req.method === 'PUT' && id && action === 'game') {
       setPaid(store.db.game, child.id, body.paid, istDate());
       store.save();
-      return send(res, 200, { gamePaid: isPaid(store.db.game.kids[child.id]) });
+      return send(res, 200, gameAccess(child.id));
     }
     if (req.method === 'POST' && id && action === 'new-code') {
       child.code = newCode(store.db);

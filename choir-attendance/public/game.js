@@ -106,10 +106,14 @@ export function mountGame(root, { code = '', preview = false } = {}) {
     const p = state.pay || {};
     const price = p.price ?? 500;
     const kid = state.me.name || '';
-    const upiLink = p.upi ? `upi://pay?pa=${encodeURIComponent(p.upi)}&pn=${encodeURIComponent("Children's Choir")}&am=${price}&cu=INR&tn=${encodeURIComponent(`Choir game: ${kid}`)}` : '';
+    const until = state.paidUntil ? fmtDay(state.paidUntil) : '';
+    const renew = state.expired || state.renewSoon;
+    const head = state.expired ? `Renew the full game · ₹${esc(price)} a year` : state.renewSoon ? `Renew your full game · ₹${esc(price)} for another year` : `Unlock the full game · ₹${esc(price)} a year`;
+    const upiLink = p.upi ? `upi://pay?pa=${encodeURIComponent(p.upi)}&pn=${encodeURIComponent("Children's Choir")}&am=${price}&cu=INR&tn=${encodeURIComponent(`Choir game${renew ? ' renewal' : ''}: ${kid}`)}` : '';
     return `
       <div class="card gm-unlock">
-        <h3 style="margin:0">Unlock the full game · ₹${esc(price)}</h3>
+        <h3 style="margin:0">${head}</h3>
+        ${state.expired ? `<div class="gm-new">Your year of the full game ended on ${esc(until)}. Your progress, scores and badges are safe and will be waiting.</div>` : state.renewSoon ? `<div class="gm-new">Your full game runs until ${esc(until)}. Renewing adds another year.</div>` : ''}
         <div>Level 1 is free, and the Warm-up is free for 3 sessions. The full game adds <b>Level 2 to Legend</b>, the <b>daily Legend challenge</b>, the <b>weekly leaderboards</b> and <b>unlimited Warm-up</b>.</div>
         <div class="gm-note">This paid feature is to cover the expenses of building and maintaining this app. It is a vocal training feature.<br>Thank you for your support in helping to make this a better app for the kids. 🙏</div>
         ${p.mobile || p.upi ? `
@@ -120,7 +124,7 @@ export function mountGame(root, { code = '', preview = false } = {}) {
               <a class="btn small primary" href="${esc(upiLink)}">Open my UPI app</a>` : ''}
             <div><b>Please send ${esc(kid) || "your child's name"}'s name</b> with the payment (as the payment note, or by message), so your child can be unlocked.</div>
           </div>` : '<div class="muted">Please ask your choir teacher how to pay.</div>'}
-        <div class="muted">After you pay, your choir teacher will unlock the full game for your child.</div>
+        <div class="muted">After you pay, your choir teacher will ${renew ? 'renew' : 'unlock'} the full game for your child (one year each time).</div>
       </div>`;
   }
 
@@ -153,13 +157,13 @@ export function mountGame(root, { code = '', preview = false } = {}) {
       <div class="card gm-hero">
         <div class="muted">Your journey</div>
         <h2 class="gm-title">${esc(titleFor(top))}</h2>
-        <div class="muted">${me.cleared.length} of ${LEVELS.length} levels cleared${!preview && me.dailyStreak > 1 ? ` · 🔥 ${me.dailyStreak} days in a row` : ''}${offline ? ' · offline' : ''}</div>
+        <div class="muted">${me.cleared.length} of ${LEVELS.length} levels cleared${!preview && state.paid && state.paidUntil ? ` · full game until ${fmtDay(state.paidUntil)}` : ''}${!preview && me.dailyStreak > 1 ? ` · 🔥 ${me.dailyStreak} days in a row` : ''}${offline ? ' · offline' : ''}</div>
         ${pianoHtml()}
         <div class="muted gm-tip">Each cleared level lights a piano key. Tap a key to open that level.</div>
         ${allDone ? '<div class="gm-new">You have cleared every level. Legend!</div>' : behindPay(t.level) ? '<button class="btn primary gm-cta" data-a="unlock">🔓 Unlock the full game to keep going</button>' : `<button class="btn primary gm-cta" data-a="continue">▶ Continue: ${esc(lv.name)}, Stage ${t.stage}</button>`}
         <div class="row"><button class="btn" data-a="levels">All levels</button><button class="btn" data-a="warm">${state.warmupLeft === 0 ? '🔒' : '🔥'} Warm-up${typeof state.warmupLeft === 'number' && state.warmupLeft > 0 ? ` (${state.warmupLeft} free left)` : ''}</button></div>
       </div>
-      ${!paid() ? `<div id="unlock">${unlockHtml()}</div>` : ''}
+      ${state.pay ? `<div id="unlock">${unlockHtml()}</div>` : ''}
       ${d ? `<div class="card">
         <h3 style="margin:0 0 4px">Today's Legend challenge</h3>
         ${d.mine ? `<div>You scored <b>${d.mine.won} of ${d.count}</b> in ${fmtMs(d.mine.ms)} ${stars(d.mine.stars)}</div><div class="muted">One try a day. Come back tomorrow!</div>`

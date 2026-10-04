@@ -531,8 +531,11 @@ async function openChild(id) {
       </div>
       <h3 style="margin-top:20px">Singing game</h3>
       <div class="card row between" style="margin-top:6px">
-        <span>${d.gamePaid ? '✅ Full game unlocked' : '🔒 Free version only (Warm-up and Level 1)'}</span>
-        <button class="btn small ${d.gamePaid ? '' : 'primary'}" id="gamePaid">${d.gamePaid ? 'Lock again' : 'Unlock after payment'}</button></div>
+        <span>${d.gamePaid ? `✅ Full game unlocked until ${esc(fmtDate(d.gamePaidUntil))}` : d.gameExpired ? `⌛ The year ended on ${esc(fmtDate(d.gamePaidUntil))}. Renew when they pay again` : '🔒 Free version only (Level 1 and 3 Warm-up sessions)'}</span>
+        <span class="row">
+          <button class="btn small primary" id="gameUnlock">${d.gamePaid ? 'Renew for a year' : d.gameExpired ? 'Renew for a year' : 'Unlock for a year'}</button>
+          ${d.gamePaid ? '<button class="btn small" id="gameLock">Lock now</button>' : ''}</span></div>
+      <div class="muted">One payment gives 365 days. Renewing while it is running adds a year to the end date. Progress and scores are always kept.</div>
       ${decisionPanel(d)}
       ${leaveAlertHtml(d, { teacher: true })}
       <h3 style="margin-top:20px">This year</h3>${statsHtml(d)}
@@ -541,10 +544,9 @@ async function openChild(id) {
       <button class="btn danger" id="toggle">${d.active ? 'Remove from choir' : 'Add back to choir'}</button>` : ''}`;
   if (!dlg.open) dlg.showModal();
   $('#close').addEventListener('click', () => dlg.close());
-  $('#gamePaid')?.addEventListener('click', () => run(async () => {
-    await call(`teacher/children/${id}/game`, { method: 'PUT', body: { paid: !d.gamePaid } });
-    await openChild(id);
-  }));
+  const gameSet = (paid) => run(async () => { await call(`teacher/children/${id}/game`, { method: 'PUT', body: { paid } }); await openChild(id); });
+  $('#gameUnlock')?.addEventListener('click', () => gameSet(true));
+  $('#gameLock')?.addEventListener('click', () => gameSet(false));
 
   const setPhoto = async (file) => {
     if (!file) return;
@@ -665,8 +667,8 @@ async function loadSettings() {
       ${num('remarkPenalty', 'Points taken off a session with any negative remark (charged once, however many)', s.remarkPenalty)}
       ${num('remarkBonus', 'Points added for each positive remark (well behaved, helped others)', s.remarkBonus)}
       ${num('latePointsFactor', 'Share of points when late (1 = full points; the remark penalty applies on top)', s.latePointsFactor, 'step="0.1" max="1"')}
-      <div class="muted" style="margin-top:10px"><b>Full singing game: how parents pay.</b> Warm-up and Level 1 are free. Parents pay you directly, then you unlock their child (Children → the child → Singing game).</div>
-      <label class="field">Price (₹)<input name="gamePrice" type="number" min="0" step="1" value="${s.gamePrice ?? 500}"></label>
+      <div class="muted" style="margin-top:10px"><b>Full singing game: how parents pay.</b> Warm-up and Level 1 are free. Parents pay you directly, then you unlock their child for a year (Children → the child → Singing game). After 365 days they need to pay again.</div>
+      <label class="field">Price for one year (₹)<input name="gamePrice" type="number" min="0" step="1" value="${s.gamePrice ?? 500}"></label>
       <label class="field">Mobile number to pay (UPI or phone)<input name="gamePayMobile" type="tel" maxlength="20" value="${esc(s.gamePayMobile ?? '')}"></label>
       <label class="field">UPI ID (optional, like name@bank)<input name="gameUpi" maxlength="60" value="${esc(s.gameUpi ?? '')}"></label>
       <div class="muted"><a href="/voice-test.html" target="_blank" rel="noopener">🎮 Open the test version of the singing game</a> (every level open, nothing saved on the server, parents never see it)</div>
