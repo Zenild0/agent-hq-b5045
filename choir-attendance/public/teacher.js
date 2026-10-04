@@ -904,13 +904,15 @@ function drawHymnsTab() {
   const az = hymnSort() === 'az';
   const byTitle = (a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base', numeric: true });
   const groups = az ? [{ id: '_az', label: 'All hymns (A–Z)' }] : categories;
-  const term = ($('#hq')?.value || '').trim().toLowerCase();
+  const raw = $('#hq')?.value || ''; // keep exactly what was typed, spaces included
+  const term = raw.trim().toLowerCase();
   $('#hymns').innerHTML = `
     <div class="card">
       <div class="row between"><div><h3 style="margin:0">Hymn library</h3><div class="muted">Hymns taught that are not in the book. Parents browse them by category.</div></div>
         <div class="row"><button class="btn primary" id="addHymn">＋ Add hymn</button><button class="btn" id="addHymns">＋ Add many</button></div></div>
       <div class="row" role="group" aria-label="Order of hymns" style="margin-top:8px"><button class="btn small${az ? '' : ' primary'}" data-sort="cat">By category</button><button class="btn small${az ? ' primary' : ''}" data-sort="az">A–Z</button></div>
-      <label class="field"><span class="sr">Search</span><input id="hq" type="search" placeholder="Search hymns…" value="${esc(term)}"></label>
+      <label class="field"><span class="sr">Search</span><input id="hq" type="search" placeholder="Search hymns…" value="${esc(raw)}"></label>
+      <div class="row"><button class="btn small${term.length >= 2 && !hymns.some((h) => h.title.toLowerCase().includes(term)) ? ' primary' : ''}" id="hOnline"${term.length < 2 ? ' disabled' : ''}>🔎 ${term.length < 2 ? 'Search online (type a title first)' : `Search online for “${esc(raw.trim())}”`}</button></div>
     </div>
     ${groups.map((c) => {
       const items = hymns.filter((h) => (az || h.category === c.id) && (!term || h.title.toLowerCase().includes(term))).sort(byTitle);
@@ -930,6 +932,7 @@ function drawHymnsTab() {
     try { localStorage.setItem('choir-hymn-sort', b.dataset.sort); } catch { /* ignore */ }
     drawHymnsTab();
   }));
+  $('#hOnline').addEventListener('click', () => openHymn(null, { title: raw.trim(), auto: true }));
   $('#addHymn').addEventListener('click', () => openHymn(null));
   $('#addHymns').addEventListener('click', openHymnBulk);
   $('#hymns').querySelectorAll('[data-hview]').forEach((b) => b.addEventListener('click', () => {
@@ -945,8 +948,8 @@ function drawHymnsTab() {
 
 const catOptions = (selected) => hymnState.categories.map((c) => `<option value="${esc(c.id)}"${c.id === selected ? ' selected' : ''}>${esc(c.label)}</option>`).join('');
 
-function openHymn(id) {
-  const h = id ? hymnState.hymns.find((x) => x.id === id) : { title: '', category: hymnState.categories[0].id, link: '', notes: '', audio: null };
+function openHymn(id, prefill = null) {
+  const h = id ? hymnState.hymns.find((x) => x.id === id) : { title: prefill?.title || '', category: hymnState.categories[0].id, link: '', notes: '', audio: null };
   $('#dlgBody').innerHTML = `
     <div class="row between"><h2 style="margin:0">${id ? 'Edit hymn' : 'Add hymn'}</h2><button class="btn small" id="close" aria-label="Close">✕</button></div>
     <form id="hf">
@@ -1038,6 +1041,7 @@ function openHymn(id) {
       showCards(r.results);
     } catch (err) { $('#lyMsg').textContent = `⚠️ ${err.message}`; }
   });
+  if (prefill?.auto) $('#findLy').click();
   if (!id) return;
   const extType = { mp3: 'audio/mpeg', m4a: 'audio/mp4', wav: 'audio/wav', ogg: 'audio/ogg', aac: 'audio/aac' };
   $('#aud').addEventListener('change', async (e) => {
