@@ -45,6 +45,21 @@ export function setPaid(game, childId, paid, today) {
 // Free Warm-up sessions still available (null = unlimited, the child has the full game).
 export const warmupsLeft = (kid, today = istDate()) => (isPaid(kid, today) ? null : Math.max(0, FREE_WARMUPS - (kid?.warmups ?? 0)));
 
+// The teacher gives a child their three free Warm-up sessions again.
+export function resetWarmups(game, childId) {
+  const kid = (game.kids[childId] ??= emptyKid());
+  kid.warmups = 0;
+  kid.warmupLast = '';
+  return kid;
+}
+
+// Everyone gets their three free Warm-up sessions again. Returns how many children had used some.
+export function resetAllWarmups(game) {
+  let n = 0;
+  for (const kid of Object.values(game.kids)) { if (kid.warmups || kid.warmupLast) n += 1; kid.warmups = 0; kid.warmupLast = ''; }
+  return n;
+}
+
 // Opening the Warm-up room. One session per day: opening it again the same day is the same session.
 export function useWarmup(game, childId, today) {
   const kid = (game.kids[childId] ??= emptyKid());

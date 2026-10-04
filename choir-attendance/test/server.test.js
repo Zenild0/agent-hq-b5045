@@ -511,6 +511,10 @@ test('singing game: an unpaid child gets the Warm-up (first session today), the 
   assert.equal(w1.left, 2);
   assert.equal((await j('/api/game/warmup', { method: 'POST', code: cleo.code, body: {} })).data.left, 2, 'same day, same session');
   assert.equal((await j('/api/game', { code: cleo.code })).data.warmupLeft, 2);
+  const acc = await j(`/api/teacher/child/${cleo.id}`);
+  assert.equal(acc.data.warmupLeft, 2, 'the teacher sees the sessions left');
+  assert.equal((await j(`/api/teacher/children/${cleo.id}/game`, { method: 'PUT', body: { resetWarmups: true } })).data.warmupLeft, 3);
+  assert.equal((await j('/api/game', { code: cleo.code })).data.warmupLeft, 3, 'and the child has all three again');
   await j('/api/teacher/settings', { method: 'PUT', body: { gameEnabled: false } });
 });
 
@@ -582,4 +586,17 @@ test('a child\'s card shows year points and this month\'s points, matching the l
   const month = pub.monthBoard.find((r) => r.id === anna.id);
   assert.equal(me.stats.points, year.points, 'the card total is the year board');
   assert.equal(me.monthPoints, month ? month.points : 0, 'and the month figure is the month board');
+});
+
+test('teacher can reset the free Warm-up sessions for one child or for everyone', async () => {
+  await j('/api/teacher/settings', { method: 'PUT', body: { gameEnabled: true } });
+  const dan = (await j('/api/teacher/children', { method: 'POST', body: { name: 'Dan Warm' } })).data;
+  await j('/api/teacher/unlock-codes', { method: 'POST', body: {} });
+  await j('/api/game/warmup', { method: 'POST', code: dan.code, body: {} });
+  assert.equal((await j(`/api/teacher/child/${dan.id}`)).data.warmupLeft, 2);
+  const all = await j('/api/teacher/game-warmups', { method: 'POST', body: {} });
+  assert.equal(all.status, 200);
+  assert.ok(all.data.reset >= 1);
+  assert.equal((await j(`/api/teacher/child/${dan.id}`)).data.warmupLeft, 3);
+  await j('/api/teacher/settings', { method: 'PUT', body: { gameEnabled: false } });
 });

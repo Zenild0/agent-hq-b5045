@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyGame, setPaid, isPaid, paidUntilOf, daysLeft, useWarmup, warmupsLeft, PaywallError, applyRound, applyDaily, weeklyBoard, dailyBoard, weekKeyOf, dailySeed, maxPlayable, maxStage, GameError, dailyStreak } from '../lib/game.js';
+import { emptyGame, setPaid, isPaid, resetWarmups, resetAllWarmups, paidUntilOf, daysLeft, useWarmup, warmupsLeft, PaywallError, applyRound, applyDaily, weeklyBoard, dailyBoard, weekKeyOf, dailySeed, maxPlayable, maxStage, GameError, dailyStreak } from '../lib/game.js';
 import { LEVELS, DAILY_COUNT, stageSpec } from '../public/levels.js';
 
 const round = (n, { won = n, ms = 3000, err = 20, hints = 0, limit = 15000 } = {}) =>
@@ -221,4 +221,22 @@ test('a round reports a new personal best only when it beats the previous best',
   assert.equal(play(g, 'a', 1, 1, '2026-10-05', { ms: 5000 }).personalBest, true, 'the first round is a best');
   assert.equal(play(g, 'a', 1, 1, '2026-10-06', { ms: 6000 }).personalBest, false);
   assert.equal(play(g, 'a', 1, 1, '2026-10-07', { ms: 4000 }).personalBest, true);
+});
+
+test('the teacher can give a child their three free Warm-up sessions again', () => {
+  const g = emptyGame();
+  for (const d of ['2026-10-05', '2026-10-06', '2026-10-07']) useWarmup(g, 'a', d);
+  assert.throws(() => useWarmup(g, 'a', '2026-10-08'), PaywallError);
+  resetWarmups(g, 'a');
+  assert.equal(warmupsLeft(g.kids.a, '2026-10-08'), 3);
+  assert.equal(useWarmup(g, 'a', '2026-10-08').left, 2);
+});
+
+test('the teacher can reset the free Warm-up sessions for everyone at once', () => {
+  const g = emptyGame();
+  for (const id of ['a', 'b']) for (const d of ['2026-10-05', '2026-10-06', '2026-10-07']) useWarmup(g, id, d);
+  useWarmup(g, 'c', '2026-10-05'); // c has used one; d has not used any
+  useWarmup(g, 'd', '2026-10-05'); resetWarmups(g, 'd');
+  assert.equal(resetAllWarmups(g), 3);
+  for (const id of ['a', 'b', 'c', 'd']) assert.equal(warmupsLeft(g.kids[id], '2026-10-08'), 3, id);
 });

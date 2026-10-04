@@ -548,6 +548,7 @@ async function openChild(id) {
         <span class="row">
           <button class="btn small primary" id="gameUnlock">${d.gamePaid ? 'Renew for a year' : d.gameExpired ? 'Renew for a year' : 'Unlock for a year'}</button>
           ${d.gamePaid ? '<button class="btn small" id="gameLock">Lock now</button>' : ''}</span></div>
+      ${d.gamePaid ? '' : `<div class="card row between" style="margin-top:6px"><span>🔥 Free Warm-up sessions left: <b>${d.warmupLeft ?? 3} of 3</b></span><button class="btn small" id="warmReset"${(d.warmupLeft ?? 3) >= 3 ? ' disabled' : ''}>Reset to 3</button></div>`}
       <div class="muted">One payment gives 365 days. Renewing while it is running adds a year to the end date. Progress and scores are always kept.</div>
       ${decisionPanel(d)}
       ${leaveAlertHtml(d, { teacher: true })}
@@ -560,6 +561,7 @@ async function openChild(id) {
   const gameSet = (paid) => run(async () => { await call(`teacher/children/${id}/game`, { method: 'PUT', body: { paid } }); await openChild(id); });
   $('#gameUnlock')?.addEventListener('click', () => gameSet(true));
   $('#gameLock')?.addEventListener('click', () => gameSet(false));
+  $('#warmReset')?.addEventListener('click', () => run(async () => { await call(`teacher/children/${id}/game`, { method: 'PUT', body: { resetWarmups: true } }); await openChild(id); }));
 
   const setPhoto = async (file) => {
     if (!file) return;
@@ -688,6 +690,7 @@ async function loadSettings() {
       <label class="field">Mobile number to pay (UPI or phone)<input name="gamePayMobile" type="tel" maxlength="20" value="${esc(s.gamePayMobile ?? '')}"></label>
       <label class="field">UPI ID (optional, like name@bank)<input name="gameUpi" maxlength="60" value="${esc(s.gameUpi ?? '')}"></label>
       <div class="muted"><a href="/voice-test.html" target="_blank" rel="noopener">🎤 Open the test version of Vocals</a> (every level open, nothing saved on the server, parents never see it)</div>
+      <div class="row" style="margin:6px 0"><button type="button" class="btn small" id="warmResetAll">🔥 Give everyone 3 free Warm-up sessions again</button><span class="muted" id="warmResetMsg" aria-live="polite"></span></div>
       <label class="chk"><input name="gameEnabled" type="checkbox"${s.gameEnabled ? ' checked' : ''}> 🎤 Vocals game is on for parents</label>
       <label class="chk"><input name="countSundayAbsences" type="checkbox"${s.countSundayAbsences ? ' checked' : ''}> Missing Sunday mass also counts as a leave</label>
       <label class="field">Website address to share with parents<input name="publicUrl" type="url" placeholder="https://your-choir-app.example.com" value="${esc(s.publicUrl || '')}"></label>
@@ -730,6 +733,10 @@ async function loadSettings() {
     } catch (err) { $('#bkMsg').textContent = `⚠️ ${err.message}`; }
   });
   $('#forgetPin')?.addEventListener('click', () => { try { localStorage.removeItem('choir-pin'); } catch { /* private mode */ } location.reload(); });
+  $('#warmResetAll')?.addEventListener('click', () => {
+    if (!confirm('Give EVERY child their 3 free Warm-up sessions again?')) return;
+    run(async () => { const r = await call('teacher/game-warmups', { method: 'POST', body: {} }); $('#warmResetMsg').textContent = `✅ Done. ${r.reset} ${r.reset === 1 ? 'child' : 'children'} had used some.`; });
+  });
   $('#setForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const f = new FormData(e.target);

@@ -11,7 +11,7 @@ import {
   compareNames, findOccasion, slug,
 } from './lib/logic.js';
 import { openStore, newCode } from './lib/store.js';
-import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, setPaid, isPaid, paidUntilOf, daysLeft, wasPaid, warmupsLeft, useWarmup, GameError, PaywallError } from './lib/game.js';
+import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, setPaid, resetWarmups, resetAllWarmups, isPaid, paidUntilOf, daysLeft, wasPaid, warmupsLeft, useWarmup, GameError, PaywallError } from './lib/game.js';
 import { LEVELS, DAILY_COUNT, STAGES, stageSpec, isTimed } from './public/levels.js';
 import { istNow, isDate, isTime, scheduleDays, nextPractice, shiftDate } from './lib/schedule.js';
 import { createTar, readTar } from './lib/tar.js';
@@ -248,7 +248,7 @@ const GAME_GAP_MS = Number(process.env.CHOIR_GAME_GAP_MS ?? 8000);
 function gameAccess(id) {
   const kid = store.db.game.kids[id];
   const today = istDate();
-  return { gamePaid: isPaid(kid, today), gamePaidUntil: paidUntilOf(kid), gameExpired: wasPaid(kid) && !isPaid(kid, today) };
+  return { gamePaid: isPaid(kid, today), gamePaidUntil: paidUntilOf(kid), gameExpired: wasPaid(kid) && !isPaid(kid, today), warmupLeft: warmupsLeft(kid, today) ?? 3 };
 }
 const roundGate = new Map(); // child id -> { last, day, n } to stop floods
 function gameOn() { if (!store.db.settings.gameEnabled) throw new HttpError(403, 'The Vocals game is switched off right now'); }
@@ -881,6 +881,11 @@ async function teacherApi(req, res, q, parts) {
     failures.clear();
     return send(res, 200, { cleared });
   }
+  if (req.method === 'POST' && b === 'game-warmups') { // reset the free Warm-up sessions for everyone
+    const n = resetAllWarmups(store.db.game);
+    store.save();
+    return send(res, 200, { reset: n });
+  }
   if (b === 'schedule') {
     if (req.method === 'PUT' && !id) { updateSchedule(body); return send(res, 200, scheduleView()); }
     if (req.method === 'PUT' && id === 'day') { setScheduleDay(body); return send(res, 200, scheduleView()); }
@@ -922,7 +927,8 @@ async function teacherApi(req, res, q, parts) {
       return send(res, 200, { decision: child.leaveDecisions[season] ?? null });
     }
     if (req.method === 'PUT' && id && action === 'game') {
-      setPaid(store.db.game, child.id, body.paid, istDate());
+      if (body.resetWarmups) resetWarmups(store.db.game, child.id); // give the three free Warm-up sessions again
+      else setPaid(store.db.game, child.id, body.paid, istDate());
       store.save();
       return send(res, 200, gameAccess(child.id));
     }
