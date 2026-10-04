@@ -76,7 +76,7 @@ export function bobbleHtml(c, size = 56) {
 export function boardHtml(rows, { meId = null, empty = 'No points yet — the first practice gets the race started! 🎵' } = {}) {
   const scored = rows.filter((r) => r.points > 0);
   if (!scored.length) {
-    return `<div class="empty" style="color:#fff">${esc(empty)}</div>${rows.length ? restHtml(rows, 0, meId, 0) : ''}`;
+    return `<div class="empty" style="color:#fff">${esc(empty)}</div>`;
   }
   // Podium slots by rank (silver, gold, bronze). Everyone sharing a rank stands on the same step.
   const groups = [2, 1, 3].map((rk) => scored.filter((r) => r.rank === rk));
@@ -99,20 +99,8 @@ export function boardHtml(rows, { meId = null, empty = 'No points yet — the fi
       </div>`;
   }).join('');
   const weights = groups.map((g, i) => Math.max(1, g.length) * (i === 1 ? 1.15 : 1));
-  const rest = scored.filter((r) => r.rank > 3).concat(rows.filter((r) => r.points <= 0));
-  const max = scored[0].points;
-  return `<div class="podium" style="grid-template-columns:${weights.map((w) => `${w}fr`).join(' ')}">${slots}</div>${restHtml(rest, max, meId, 3)}`;
-}
-
-function restHtml(rows, max, meId, offset) {
-  if (!rows.length) return '';
-  return `<div class="rest">${rows.map((r, i) => `
-    <div class="lb-row rise ${r.id === meId ? 'me-row' : ''}" data-flip="${esc(r.id)}" style="--i:${i}">
-      <div class="rank">${r.rank ?? '–'}</div>
-      ${bobbleHtml(r, 46)}
-      <div class="who"><div class="nm">${esc(r.name)}</div><div class="bar"><i style="width:${max ? Math.max(4, (r.points / max) * 100) : 0}%"></i></div></div>
-      <div class="score">${fmtPts(r.points)}<small>${r.points === 1 ? 'pt' : 'pts'}</small></div>
-    </div>`).join('')}</div>`;
+  // Only the top three ranks are shown. Everyone else sees their own rank on their child card.
+  return `<div class="podium" style="grid-template-columns:${weights.map((w) => `${w}fr`).join(' ')}">${slots}</div>`;
 }
 
 // Renders a board and slides every face from its old spot to its new one (FLIP),
