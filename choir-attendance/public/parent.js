@@ -25,6 +25,31 @@ if (fromLink) {
   tab = 'child';
 }
 
+// Offline: the last data this phone loaded is kept here and used only when the network fails.
+// "Not your child? Switch" clears it. Nothing is shared with other devices.
+const CACHE_PREFIX = 'choir-cache:';
+let usedSaved = false;
+function cachedApi(path, opts = {}) {
+  const key = `${CACHE_PREFIX}${path}|${opts.code || ''}`;
+  return api(path, opts).then((data) => {
+    usedSaved = false;
+    paintNet();
+    try { localStorage.setItem(key, JSON.stringify(data)); } catch { /* storage full or blocked */ }
+    return data;
+  }, (err) => {
+    if (err.status) throw err; // the server answered (wrong code, error): never hide that
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(key) || 'null'); } catch { /* ignore */ }
+    if (!saved) throw err;
+    usedSaved = true;
+    paintNet();
+    return saved;
+  });
+}
+function clearSaved() {
+  try { Object.keys(localStorage).filter((k) => k.startsWith(CACHE_PREFIX)).forEach((k) => localStorage.removeItem(k)); } catch { /* ignore */ }
+}
+
 const app = $('#app');
 
 function shell() {
@@ -48,11 +73,17 @@ function shell() {
 }
 
 function paintNet() {
-  const on = navigator.onLine;
+  const on = navigator.onLine && !usedSaved;
   const el = $('#net');
   if (el) { el.textContent = on ? '● Online' : '● Offline'; el.classList.toggle('off', !on); }
 }
-window.addEventListener('online', paintNet);
+window.addEventListener('online', () => {
+  usedSaved = false;
+  paintNet();
+  // Back online: quietly fetch fresh data and redraw the home and leaderboard.
+  cachedApi('public').then((o) => { overview = o; drawHome(); drawBoard(); }).catch(() => {});
+  if (code) cachedApi('me', { code }).then((d) => { me = d; drawHome(); }).catch(() => {});
+});
 window.addEventListener('offline', paintNet);
 
 // Home: next practice, practice days, the child's remarks. Keeps folds open/closed across redraws.
@@ -129,7 +160,7 @@ function achTab() {
     ${achieversHtml(o.yearly, { kind: 'year', empty: 'Yearly achievers will appear here once the year gets going.' })}`;
   $('#seasonPick')?.addEventListener('change', async (e) => {
     season = Number(e.target.value);
-    overview = await api(`public?season=${season}`);
+    overview = await cachedApi(`public?season=${season}`);
     achTab();
   });
 }
@@ -192,7 +223,7 @@ async function hymnsTab() {
     if (hymnData) drawHymns();
   }));
   try {
-    hymnData = await api('hymns');
+    hymnData = await cachedApi('hymns');
     if (!hymnData.hymns.length) $('#hlist').innerHTML = '<div class="empty">Hymns will appear here once your teacher adds them.</div>';
     else drawHymns();
   } catch (e) { $('#hlist').innerHTML = `<div class="alert bad">${esc(e.message)}</div>`; }
@@ -222,7 +253,7 @@ function codeForm(error = '') {
 async function loadMe() {
   if (!code) return codeForm();
   try {
-    me = await api('me', { code });
+    me = await cachedApi('me', { code });
     store.set('choir-code', code);
     $('#goChild')?.closest('.card')?.remove();
     childView();
@@ -263,7 +294,7 @@ function childView(msg = '') {
     </form>
     <h2>Attendance</h2>
     <div class="card">${historyHtml(d.history)}</div>`;
-  $('#forget').addEventListener('click', () => { store.set('choir-code', ''); code = ''; me = null; codeForm(); drawHome(); drawBoard(); });
+  $('#forget').addEventListener('click', () => { store.set('choir-code', ''); clearSaved(); code = ''; me = null; codeForm(); drawHome(); drawBoard(); });
   $('#editForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target));
@@ -282,7 +313,7 @@ function childView(msg = '') {
 shell();
 paintNet();
 show(tab);
-api('public')
+cachedApi('public')
   .then((o) => {
     overview = o;
     boardTab();

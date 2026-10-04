@@ -33,7 +33,7 @@ There is no PIN. The teacher pages (children's details and parent codes) open **
 - **Settings:** points, leave limit, late-points share, website address for parents.
 
 ## For parents (`/`)
-- **Home:** the next practice with your note, a folded "Practice days" list (past days coloured green for present and red for absent or medical once the child's code is entered), the child's points with day-by-day remarks, then the leaderboard. A small Online/Offline label shows the connection.
+- **Home:** the next practice with your note, a folded "Practice days" list (past days coloured green for present and red for absent or medical once the child's code is entered), the child's points with day-by-day remarks, then the leaderboard. A small Online/Offline label shows the connection. **Offline:** the parent pages open without signal and show what the phone last loaded (schedule, remarks, leaderboard, hymn titles and lyrics). It always tries the internet first. "Not your child? Switch" clears the saved copy. The teacher area and hymn recordings need internet.
 - **Hymns tab:** parents open a category to listen to recordings or follow the music link (no code needed).
 - **One link for everyone.** Parents open it, see the **Leaderboard** and **Achievers** (names, photos and points only), tap **My child**, and type their child's short code. A code opens only that child: attendance, and editing their own contact number, address and the parent-to-call name and number. Name, standard and photo are teacher-only. "Make a new code" cancels an old one.
 
