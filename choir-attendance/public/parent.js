@@ -61,7 +61,7 @@ function shell() {
         <button data-tab="board">🏠 Home</button>
         <button data-tab="ach">⭐ Achievers</button>
         <button data-tab="hymns">🎵 Hymns</button>
-        <button data-tab="game" id="gameTab" hidden>🎮 Sing</button>
+        <button data-tab="game" id="gameTab" hidden>🎤 Vocals</button>
         <button data-tab="child">👧 My child</button>
       </nav>
       <section id="board"></section>
@@ -104,7 +104,7 @@ let gameCtl = null;
 function openGame() {
   const box = $('#game');
   gameCtl?.destroy?.(); gameCtl = null;
-  if (!code) { box.innerHTML = '<div class="card"><h2 style="margin-top:0">🎮 Sing</h2><p class="muted">Enter your child\'s code in <b>My child</b> first. Scores belong to your child.</p><button class="btn primary" id="gameToChild">Go to My child</button></div>'; $('#gameToChild').addEventListener('click', () => show('child')); return; }
+  if (!code) { box.innerHTML = '<div class="card"><h2 style="margin-top:0">🎤 Vocals</h2><p class="muted">Enter your child\'s code in <b>My child</b> first. Scores belong to your child.</p><button class="btn primary" id="gameToChild">Go to My child</button></div>'; $('#gameToChild').addEventListener('click', () => show('child')); return; }
   box.innerHTML = '<div class="empty">Loading…</div>';
   // loaded only now, so a problem in the game can never stop the rest of the app
   import('./game.js').then((m) => { gameCtl = m.mountGame(box, { code }); }).catch(() => { box.innerHTML = '<div class="alert bad">The game could not load. Please try again.</div>'; });

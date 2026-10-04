@@ -25,6 +25,7 @@ app.innerHTML = `
       <button data-tab="occasions">🎄 Occasions</button>
       <button data-tab="children">👧 Children</button>
       <button data-tab="hymns">🎵 Hymns</button>
+      <button data-tab="vocals">🎤 Vocals</button>
       <button data-tab="board">🏆 Leaderboard</button>
       <button data-tab="settings">⚙️ Settings</button>
     </nav>
@@ -34,6 +35,7 @@ app.innerHTML = `
     <section id="occasions" hidden></section>
     <section id="children" hidden></section>
     <section id="hymns" hidden></section>
+    <section id="vocals" hidden></section>
     <section id="board" hidden></section>
     <section id="settings" hidden></section>
   </main>
@@ -62,9 +64,19 @@ function lockOut(message) {
   app.querySelector('main').innerHTML = `<div class="card"><h2 style="margin-top:0">🔒 Teacher area</h2><p>${esc(message)}</p><p class="muted">Open <b>http://localhost:3000/teacher</b> on the computer running the app. Parents use the main link and their child's code.</p><a class="btn" href="/">Go to the parent page</a></div>`;
 }
 
-const tabs = ['attendance', 'schedule', 'occasions', 'children', 'hymns', 'board', 'settings'];
-const loaders = { attendance: loadAttendance, schedule: loadSchedule, occasions: loadOccasions, children: loadChildren, hymns: loadHymns, board: loadBoard, settings: loadSettings };
+const tabs = ['attendance', 'schedule', 'occasions', 'children', 'hymns', 'vocals', 'board', 'settings'];
+const loaders = { attendance: loadAttendance, schedule: loadSchedule, occasions: loadOccasions, children: loadChildren, hymns: loadHymns, vocals: loadVocals, board: loadBoard, settings: loadSettings };
+// The teacher's own copy of Vocals: every level and the paid features are open, and progress stays on this device.
+let vocals = null;
+function loadVocals() {
+  vocals?.destroy?.(); vocals = null;
+  const box = $('#vocals');
+  box.innerHTML = '<div class="empty">Loading…</div>';
+  return import('./game.js').then((m) => { vocals = m.mountGame(box, { preview: true, teacher: true }); }).catch(() => { box.innerHTML = '<div class="alert bad">Vocals could not load. Please try again.</div>'; });
+}
+
 function showTab(name) {
+  if (name !== 'vocals' && vocals) { vocals.destroy?.(); vocals = null; $('#vocals').innerHTML = ''; } // stops the microphone
   tabs.forEach((t) => { $(`#${t}`).hidden = t !== name; });
   app.querySelectorAll('nav button').forEach((x) => x.classList.toggle('on', x.dataset.tab === name));
   return run(loaders[name]);
@@ -364,7 +376,7 @@ async function loadChildren() {
       <div class="grow"><button class="link" data-open="${esc(c.id)}">${esc(c.name)}</button>
         <div class="muted">${c.standard ? `Std ${esc(c.standard)}` : 'No standard yet'}${c.joinedYear ? ` · joined ${c.joinedYear}` : ''}</div></div>
       ${c.active ? '' : '<span class="badge">left choir</span>'}
-      ${c.gamePaid ? '<span class="badge ok" title="Full singing game unlocked">🎮 unlocked</span>' : ''}
+      ${c.gamePaid ? '<span class="badge ok" title="Full Vocals game unlocked">🎤 unlocked</span>' : ''}
       ${c.guest ? `<button class="btn small" data-promote="${esc(c.id)}">⬆ Move to main group</button>` : ''}
     </div>`;
   $('#children').innerHTML = `
@@ -529,7 +541,7 @@ async function openChild(id) {
           <button class="btn small danger" id="newCode">Make a new code</button></div>
         <div class="muted">Only you can see this code. Give it privately to this child's parent. Make a new code if it was shared by mistake.</div>
       </div>
-      <h3 style="margin-top:20px">Singing game</h3>
+      <h3 style="margin-top:20px">Vocals game</h3>
       <div class="card row between" style="margin-top:6px">
         <span>${d.gamePaid ? `✅ Full game unlocked until ${esc(fmtDate(d.gamePaidUntil))}` : d.gameExpired ? `⌛ The year ended on ${esc(fmtDate(d.gamePaidUntil))}. Renew when they pay again` : '🔒 Free version only (Level 1 and 3 Warm-up sessions)'}</span>
         <span class="row">
@@ -667,12 +679,12 @@ async function loadSettings() {
       ${num('remarkPenalty', 'Points taken off a session with any negative remark (charged once, however many)', s.remarkPenalty)}
       ${num('remarkBonus', 'Points added for each positive remark (well behaved, helped others)', s.remarkBonus)}
       ${num('latePointsFactor', 'Share of points when late (1 = full points; the remark penalty applies on top)', s.latePointsFactor, 'step="0.1" max="1"')}
-      <div class="muted" style="margin-top:10px"><b>Full singing game: how parents pay.</b> Warm-up and Level 1 are free. Parents pay you directly, then you unlock their child for a year (Children → the child → Singing game). After 365 days they need to pay again.</div>
+      <div class="muted" style="margin-top:10px"><b>Full Vocals game: how parents pay.</b> Warm-up and Level 1 are free. Parents pay you directly, then you unlock their child for a year (Children → the child → Vocals game). After 365 days they need to pay again.</div>
       <label class="field">Price for one year (₹)<input name="gamePrice" type="number" min="0" step="1" value="${s.gamePrice ?? 500}"></label>
       <label class="field">Mobile number to pay (UPI or phone)<input name="gamePayMobile" type="tel" maxlength="20" value="${esc(s.gamePayMobile ?? '')}"></label>
       <label class="field">UPI ID (optional, like name@bank)<input name="gameUpi" maxlength="60" value="${esc(s.gameUpi ?? '')}"></label>
-      <div class="muted"><a href="/voice-test.html" target="_blank" rel="noopener">🎮 Open the test version of the singing game</a> (every level open, nothing saved on the server, parents never see it)</div>
-      <label class="chk"><input name="gameEnabled" type="checkbox"${s.gameEnabled ? ' checked' : ''}> 🎮 Singing game is on for parents</label>
+      <div class="muted"><a href="/voice-test.html" target="_blank" rel="noopener">🎤 Open the test version of Vocals</a> (every level open, nothing saved on the server, parents never see it)</div>
+      <label class="chk"><input name="gameEnabled" type="checkbox"${s.gameEnabled ? ' checked' : ''}> 🎤 Vocals game is on for parents</label>
       <label class="chk"><input name="countSundayAbsences" type="checkbox"${s.countSundayAbsences ? ' checked' : ''}> Missing Sunday mass also counts as a leave</label>
       <label class="field">Website address to share with parents<input name="publicUrl" type="url" placeholder="https://your-choir-app.example.com" value="${esc(s.publicUrl || '')}"></label>
       <label class="field">First year (starts April of)<input name="firstSeason" type="number" placeholder="${firstSeason}" value="${s.firstSeason ?? ''}"></label>

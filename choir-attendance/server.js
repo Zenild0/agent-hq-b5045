@@ -250,7 +250,7 @@ function gameAccess(id) {
   return { gamePaid: isPaid(kid, today), gamePaidUntil: paidUntilOf(kid), gameExpired: wasPaid(kid) && !isPaid(kid, today) };
 }
 const roundGate = new Map(); // child id -> { last, day, n } to stop floods
-function gameOn() { if (!store.db.settings.gameEnabled) throw new HttpError(403, 'The singing game is switched off right now'); }
+function gameOn() { if (!store.db.settings.gameEnabled) throw new HttpError(403, 'The Vocals game is switched off right now'); }
 function gameThrottle(id) {
   const now = Date.now();
   const g = roundGate.get(id) || { last: 0, day: istDate(), n: 0 };

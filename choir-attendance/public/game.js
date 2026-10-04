@@ -20,7 +20,7 @@ const WHITE = [{ lv: 1, x: 0 }, { lv: 3, x: 1 }, { lv: 5, x: 2 }, { lv: 6, x: 3 
 const BLACK = [{ lv: 2, x: 0.68 }, { lv: 4, x: 1.68 }, { lv: 7, x: 3.68 }, { lv: 9, x: 4.68 }, { lv: 11, x: 5.68 }];
 
 // `preview` = the hidden test version: every level is open and progress stays on this phone only.
-export function mountGame(root, { code = '', preview = false } = {}) {
+export function mountGame(root, { code = '', preview = false, teacher = false } = {}) {
   let state = null, offline = false, view = 'home', selected = 1, current = null, audio = null;
   const maxPlayableOf = (cleared) => Math.min(LEVELS.length, Math.max(0, ...cleared) + 1);
 
@@ -154,7 +154,7 @@ export function mountGame(root, { code = '', preview = false } = {}) {
     const allDone = me.cleared.length >= LEVELS.length;
     const d = state.daily;
     root.innerHTML = `
-      ${preview ? `<div class="alert warn">Test version: your progress stays on this phone only. You are viewing the <b>${paid() ? 'paid' : 'free'}</b> game. <button class="btn small" data-a="togglePaid">Show the ${paid() ? 'free' : 'paid'} game</button></div>` : ''}
+      ${preview ? `<div class="alert warn">${teacher ? 'Your own copy of Vocals: everything is free for you.' : 'Test version:'} Your progress stays on this device only. You are viewing the <b>${paid() ? 'paid' : 'free'}</b> game. <button class="btn small" data-a="togglePaid">Show the ${paid() ? 'free' : 'paid'} game</button></div>` : ''}
       <div class="card gm-hero">
         <div class="muted">Your journey</div>
         <h2 class="gm-title">${esc(titleFor(top))}</h2>
