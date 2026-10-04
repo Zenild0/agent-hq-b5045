@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
   REMARKS, STATUSES, EXCUSE_REASONS, TYPES, EVENTS, OCCASION_TYPES, isValidDate, defaultType, seasonOf, seasonRange,
   seasonLabel, prizeInfo, firstSeason, childStats, scoreboard, monthRange, monthLabel, pointsFor,
-  isLeave, remarkDeduction, remarkBonus, sessionKey, photoUrl, monthlyAchievers, yearlyAchievers, occasions, seasonsWithData,
+  isLeave, remarkDeduction, remarkBonus, sessionKey, photoUrl, headUrl, monthlyAchievers, yearlyAchievers, occasions, seasonsWithData,
   compareNames, findOccasion, slug,
 } from './lib/logic.js';
 import { openStore, newCode } from './lib/store.js';
@@ -145,7 +145,7 @@ function applyProfile(child, body, { teacher }) {
 }
 
 const profileOf = (c) => ({
-  id: c.id, name: c.name, photo: photoUrl(c), standard: c.standard, joinedYear: c.joinedYear,
+  id: c.id, name: c.name, photo: photoUrl(c), head: headUrl(c), standard: c.standard, joinedYear: c.joinedYear,
   contact: c.contact, address: c.address, emergencyName: c.emergencyName, emergencyPhone: c.emergencyPhone,
 });
 
@@ -260,7 +260,7 @@ function gameThrottle(id) {
 }
 const gameChildren = () => store.db.children.filter((c) => c.active);
 const boardOut = (rows, meId) => {
-  const top = rows.slice(0, 10).map((r) => ({ id: r.id, name: r.name, photo: photoUrl(store.db.children.find((c) => c.id === r.id)), won: r.won, ms: r.ms, rank: r.rank, stars: r.stars }));
+  const top = rows.slice(0, 10).map((r) => ({ id: r.id, name: r.name, photo: photoUrl(store.db.children.find((c) => c.id === r.id)), head: headUrl(store.db.children.find((c) => c.id === r.id)), won: r.won, ms: r.ms, rank: r.rank, stars: r.stars }));
   const mine = rows.find((r) => r.id === meId);
   return { top, me: mine && !top.some((t) => t.id === meId) ? { rank: mine.rank, won: mine.won, ms: mine.ms } : null, total: rows.length };
 };
@@ -318,7 +318,7 @@ function publicOverview(q) {
   const range = seasonRange(season);
   const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(q.get('month') || '') ? q.get('month') : today().slice(0, 7);
   const mr = monthRange(month);
-  const strip = (rows) => rows.map(({ id, name, photo, points, rank }) => ({ id, name, photo, points, rank }));
+  const strip = (rows) => rows.map(({ id, name, photo, head, points, rank }) => ({ id, name, photo, head, points, rank }));
   return {
     season, seasonLabel: seasonLabel(season), seasons: seasonsWithData(db, today()),
     settings: { satPoints: db.settings.satPoints, sunPoints: db.settings.sunPoints, feastPoints: db.settings.feastPoints, practicePoints: db.settings.practicePoints, remarkPenalty: db.settings.remarkPenalty, remarkBonus: db.settings.remarkBonus, gameEnabled: Boolean(db.settings.gameEnabled) },
@@ -405,7 +405,7 @@ function sessionView(date, type, eventName) {
       const e = sess?.entries[c.id] || {};
       const st = childStats(db, c.id, season);
       return {
-        id: c.id, name: c.name, photo: photoUrl(c), standard: c.standard, guest: Boolean(c.guest),
+        id: c.id, name: c.name, photo: photoUrl(c), head: headUrl(c), standard: c.standard, guest: Boolean(c.guest),
         status: e.status || null, reason: e.reason || '', remarks: e.remarks || [], note: e.note || '',
         leaves: st.leaves, exceeded: st.exceeded && !c.guest, decision: st.decision?.status ?? null,
       };
@@ -477,14 +477,22 @@ function updateSettings(body) {
   store.save();
 }
 
-async function savePhoto(child, image) {
+const jpegBytes = (image, what) => {
   const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(typeof image === 'string' ? image : '');
-  if (!m) throw new HttpError(400, 'Photo must be a JPEG image');
+  if (!m) throw new HttpError(400, `${what} must be a JPEG image`);
   const buf = Buffer.from(m[1], 'base64');
-  if (buf.length > 1_000_000 || buf[0] !== 0xff || buf[1] !== 0xd8) throw new HttpError(400, 'Photo is too large or not a valid JPEG');
+  if (buf.length > 1_000_000 || buf[0] !== 0xff || buf[1] !== 0xd8) throw new HttpError(400, `${what} is too large or not a valid JPEG`);
+  return buf;
+};
+// Two small pictures per child: the square profile photo, and (optionally) a tight crop of the face for the bobble-heads.
+async function savePhoto(child, image, head) {
+  const profile = jpegBytes(image, 'Photo');
+  const face = head ? jpegBytes(head, 'Head picture') : null;
   await mkdir(PHOTOS, { recursive: true });
-  await writeFile(join(PHOTOS, `${child.id}.jpg`), buf);
+  await writeFile(join(PHOTOS, `${child.id}.jpg`), profile);
   child.photoVersion = Date.now();
+  if (face) { await writeFile(join(PHOTOS, `${child.id}-head.jpg`), face); child.headVersion = child.photoVersion; }
+  else if (child.headVersion) { await rm(join(PHOTOS, `${child.id}-head.jpg`), { force: true }); child.headVersion = 0; } // a new profile photo without a head: the old head would no longer match
   store.save();
 }
 
@@ -503,7 +511,7 @@ function createChildren(text, { standard = '', joinedYear = null, guest = false 
       const c = {
         id: randomUUID().slice(0, 8), name: '', active: true, joinedOn: today(), code: newCode(db),
         standard: '', joinedYear: Number(today().slice(0, 4)), contact: '', address: '',
-        emergencyName: '', emergencyPhone: '', photoVersion: 0, leaveDecisions: {}, guest,
+        emergencyName: '', emergencyPhone: '', photoVersion: 0, headVersion: 0, leaveDecisions: {}, guest,
       };
       const fields = { name: rawName, standard: rawStd || standard || '' };
       if (joinedYear) fields.joinedYear = joinedYear;
@@ -755,7 +763,7 @@ async function serveAudio(req, res, file, ext) {
 
 // ---- backup & restore: one .tar file with the database, photos and recordings ----
 
-const BACKUP_FILE = /^(photos\/[a-f0-9]{8}\.jpg|hymns\/[a-f0-9]{8}\.(mp3|m4a|aac|wav|ogg|webm))$/;
+const BACKUP_FILE = /^(photos\/[a-f0-9]{8}(-head)?\.jpg|hymns\/[a-f0-9]{8}\.(mp3|m4a|aac|wav|ogg|webm))$/;
 
 async function buildBackup() {
   const { db } = store;
@@ -763,6 +771,7 @@ async function buildBackup() {
   for (const c of db.children) {
     if (!c.photoVersion) continue;
     try { files.push({ name: `photos/${c.id}.jpg`, data: await readFile(join(PHOTOS, `${c.id}.jpg`)) }); } catch { /* photo file missing */ }
+    if (c.headVersion) try { files.push({ name: `photos/${c.id}-head.jpg`, data: await readFile(join(PHOTOS, `${c.id}-head.jpg`)) }); } catch { /* head file missing */ }
   }
   for (const h of db.hymns) {
     if (!h.audioExt) continue;
@@ -882,7 +891,7 @@ async function teacherApi(req, res, q, parts) {
       const c = {
         id: randomUUID().slice(0, 8), name: '', active: true, joinedOn: today(), code: newCode(store.db),
         standard: '', joinedYear: Number(today().slice(0, 4)), contact: '', address: '',
-        emergencyName: '', emergencyPhone: '', photoVersion: 0, leaveDecisions: {},
+        emergencyName: '', emergencyPhone: '', photoVersion: 0, headVersion: 0, leaveDecisions: {},
       };
       applyProfile(c, body, { teacher: true });
       if (!c.name) throw new HttpError(400, 'Name is required');
@@ -899,8 +908,8 @@ async function teacherApi(req, res, q, parts) {
       return send(res, 200, childOut(child));
     }
     if (req.method === 'POST' && id && action === 'photo') {
-      await savePhoto(child, body.image);
-      return send(res, 200, { photo: photoUrl(child) });
+      await savePhoto(child, body.image, body.head);
+      return send(res, 200, { photo: photoUrl(child), head: headUrl(child) });
     }
     if (req.method === 'PUT' && id && action === 'decision') {
       const season = Number.isInteger(body.season) ? body.season : seasonOf(today());
@@ -937,8 +946,8 @@ async function api(req, res, url) {
     const child = childByCode(req);
     if (req.method === 'POST' && b === 'photo') { // a parent adds or changes their own child's photo (already cropped to the face)
       const body = await readBody(req, 1_500_000);
-      await savePhoto(child, body.image);
-      return send(res, 200, { photo: photoUrl(child) });
+      await savePhoto(child, body.image, body.head);
+      return send(res, 200, { photo: photoUrl(child), head: headUrl(child) });
     }
     if (req.method === 'GET') return send(res, 200, childDetail(child, seasonFromQuery(q)));
     if (req.method === 'PUT') {
@@ -975,8 +984,8 @@ async function serveStatic(req, res, pathname) {
     if (!store.db.hymns.some((h) => h.id === audio[1] && h.audioExt === audio[2])) throw new HttpError(404, 'Not found');
     return serveAudio(req, res, join(HYMNS_DIR, `${audio[1]}.${audio[2]}`), audio[2]);
   }
-  const photo = /^\/photos\/([a-f0-9]{8})\.jpg$/.exec(pathname);
-  if (photo) return serveFile(res, join(PHOTOS, `${photo[1]}.jpg`), { 'cache-control': 'public, max-age=86400' });
+  const photo = /^\/photos\/([a-f0-9]{8})(-head)?\.jpg$/.exec(pathname);
+  if (photo) return serveFile(res, join(PHOTOS, `${photo[1]}${photo[2] ?? ''}.jpg`), { 'cache-control': 'public, max-age=86400' });
   const rel = pathname === '/' ? 'index.html' : pathname === '/teacher' ? 'teacher.html' : pathname.slice(1);
   const file = normalize(join(PUBLIC, rel));
   if (!file.startsWith(PUBLIC + sep)) throw new HttpError(404, 'Not found');

@@ -151,8 +151,12 @@ export function isLeave(entry, type, settings) {
   return type === 'saturday' || (type === 'sunday' && settings.countSundayAbsences);
 }
 
+// The profile photo is a square picture. The head is a separate tight crop of the face, used for the leaderboard bobble-heads.
 export function photoUrl(child) {
   return child.photoVersion ? `/photos/${child.id}.jpg?v=${child.photoVersion}` : null;
+}
+export function headUrl(child) {
+  return child.headVersion ? `/photos/${child.id}-head.jpg?v=${child.headVersion}` : null;
 }
 
 function sessionsInRange(db, from, to) {
@@ -210,7 +214,7 @@ export function scoreboard(db, season, from, to, { hideOut = false, includeInact
     .map((c) => {
       const st = childStats(db, c.id, season, from, to);
       return {
-        id: c.id, name: c.name, photo: photoUrl(c), points: st.points, leaves: st.leaves,
+        id: c.id, name: c.name, photo: photoUrl(c), head: headUrl(c), points: st.points, leaves: st.leaves,
         present: st.present, late: st.late, eligible: !isOut(c, season, to),
         over: st.exceeded, decision: st.decision?.status ?? null,
       };
@@ -251,7 +255,7 @@ function winnersOf(rows) {
   const top = rows.find((r) => r.eligible)?.points ?? 0;
   if (top <= 0) return [];
   return rows.filter((r) => r.eligible && r.points === top)
-    .map(({ id, name, photo, points }) => ({ id, name, photo, points }));
+    .map(({ id, name, photo, head, points }) => ({ id, name, photo, head, points }));
 }
 
 const hasSessions = (db, from, to) => Object.values(db.sessions).some((s) => s.date >= from && s.date <= to);
@@ -303,7 +307,7 @@ export function occasions(db, season) {
         const entries = list.map((s) => s.entries[c.id]);
         const remarks = entries.flatMap((e) => e?.remarks ?? []);
         return {
-          id: c.id, name: c.name, photo: photoUrl(c), guest: Boolean(c.guest), member: o.members.includes(c.id),
+          id: c.id, name: c.name, photo: photoUrl(c), head: headUrl(c), guest: Boolean(c.guest), member: o.members.includes(c.id),
           cells: entries.map((e) => e?.status ?? null),
           points: list.reduce((sum, s) => sum + pointsFor(s.entries[c.id], s.type, db.settings), 0),
           attended: entries.filter((e) => e?.status === 'present').length,

@@ -1,3 +1,4 @@
+import { pickPhotos } from './photo.js';
 import { waLink,
   $, api, esc, fmtPts, fmtDate, typeLabel, headerHtml, footerHtml, avatarHtml, leaveBadge,
   renderBoard, statsHtml, historyHtml, leaveAlertHtml, remarksLogHtml, openHymnViewer,
@@ -563,13 +564,14 @@ async function openChild(id) {
   const setPhoto = async (file) => {
     if (!file) return;
     try {
-      const image = await pickFace(file); // the teacher frames the face too
-      if (!image) return;
+      const picked = await pickPhotos(file); // square profile photo, then the face for the leaderboard
+      if (!picked) return;
+      const { image } = picked;
       if (id) {
-        const r = await call(`teacher/children/${id}/photo`, { method: 'POST', body: { image } });
-        d.photo = `${r.photo}`;
+        const r = await call(`teacher/children/${id}/photo`, { method: 'POST', body: picked });
+        d.photo = `${r.photo}`; d.head = r.head;
       } else {
-        pendingPhoto = image;
+        pendingPhoto = picked;
         d.photo = image;
       }
       $('#pic').innerHTML = avatarHtml(d, 'xl');
@@ -587,7 +589,7 @@ async function openChild(id) {
         await call(`teacher/children/${id}`, { method: 'PATCH', body });
       } else {
         const created = await call('teacher/children', { method: 'POST', body });
-        if (pendingPhoto) await call(`teacher/children/${created.id}/photo`, { method: 'POST', body: { image: pendingPhoto } });
+        if (pendingPhoto) await call(`teacher/children/${created.id}/photo`, { method: 'POST', body: pendingPhoto });
       }
       dlg.close();
       refreshVisible();

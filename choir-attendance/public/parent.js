@@ -3,7 +3,7 @@ import {
   statsHtml, historyHtml, leaveAlertHtml, openHymnViewer,
 } from './common.js';
 import { nextCardHtml, daysFoldHtml, remarksFoldHtml } from './home.js';
-import { pickFace } from './photo.js';
+import { pickPhotos } from './photo.js';
 
 const store = {
   get: (k) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } },
@@ -295,7 +295,7 @@ function childView(msg = '') {
             <label class="btn small" for="cam">📷 Take photo</label><label class="btn small" for="gal">🖼 Choose photo</label>
             <input id="cam" type="file" accept="image/*" capture="user" hidden><input id="gal" type="file" accept="image/*" hidden>
           </div>
-          <div class="muted" id="picMsg" aria-live="polite">Photo of the face, please. It shows on the leaderboard.</div>
+          <div class="muted" id="picMsg" aria-live="polite">A clear photo, please. You choose the profile picture, then the face for the leaderboard.</div>
           <button class="btn small" id="forget" style="margin-top:8px">Not your child? Switch</button>
         </div>
       </div>
@@ -318,13 +318,13 @@ function childView(msg = '') {
     if (!file) return;
     $('#picMsg').textContent = '';
     try {
-      const image = await pickFace(file); // the parent frames the face; only that square is kept
-      if (!image) return;
+      const picked = await pickPhotos(file); // square profile photo, then the face for the leaderboard
+      if (!picked) return;
       $('#picMsg').textContent = 'Saving…';
-      const r = await api('me/photo', { method: 'POST', code, body: { image } });
-      me.photo = r.photo;
+      const r = await api('me/photo', { method: 'POST', code, body: picked });
+      me.photo = r.photo; me.head = r.head;
       document.querySelector('#child .profile-head').firstElementChild.outerHTML = avatarHtml(me, 'xl');
-      $('#picMsg').textContent = '✅ Photo saved. It now shows on the leaderboard.';
+      $('#picMsg').textContent = '✅ Photos saved.';
       overview = await api('public'); drawBoard(); drawHome();
     } catch (err) { $('#picMsg').textContent = `⚠️ ${err.message}`; }
   };

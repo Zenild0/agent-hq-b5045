@@ -19,7 +19,7 @@ export function newCode(db, length = 4) {
 
 export const PROFILE_DEFAULTS = {
   standard: '', joinedYear: null, contact: '', address: '',
-  emergencyName: '', emergencyPhone: '', photoVersion: 0,
+  emergencyName: '', emergencyPhone: '', photoVersion: 0, headVersion: 0,
   leaveDecisions: {}, // { [season]: { status: 'keep' | 'out', on: 'YYYY-MM-DD' } }
   guest: false, // true = not in the main choir, only listed for special occasions
 };

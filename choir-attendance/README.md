@@ -48,7 +48,7 @@ There is no PIN. The teacher pages (children's details and parent codes) open **
 - The hidden page `/voice-test.html` is the original test version with every level open and no scores.
 
 ## Photos
-- Parents can add or change their child's photo on the **My child** page (take a photo or choose one). The photo opens in a round frame to drag and zoom so only the **face** is kept: the full photo is never stored. The leaderboard bobble-heads show just that face. The teacher uses the same face frame when adding a photo. Photos are small (about 400 pixels) and each child has just one.
+- Parents can add or change their child's photo on the **My child** page (take a photo or choose one). It takes two quick steps: first the **square profile photo**, then (optionally) just the **face** for the leaderboard. Each opens in a frame to drag and zoom. The profile photo is used on profiles and lists; the leaderboard bobble-heads use the separate face crop, so they look like real bobble-heads. The full photo is never stored, only the two small crops (about 600 and 300 pixels). The teacher uses the same two steps. Backups include both pictures.
 
 ## Rules
 - **Year** = April 1 – March 31. Points: Saturday practice 1, Sunday mass 2, feast practice 1, feast mass 2 (all editable). Late = half points.

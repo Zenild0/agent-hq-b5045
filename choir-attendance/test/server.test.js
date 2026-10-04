@@ -526,3 +526,25 @@ test('a parent can add or change their own child\'s photo, and nobody else\'s', 
   await j('/api/teacher/unlock-codes', { method: 'POST', body: {} });
   assert.equal((await j('/api/public')).data.yearBoard.length >= 0, true);
 });
+
+test('profile photo (square) and head (for the bobble-heads) are kept separately', async () => {
+  await j('/api/teacher/unlock-codes', { method: 'POST', body: {} });
+  anna.code = (await j(`/api/teacher/child/${anna.id}`)).data.code;
+  const both = await j('/api/me/photo', { method: 'POST', code: anna.code, body: { image: JPEG, head: JPEG } });
+  assert.equal(both.status, 200);
+  assert.match(both.data.photo, /^\/photos\/[a-f0-9]{8}\.jpg\?v=\d+$/);
+  assert.match(both.data.head, /^\/photos\/[a-f0-9]{8}-head\.jpg\?v=\d+$/);
+  assert.equal((await fetch(base + both.data.head)).status, 200);
+  const board = (await j('/api/public')).data.yearBoard.concat((await j('/api/public')).data.monthBoard);
+  const row = board.find((r) => r.id === anna.id);
+  if (row) assert.equal(row.head, both.data.head, 'the leaderboard carries the head crop');
+  const me = (await j('/api/me', { code: anna.code })).data;
+  assert.equal(me.head, both.data.head);
+  assert.equal(me.photo, both.data.photo);
+  assert.equal((await j('/api/me/photo', { method: 'POST', code: anna.code, body: { image: JPEG, head: 'data:text/plain;base64,AAAA' } })).status, 400);
+  // a new profile photo without a head drops the old head, so the two never mismatch
+  const only = await j('/api/me/photo', { method: 'POST', code: anna.code, body: { image: JPEG } });
+  assert.equal(only.data.head, null);
+  assert.equal((await fetch(base + both.data.head.split('?')[0])).status, 404);
+  await j('/api/teacher/unlock-codes', { method: 'POST', body: {} });
+});
