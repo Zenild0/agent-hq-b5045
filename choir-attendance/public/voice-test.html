@@ -55,9 +55,11 @@
   <main id="app">
     <div class="card" id="startCard">
       <p><b>How it works.</b> Twelve levels, from Little Lark to Legend. Press Start, listen to what the phone plays, then sing the note. The clock starts when the sound stops, and hearing it again simply uses up time. The faster you finish the round, the better your score.</p>
-      <button class="btn primary" id="start">🎤 Allow microphone and begin</button>
+      <div class="row"><button class="btn primary" id="start">🎤 Allow microphone and begin</button><button class="btn" id="warmBtn">🔥 Warm-up first</button></div>
       <div class="muted" id="err" role="alert"></div>
     </div>
+
+    <div id="warm" hidden></div>
 
     <div id="game" hidden>
       <div class="card hud">
@@ -82,7 +84,7 @@
         <button class="btn" id="hint" disabled>🎶 Singer hint</button>
       </div>
       <div class="fine" id="fine">&nbsp;</div>
-      <div class="row"><button class="btn small" id="stop">Stop microphone</button></div>
+      <div class="row"><button class="btn small" id="stop">Stop microphone</button><button class="btn small" id="warmBtn2">🔥 Warm-up</button></div>
     </div>
   </main>
   <script type="module" src="voice-test.js"></script>

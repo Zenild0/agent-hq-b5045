@@ -1,5 +1,6 @@
 import { detectPitch, rms, freqOfMidi, CHORDS } from './pitch.js';
 import { LEVELS, NAMES, buildDeck, makeTracker, starsFor } from './levels.js';
+import { mountWarmup } from './warmup.js';
 
 const $ = (s) => document.querySelector(s);
 const GAP_MS = 400;
@@ -246,3 +247,13 @@ $('#go').addEventListener('click', pressGo);
 $('#again').addEventListener('click', () => replay('again'));
 $('#hint').addEventListener('click', () => replay('hint'));
 window.addEventListener('pagehide', stop);
+
+// Warm-up room: chords, scales and a live tuner, no score. Same room as in the real game.
+let warm = null;
+function openWarm() {
+  if (ctx) stop(); // the game's microphone goes off first
+  $('#startCard').hidden = true; $('#game').hidden = true; $('#warm').hidden = false;
+  warm = mountWarmup($('#warm'), { onExit: () => { warm?.destroy(); warm = null; $('#warm').hidden = true; $('#warm').innerHTML = ''; $('#startCard').hidden = false; } });
+}
+$('#warmBtn').addEventListener('click', openWarm);
+$('#warmBtn2').addEventListener('click', openWarm);
