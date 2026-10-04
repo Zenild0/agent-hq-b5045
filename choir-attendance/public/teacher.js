@@ -158,9 +158,13 @@ async function loadHome() {
     </section>
     <h3 style="margin:6px 0">Needs your attention</h3>
     ${att.length ? `<div class="attn-list">${att.join('')}</div>` : '<div class="card muted" style="margin:0 0 12px">All clear ✓ Nothing needs you right now.</div>'}
-    <div class="card row between" id="topCard">
-      <div class="grow"><b>Top this month</b><div class="muted">${d.top.length ? d.top.map((t) => `${esc(t.name.split(' ')[0])} ${fmtPts(t.points)}`).join(' · ') : 'Points appear after the first practice'}</div></div>
-      <div class="facepile">${d.top.map((t) => avatarHtml({ name: t.name, photo: t.head || t.photo }, 'sm')).join('')}</div>
+    <div class="card" id="topCard">
+      <b>Top this month</b>
+      ${d.top.length ? [1, 2, 3].map((r) => {
+        const g = d.top.filter((t) => t.rank === r);
+        return g.length ? `<div class="toprank r${r}"><div class="trh"><span class="medal" aria-hidden="true">${['🥇', '🥈', '🥉'][r - 1]}</span><b>${['1st', '2nd', '3rd'][r - 1]}</b><span class="muted">${fmtPts(g[0].points)} pts</span></div>
+          <div class="chips">${g.map((t) => `<button class="chip" data-open="${esc(t.id)}">${avatarHtml({ name: t.name, photo: t.head || t.photo }, 'sm')}<span>${esc(t.name.split(' ')[0])}</span></button>`).join('')}</div></div>` : '';
+      }).join('') : '<div class="muted">Points appear after the first practice</div>'}
     </div>
     <div class="card row between">
       <span style="font-size:1.5rem" aria-hidden="true">💾</span>

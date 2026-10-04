@@ -586,3 +586,13 @@ html[data-lens=parent] .top { padding-bottom: 14px; }
 .facepile { display: flex; padding-left: 8px; }
 .facepile .avatar { margin-left: -8px; border: 3px solid var(--card); box-shadow: none; }
 html[data-theme=bright] .more-tile, html[data-theme=bright] .attn { border-color: transparent; box-shadow: var(--shadow); }
+
+/* teacher home: top this month, grouped by rank so ties stay tidy */
+#topCard .toprank { padding-top: 10px; }
+#topCard .toprank + .toprank { border-top: 1px solid var(--line); margin-top: 10px; }
+.trh { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.trh .medal { font-size: 1.2rem; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px 4px 4px; min-height: 40px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: 700 .9rem var(--font-body); cursor: pointer; }
+.chip .avatar.sm { border: 0; box-shadow: none; }
+@media (min-width: 700px) { .attn-list { grid-template-columns: 1fr 1fr; } .more-grid { grid-template-columns: repeat(3, 1fr); } }
