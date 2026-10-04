@@ -1,50 +1,48 @@
-import { detectPitch, noteFromFreq, rms, freqOfMidi, NOTE_NAMES, CHORDS } from './pitch.js';
+import { detectPitch, rms, freqOfMidi, CHORDS } from './pitch.js';
+import { LEVELS, NAMES, buildDeck, makeTracker, starsFor } from './levels.js';
 
 const $ = (s) => document.querySelector(s);
-const ROUND_MS = 15000, HOLD_MS = 500, CHORD_S = 3.0, GAP_MS = 400;
-// How close the child's voice must be (in cents; 100 = one semitone). Tighter at higher levels.
-const TOLERANCE = { 1: 45, 2: 35, 3: 25 };
-const tol = () => TOLERANCE[level] ?? 25;
+const GAP_MS = 400;
+const params = new URLSearchParams(location.search);
 
 // ---------- no-flicker DOM helpers: only touch the page when a value really changes ----------
 const cache = new Map();
 const setText = (id, v) => { if (cache.get(id) !== v) { cache.set(id, v); $(`#${id}`).textContent = v; } };
-const setVar = (el, name, v, step = 0.02) => { const k = `${el.id}${name}`; const old = cache.get(k) ?? -9; if (Math.abs(old - v) >= step || v === 0 !== (old === 0)) { cache.set(k, v); el.style.setProperty(name, v); } };
+const setVar = (el, name, v, step = 0.02) => { const k = `${el.id}${name}`; const old = cache.get(k) ?? -9; if (Math.abs(old - v) >= step || (v === 0) !== (old === 0)) { cache.set(k, v); el.style.setProperty(name, v); } };
 const setMsg = (text, cls = '') => { if (cache.get('msgv') !== text + cls) { cache.set('msgv', text + cls); const m = $('#msg'); m.className = `msg ${cls}`; m.textContent = text; } };
 
-// ---------- game state ----------
+// ---------- state ----------
 let ctx, stream, analyser, buf, raf = 0;
-let level = 1, deck = [], idx = 0, phase = 'ready'; // ready | playing | listening | reveal | done
-let results = [], streak = 0;
-let startAt = 0, hitAt = 0, muteUntil = 0, listenFrom = 0, lastNote = null, lastNoteAt = 0, recent = [];
-let cur = null; // { pc, type, root }
-const forced = new URLSearchParams(location.search).get('force'); // for testing: ?force=0,2,4
+let levelId = Math.min(12, Math.max(1, Number(params.get('lv')) || 1));
+let deck = [], idx = 0, phase = 'ready'; // ready | playing | listening | reveal | done
+let results = [], streak = 0, tracker = null, cur = null;
+let startAt = 0, muteUntil = 0, lastMidi = null, lastAt = 0, recent = [];
+const cleared = new Set();
+const rngSeed = Number(params.get('seed'));
+const rnd = rngSeed ? (() => { let a = rngSeed; return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })() : Math.random;
+const level = () => LEVELS.find((l) => l.id === levelId);
 
-const shuffle = (a) => { const b = [...a]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
-function buildDeck() {
-  if (forced) return forced.split(',').map((n) => ({ pc: Number(n), type: 'major' }));
-  if (level === 1) return [0, 2, 4, 5, 7, 9, 11].map((pc) => ({ pc, type: 'major' }));
-  if (level === 2) return shuffle([0, 2, 4, 5, 7, 9, 11]).map((pc) => ({ pc, type: 'major' }));
-  return shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]).slice(0, 10).map((pc) => ({ pc, type: Math.random() < 0.7 ? 'major' : 'minor' }));
+// ---------- the ladder ----------
+function drawLadder() {
+  $('#ladder').innerHTML = LEVELS.map((l) => `<button class="btn small${l.id === levelId ? ' on' : ''}${cleared.has(l.id) ? ' cleared' : ''}" data-lv="${l.id}" aria-label="Level ${l.id} ${l.name}">${l.emoji}<small>${l.id}</small></button>`).join('');
+  const l = level();
+  $('#lvInfo').innerHTML = `<b>${l.emoji} Level ${l.id}: ${l.name}</b> <span class="muted">· ${l.tier}</span><br>${l.how}<br><span class="muted">Margin ±${l.tol} cents · hold ${(l.hold / 1000).toFixed(1)} s</span>`;
 }
-
-function drawDots() {
-  $('#dots').innerHTML = deck.map((_, i) => `<i class="${results[i] ? (results[i].won ? 'done' : 'miss') : i === idx && phase !== 'done' ? 'now' : ''}"></i>`).join('');
-}
-function newRound() {
-  deck = buildDeck(); idx = 0; results = []; streak = 0; phase = 'ready'; cur = null;
-  drawDots(); render();
-  setMsg('Ready? Press Start.');
-  $('#fine').textContent = ' ';
-}
+$('#ladder').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-lv]');
+  if (!b) return;
+  levelId = Number(b.dataset.lv);
+  clearTimeout(beginTimer);
+  newRound();
+});
 
 // ---------- sound (all made in the browser: no files) ----------
-function chordTone(freq, t0, dur, gain) {
+function tone(freq, t0, dur, gain, type = 'piano') {
   const g = ctx.createGain();
   g.gain.setValueAtTime(0, t0);
   g.gain.linearRampToValueAtTime(gain, t0 + 0.02);
-  g.gain.exponentialRampToValueAtTime(gain * 0.55, t0 + 0.5);   // piano-like bloom, then a long sustain
-  g.gain.setValueAtTime(gain * 0.5, t0 + dur - 0.35);
+  g.gain.exponentialRampToValueAtTime(gain * 0.55, t0 + Math.min(0.5, dur / 2));
+  g.gain.setValueAtTime(gain * 0.5, Math.max(t0 + 0.05, t0 + dur - 0.3));
   g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
   g.connect(ctx.destination);
   [[1, 'triangle', 1], [2, 'sine', 0.3], [3, 'sine', 0.1]].forEach(([m, w, a]) => {
@@ -53,25 +51,37 @@ function chordTone(freq, t0, dur, gain) {
     o.connect(og).connect(g); o.start(t0); o.stop(t0 + dur + 0.05);
   });
 }
-// The chord is played exactly in tune, always in the same comfortable range (middle C upwards).
-function playChord(c, seconds = CHORD_S) {
-  const rootMidi = 60 + c.pc;
+// What the phone plays for a challenge. Returns how many milliseconds it lasts.
+function play(ch) {
   const t0 = ctx.currentTime + 0.05;
-  CHORDS[c.type].forEach((st) => chordTone(freqOfMidi(rootMidi + st), t0, seconds, 0.17));
-  chordTone(freqOfMidi(rootMidi - 12), t0, seconds, 0.12); // the root an octave lower, to anchor it
+  const p = ch.play;
+  if (p.type === 'chord') {
+    CHORDS[p.quality].forEach((s) => tone(freqOfMidi(p.root + s), t0, 3, 0.17));
+    tone(freqOfMidi(p.root - 12), t0, 3, 0.12);
+    return 3000;
+  }
+  if (p.type === 'note') { tone(freqOfMidi(p.midi), t0, 2, 0.22); return 2000; }
+  p.notes.forEach((m, i) => tone(freqOfMidi(m), t0 + i * 0.8, 0.78, 0.22)); // a short tune, note by note
+  return p.notes.length * 800 + 200;
 }
-// A synthetic "singer" for the hint: a buzzy tone shaped like an "ah" vowel, with a gentle vibrato.
-function playSinger(c, seconds = CHORD_S) {
+// The hint: a synthetic "ah" singer shows the notes to sing (about 3 seconds in total).
+function singer(ch) {
+  const notes = ch.targets.map((pc) => 60 + pc);
+  const each = 3 / notes.length;
   const t0 = ctx.currentTime + 0.05;
-  const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = freqOfMidi(60 + c.pc);
-  const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = 5.2; lg.gain.value = 4; lfo.connect(lg).connect(o.frequency);
-  const out = ctx.createGain();
-  out.gain.setValueAtTime(0, t0); out.gain.linearRampToValueAtTime(0.35, t0 + 0.25); out.gain.setValueAtTime(0.35, t0 + seconds - 0.4); out.gain.linearRampToValueAtTime(0, t0 + seconds);
-  [[800, 6, 1], [1150, 8, 0.6], [2900, 10, 0.25]].forEach(([f, q, a]) => {
-    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = q;
-    const bg = ctx.createGain(); bg.gain.value = a; o.connect(bp).connect(bg).connect(out);
+  notes.forEach((m, i) => {
+    const s = t0 + i * each;
+    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = freqOfMidi(m);
+    const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = 5.2; lg.gain.value = 4; lfo.connect(lg).connect(o.frequency);
+    const out = ctx.createGain();
+    out.gain.setValueAtTime(0, s); out.gain.linearRampToValueAtTime(0.32, s + 0.15); out.gain.setValueAtTime(0.32, s + each - 0.25); out.gain.linearRampToValueAtTime(0, s + each - 0.02);
+    [[800, 6, 1], [1150, 8, 0.6], [2900, 10, 0.25]].forEach(([f, q, a]) => {
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = q;
+      const bg = ctx.createGain(); bg.gain.value = a; o.connect(bp).connect(bg).connect(out);
+    });
+    out.connect(ctx.destination); o.start(s); lfo.start(s); o.stop(s + each + 0.05); lfo.stop(s + each + 0.05);
   });
-  out.connect(ctx.destination); o.start(t0); lfo.start(t0); o.stop(t0 + seconds + 0.1); lfo.stop(t0 + seconds + 0.1);
+  return 3000;
 }
 function chime(ok) {
   const t0 = ctx.currentTime + 0.02;
@@ -84,111 +94,126 @@ function chime(ok) {
   if (ok) navigator.vibrate?.(60);
 }
 
-// ---------- flow ----------
-function beginChord() {
-  cur = deck[idx];
-  phase = 'playing'; recent = []; hitAt = 0;
-  setMsg('🎹 Listen carefully…');
-  playChord(cur);
-  render();
-  clearTimeout(beginChord.t);
-  beginChord.t = setTimeout(() => {
-    phase = 'listening'; recent = [];
-    startAt = listenFrom = performance.now(); // the clock starts when the chord stops
-    render();
-  }, CHORD_S * 1000 + GAP_MS); // a short silence, so the speaker is not mistaken for the child's voice
+// ---------- the round ----------
+function drawDots() {
+  $('#dots').innerHTML = deck.map((_, i) => `<i class="${results[i] ? (results[i].won ? 'done' : 'miss') : i === idx && phase !== 'done' ? 'now' : ''}"></i>`).join('');
 }
+function newRound() {
+  deck = buildDeck(levelId, rnd); idx = 0; results = []; streak = 0; phase = 'ready'; cur = deck[0]; tracker = null;
+  drawLadder(); drawDots(); render();
+  setMsg('Ready? Press Start.');
+  $('#fine').textContent = ' ';
+}
+
+let beginTimer = 0;
 function pressGo() {
   if (phase === 'done') return newRound();
   if (phase === 'reveal') { phase = 'ready'; cur = deck[idx]; setMsg('Ready? Press Start.'); render(); return; }
   if (phase !== 'ready') return;
-  beginChord();
+  phase = 'playing'; recent = []; lastMidi = null;
+  setMsg('🎹 Listen carefully…');
+  const ms = play(cur);
+  render();
+  clearTimeout(beginTimer);
+  beginTimer = setTimeout(() => {
+    if (cur.hideAfterPlay) { setText('target', '🧠 ?'); setMsg('🧠 Remember it…'); }
+    beginTimer = setTimeout(() => {
+      phase = 'listening'; recent = []; tracker = makeTracker(cur);
+      startAt = performance.now(); // the clock starts when the sound (and any waiting time) is over
+      render();
+    }, (cur.delayMs || 0) + GAP_MS); // a short silence, so the speaker is not mistaken for the child's voice
+  }, ms);
 }
-// Hearing the chord or the singer again costs nothing extra: the clock simply keeps running while it plays.
+// Hearing it again or the singer costs nothing extra: the clock keeps running while it plays.
 function replay(kind) {
   if (phase !== 'listening') return;
-  muteUntil = performance.now() + CHORD_S * 1000 + GAP_MS; recent = []; hitAt = 0;
-  if (kind === 'hint') { playSinger(cur); setMsg('🎶 Listen to the singer…'); } else { playChord(cur); setMsg('🎹 Listen again…'); }
+  const ms = kind === 'hint' ? singer(cur) : play(cur);
+  muteUntil = performance.now() + ms + GAP_MS; recent = [];
+  setMsg(kind === 'hint' ? '🎶 Listen to the singer…' : '🎹 Listen again…');
 }
-const useAgain = () => replay('again');
-const useHint = () => replay('hint');
-function finishNote(won) {
-  const ms = Math.min(ROUND_MS, won ? hitAt - startAt : ROUND_MS);
+function finish(won, now) {
+  const ms = Math.min(cur.limit * 1000, now - startAt);
   results[idx] = { won, ms };
   streak = won ? streak + 1 : 0;
   chime(won);
-  setMsg(won ? `🎉 ${NOTE_NAMES[cur.pc]} ${cur.type}! ${(ms / 1000).toFixed(1)} s` : `⏰ It was ${NOTE_NAMES[cur.pc]} ${cur.type}`, won ? 'ok' : 'bad');
+  const name = cur.kind === 'echo' || cur.kind === 'interval' ? cur.targets.map((t) => NAMES[t]).join(' ') : `${NAMES[cur.targets[0]]}`;
+  setMsg(won ? `🎉 Got it! ${(ms / 1000).toFixed(1)} s` : `⏰ The note${cur.targets.length > 1 ? 's were' : ' was'} ${name}`, won ? 'ok' : 'bad');
   idx += 1;
   phase = idx >= deck.length ? 'done' : 'reveal';
+  tracker = null;
   drawDots(); render();
   if (phase === 'done') showEnd();
 }
 function showEnd() {
   const won = results.filter((r) => r.won).length;
   const total = results.reduce((s, r) => s + r.ms, 0);
-  const avg = total / results.length / 1000;
-  const stars = won === results.length && avg < 4 ? '⭐⭐⭐' : won >= results.length * 0.7 && avg < 8 ? '⭐⭐' : won ? '⭐' : '';
-  $('#fine').innerHTML = `<b>Round finished:</b> ${won} of ${results.length} matched · total ${(total / 1000).toFixed(1)} s ${stars}`;
+  const stars = starsFor(results, (i) => deck[i].limit * 1000);
+  const pass = won >= results.length * 0.7;
+  if (pass) cleared.add(levelId);
+  const next = LEVELS.find((l) => l.id === levelId + 1);
+  $('#fine').innerHTML = `<b>${pass ? '🏆 Level cleared!' : 'Not quite, try again!'}</b> ${won} of ${results.length} · ${(total / 1000).toFixed(1)} s ${'⭐'.repeat(stars)}${pass && next ? `<br>Next: ${next.emoji} ${next.name}` : ''}`;
+  drawLadder();
 }
 
-function render() {
+// ---------- screen ----------
+const slots = (n, done) => Array.from({ length: n }, (_, i) => (i < done ? '●' : '○')).join('');
+function render(stepDone = 0) {
   const go = $('#go');
-  const label = phase === 'done' ? '🔄 Play again' : phase === 'reveal' ? '➡ Next chord' : '▶ Start';
+  const label = phase === 'done' ? '🔄 Play again' : phase === 'reveal' ? '➡ Next' : '▶ Start';
   if (go.textContent !== label) go.textContent = label;
   go.disabled = phase === 'playing' || phase === 'listening';
   $('#again').disabled = phase !== 'listening';
   $('#hint').disabled = phase !== 'listening';
-  setText('chordNo', phase === 'done' ? 'All done' : `Chord ${Math.min(idx + 1, deck.length)} of ${deck.length}`);
-  setText('streak', streak > 1 ? `🔥 ${streak} in a row` : ' ');
+  setText('chordNo', phase === 'done' ? 'All done' : `Challenge ${Math.min(idx + 1, deck.length)} of ${deck.length}`);
+  setText('streak', streak > 1 ? `🔥 ${streak} in a row` : ' ');
   setText('ringLab', phase === 'listening' ? 'You are singing' : phase === 'playing' ? 'Listen' : 'Ready');
-  const c = phase === 'ready' || phase === 'playing' || phase === 'listening' ? deck[idx] : null;
-  setText('target', c ? `${NOTE_NAMES[c.pc]} ${c.type}` : phase === 'done' ? 'Well done!' : ' ');
-  setText('tol', `Accuracy needed: ${tol() >= 45 ? 'easy' : tol() >= 35 ? 'medium' : 'tight'} (±${tol()} cents)`);
+  const c = phase === 'ready' || phase === 'playing' || phase === 'listening' ? cur : null;
+  const shown = c ? (c.blind && c.kind !== 'echo' ? '🙈 Hidden chord' : c.title) : phase === 'done' ? 'Well done!' : ' ';
+  if (!(c?.hideAfterPlay && phase === 'listening')) setText('target', shown);
+  setText('how', c ? c.how : ' ');
+  setText('ringSub', c && c.targets.length > 1 && phase !== 'reveal' ? slots(c.targets.length, stepDone) : ' ');
 }
-
-const doneMs = () => results.reduce((n, r) => n + (r?.ms || 0), 0);
 
 // ---------- the listening loop ----------
-function circDist(freq, pc) { // distance in semitones between a sung pitch and a note name, any octave (0..6)
-  const exact = 69 + 12 * Math.log2(freq / 440);
-  const d = (((exact - pc) % 12) + 12) % 12;
-  return Math.min(d, 12 - d);
-}
 function loop(now = performance.now()) {
   raf = requestAnimationFrame(loop);
   analyser.getFloatTimeDomainData(buf);
-  const level = rms(buf);
-  let freq = 0;
-  if (level > 0.01 && phase === 'listening' && now >= muteUntil) {
+  const vol = rms(buf);
+  let midi = null;
+  if (vol > 0.01 && phase === 'listening' && now >= muteUntil) {
     const p = detectPitch(buf, ctx.sampleRate);
-    if (p && p.clarity > 0.85) { recent.push(p.freq); if (recent.length > 5) recent.shift(); freq = [...recent].sort((a, b) => a - b)[Math.floor(recent.length / 2)]; }
+    if (p && p.clarity > 0.85) {
+      recent.push(69 + 12 * Math.log2(p.freq / 440)); if (recent.length > 5) recent.shift();
+      midi = [...recent].sort((a, b) => a - b)[Math.floor(recent.length / 2)];
+    }
   }
-  if (!freq && recent.length) recent.shift();
-  // show the sung note steadily: it stays for a moment after the voice dips, so the number never blinks
-  if (freq) { lastNote = noteFromFreq(freq); lastNoteAt = now; }
-  const show = lastNote && now - lastNoteAt < 350 ? `${lastNote.name}${lastNote.octave}` : '–';
-  setText('note', phase === 'listening' ? show : '♪');
+  if (midi == null && recent.length) recent.shift();
+  if (midi != null) { lastMidi = midi; lastAt = now; }
+  // the sung note stays on screen a moment after the voice dips, so the number never blinks
+  const shown = lastMidi != null && now - lastAt < 350 ? `${NAMES[((Math.round(lastMidi) % 12) + 12) % 12]}${Math.floor(Math.round(lastMidi) / 12) - 1}` : '–';
+  setText('note', phase === 'listening' ? shown : '♪');
+  const doneMs = results.reduce((n, r) => n + (r?.ms || 0), 0);
 
-  if (phase === 'listening') {
-    const left = Math.max(0, ROUND_MS - (now - listenFrom));
-    setText('clock', `Total ${((doneMs() + now - startAt) / 1000).toFixed(1)} s`);
-    const warm = freq ? Math.max(0, 1 - circDist(freq, cur.pc) / 1.5) : 0;
-    setVar($('#ring'), '--w', warm);
-    $('#warmCover').style.transform = `scaleX(${1 - warm})`;
-    const hit = freq && circDist(freq, cur.pc) * 100 <= tol();
-    if (hit) { if (!hitAt) hitAt = now; } else hitAt = 0;
-    setVar($('#ring'), '--hold', hit ? Math.min(1, (now - hitAt) / HOLD_MS) : 0, 0.03);
-    if (hit && now - hitAt >= HOLD_MS) return finishNote(true);
-    if (left <= 0) return finishNote(false);
-    if (now < muteUntil) setMsg('🎧 Listen…');
-    else if (level < 0.01) setMsg(`Sing out loud, ${Math.ceil(left / 1000)} s left`);
-    else if (!freq) setMsg(`Sing a steady "Ahh"… ${Math.ceil(left / 1000)} s`);
-    else setMsg(warm > 0.66 ? 'Almost there, hold it!' : warm > 0.2 ? 'Getting warmer…' : 'Keep trying, slide your voice…');
-  } else {
-    setText('clock', `Total ${(doneMs() / 1000).toFixed(1)} s`);
+  if (phase !== 'listening') {
+    setText('clock', `Total ${(doneMs / 1000).toFixed(1)} s`);
     setVar($('#ring'), '--w', 0); setVar($('#ring'), '--hold', 0);
     $('#warmCover').style.transform = 'scaleX(1)';
+    return;
   }
+  const left = Math.max(0, cur.limit * 1000 - (now - startAt));
+  setText('clock', `Total ${((doneMs + now - startAt) / 1000).toFixed(1)} s`);
+  const t = tracker.feed(now, midi);
+  setVar($('#ring'), '--w', t.warm);
+  $('#warmCover').style.transform = `scaleX(${1 - t.warm})`;
+  setVar($('#ring'), '--hold', t.hold, 0.03);
+  render(t.step);
+  if (t.justAdvanced && !t.done) navigator.vibrate?.(20);
+  if (t.done) return finish(true, now);
+  if (left <= 0) return finish(false, now);
+  if (now < muteUntil) setMsg('🎧 Listen…');
+  else if (vol < 0.01) setMsg(`Sing out loud, ${Math.ceil(left / 1000)} s left`);
+  else if (midi == null) setMsg(`Sing a steady "Ahh"… ${Math.ceil(left / 1000)} s`);
+  else setMsg(t.hold > 0.1 ? 'Hold it!' : t.warm > 0.66 ? 'Almost there!' : t.warm > 0.2 ? 'Getting warmer…' : 'Keep trying, slide your voice…');
 }
 
 // ---------- microphone ----------
@@ -209,7 +234,7 @@ async function start() {
   newRound(); loop();
 }
 function stop() {
-  cancelAnimationFrame(raf); clearTimeout(beginChord.t);
+  cancelAnimationFrame(raf); clearTimeout(beginTimer);
   stream?.getTracks().forEach((t) => t.stop()); // the microphone light goes off
   ctx?.close(); stream = ctx = analyser = null; phase = 'ready';
   $('#startCard').hidden = false; $('#game').hidden = true;
@@ -218,12 +243,6 @@ function stop() {
 $('#start').addEventListener('click', start);
 $('#stop').addEventListener('click', stop);
 $('#go').addEventListener('click', pressGo);
-$('#again').addEventListener('click', useAgain);
-$('#hint').addEventListener('click', useHint);
-document.querySelectorAll('[data-lv]').forEach((b) => b.addEventListener('click', () => {
-  level = Number(b.dataset.lv);
-  document.querySelectorAll('[data-lv]').forEach((x) => x.classList.toggle('on', x === b));
-  if (phase === 'playing' || phase === 'listening') clearTimeout(beginChord.t);
-  newRound();
-}));
+$('#again').addEventListener('click', () => replay('again'));
+$('#hint').addEventListener('click', () => replay('hint'));
 window.addEventListener('pagehide', stop);
