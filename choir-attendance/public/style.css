@@ -430,3 +430,118 @@ dialog.face-dlg::backdrop { background: rgba(20, 15, 50, .55); }
 .face-box { display: grid; gap: 10px; justify-items: center; text-align: center; }
 .face-canvas { width: 280px; height: 280px; max-width: 100%; border-radius: 14px; touch-action: none; cursor: grab; background: #222; }
 .face-zoom { width: 240px; }
+
+/* ======================================================================
+   Parent app redesign: floating tab bar, dark theme, calmer "parent view".
+   Only pages that set data-theme / data-lens (the parent app) are affected;
+   the teacher pages keep the light look above.
+   ====================================================================== */
+
+/* floating tab bar (replaces the old top tabs on the parent app) */
+body.app main { padding-bottom: 120px; }
+nav.tabbar {
+  position: fixed; z-index: 20; left: 12px; right: 12px; bottom: calc(14px + env(safe-area-inset-bottom));
+  max-width: 560px; margin: 0 auto; height: 70px; border-radius: 26px; padding: 0 6px;
+  background: var(--card); border: 1px solid var(--line); box-shadow: 0 14px 34px rgba(30, 20, 90, .25);
+  display: flex; align-items: center; justify-content: space-around;
+}
+nav.tabbar button {
+  flex: 1; min-width: 56px; min-height: 52px; border: 0; background: none; cursor: pointer; border-radius: 18px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  font: 800 .7rem var(--font-body); color: var(--muted);
+}
+nav.tabbar button svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round; }
+nav.tabbar button.on { color: var(--brand); }
+html[data-theme=dark] nav.tabbar button.on { color: #C8FF3D; }
+nav.tabbar button[hidden] { display: none; }
+
+/* segmented switches (colours / who is using it) */
+.seg { display: flex; gap: 4px; padding: 4px; margin-top: 6px; border-radius: 999px; background: var(--seg, #f1ecff); }
+.seg button { flex: 1; min-height: 44px; border: 0; border-radius: 999px; background: none; color: var(--muted); font: 800 .9rem var(--font-body); cursor: pointer; }
+.seg button.on { background: var(--brand); color: #fff; }
+html[data-theme=dark] .seg button.on { background: #C8FF3D; color: #0E0B1F; }
+
+/* home: the three tiles */
+.trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 0 0 14px; }
+.trio .tile { border-radius: 22px; padding: 14px 12px; background: var(--card); border: 1px solid var(--line); min-width: 0; }
+.trio .tile small { display: block; font-weight: 700; font-size: .75rem; color: var(--muted); }
+.trio .tile b { display: block; font: 800 1.6rem/1.15 var(--font-head); margin: 2px 0; }
+.trio .t1 b { color: var(--brand); } .trio .t2 b { color: #e0307f; } .trio .t3 b { color: #0e8a96; }
+.trio .dots { display: flex; gap: 4px; margin-top: 4px; }
+.trio .dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+.trio .dots i.g { background: var(--ok); } .trio .dots i.r { background: var(--bad); }
+
+/* ---------- dark theme ---------- */
+html[data-theme=dark] {
+  color-scheme: dark;
+  --bg: #0E0B1F; --card: #1A1536; --ink: #F5F2FF; --muted: #A79FD1; --line: #2F2760;
+  --brand: #6F52FF; --brand-dark: #C8FF3D; --seg: #0E0B1F;
+  --ok: #2EE6A6; --bad: #FF6B6B; --warn: #FFC83D; --info: #3DDCFF;
+  --shadow: 0 6px 18px rgba(0, 0, 0, .45);
+}
+html[data-theme=dark] .trio .t1 b { color: #C8FF3D; } html[data-theme=dark] .trio .t2 b { color: #FF4FA3; } html[data-theme=dark] .trio .t3 b { color: #3DDCFF; }
+html[data-theme=dark] body { background: radial-gradient(circle at 100% -5%, rgba(91, 61, 245, .35), transparent 340px), var(--bg); background-attachment: fixed; }
+html[data-theme=dark] .top { background: linear-gradient(135deg, #1A1536, #2A1F66); border-bottom: 1px solid var(--line); }
+html[data-theme=dark] a { color: #C8FF3D; }
+html[data-theme=dark] input, html[data-theme=dark] select, html[data-theme=dark] textarea { background: #120E2A; color: var(--ink); border-color: var(--line); }
+html[data-theme=dark] input::placeholder, html[data-theme=dark] textarea::placeholder { color: #7f78ad; }
+html[data-theme=dark] .btn, html[data-theme=dark] nav.tabs button, html[data-theme=dark] .pill { background: #241d4a; color: var(--ink); border-color: var(--line); }
+html[data-theme=dark] .btn.primary, html[data-theme=dark] .pill.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+html[data-theme=dark] .btn.danger { color: var(--bad); border-color: #6b2f3a; }
+html[data-theme=dark] .btn.primary.limeb { background: #C8FF3D; color: #0E0B1F; }
+html[data-theme=dark] .badge { background: #2a2352; color: var(--ink); }
+html[data-theme=dark] .badge.ok { background: rgba(46, 230, 166, .18); color: var(--ok); }
+html[data-theme=dark] .badge.warn { background: rgba(255, 200, 61, .18); color: var(--warn); }
+html[data-theme=dark] .badge.bad { background: rgba(255, 107, 107, .18); color: var(--bad); }
+html[data-theme=dark] .badge.info { background: rgba(61, 220, 255, .16); color: var(--info); }
+html[data-theme=dark] .alert.bad { background: rgba(255, 107, 107, .16); }
+html[data-theme=dark] .alert.warn { background: rgba(255, 200, 61, .14); }
+html[data-theme=dark] .alert.ok { background: rgba(46, 230, 166, .14); }
+html[data-theme=dark] .stat { background: #241d4a; }
+html[data-theme=dark] .avatar { border-color: var(--card); background: hsl(var(--hue, 250) 45% 30%); color: hsl(var(--hue, 250) 80% 88%); }
+html[data-theme=dark] .ach.year { background: linear-gradient(#2a2250, var(--card)); }
+html[data-theme=dark] .hcat[open] > summary, html[data-theme=dark] .att-extra, html[data-theme=dark] .pam .more.on { background: #241d4a; }
+html[data-theme=dark] .banner { background: #2a2352; }
+html[data-theme=dark] .day.g { background: rgba(46, 230, 166, .14); }
+html[data-theme=dark] .day.r { background: rgba(255, 107, 107, .14); }
+html[data-theme=dark] .day.next-one { background: rgba(111, 82, 255, .22); }
+html[data-theme=dark] .day.next-one .t, html[data-theme=dark] .day .t { color: #C8FF3D; }
+html[data-theme=dark] .day.g .t { color: var(--ok); } html[data-theme=dark] .day.r .t { color: var(--bad); }
+html[data-theme=dark] .dot.next { border-color: #C8FF3D; }
+html[data-theme=dark] .gm-row { background: #241d4a; }
+html[data-theme=dark] .gm-row.me { background: #31275f; outline-color: #C8FF3D; }
+html[data-theme=dark] .gm-badge.got, html[data-theme=dark] .gm-new, html[data-theme=dark] .gm-unlock, html[data-theme=dark] .gm-lvcard.done { background: rgba(255, 200, 61, .12); }
+html[data-theme=dark] .gm-note { background: #120E2A; }
+html[data-theme=dark] .gm-stage.done { background: rgba(46, 230, 166, .1); }
+html[data-theme=dark] .gm-n { background: #2a2352; }
+html[data-theme=dark] .gm-praise.gm-perfect, html[data-theme=dark] .gm-praise.gm-star { color: #FFC83D; }
+html[data-theme=dark] .gm-pips, html[data-theme=dark] .pl-sub { color: #C8FF3D; }
+html[data-theme=dark] .gm-lv.on, html[data-theme=dark] .wu-grid .btn.on { background: var(--brand); color: #fff; }
+html[data-theme=dark] .pl-dots i.now { background: #C8FF3D; }
+html[data-theme=dark] .wu-meter i { background: #C8FF3D; }
+html[data-theme=dark] .card.next, html[data-theme=dark] .stage { background-color: #5B3DF5; }
+html[data-theme=dark] .card.next { background: linear-gradient(135deg, #5B3DF5 0%, #B13DF5 55%, #FF4FA3 100%); }
+html[data-theme=dark] .tnote { background: rgba(14, 11, 31, .35); }
+html[data-theme=dark] .pill-lite { background: #0E0B1F; color: #C8FF3D; }
+html[data-theme=dark] nav.tabbar { box-shadow: 0 14px 34px rgba(0, 0, 0, .55); }
+html[data-theme=dark] dialog { background: var(--card); }
+html[data-theme=dark] .face-dlg, html[data-theme=dark] dialog.face-dlg { background: var(--card); color: var(--ink); }
+html[data-theme=dark] .matrix th:first-child, html[data-theme=dark] .matrix td:first-child { background: var(--card); }
+
+/* light theme tweak for the same new parts */
+html[data-theme=light] { --bg: #F6F3FF; --line: #e3ddf7; }
+html[data-theme=light] .card.next { background: linear-gradient(135deg, #5B3DF5 0%, #9b3df5 60%, #ff4fa3 100%); }
+
+/* ---------- parent view: calmer, larger, nothing moving ---------- */
+html[data-lens=parent] body { font-size: 17px; }
+html[data-lens=parent] .muted { font-size: 1rem; }
+html[data-lens=parent] .card:not(.fold) { padding: 16px 18px; }
+html[data-lens=parent] .card.next, html[data-theme=dark][data-lens=parent] .card.next { background: var(--brand); }
+html[data-lens=parent] .stage { background: var(--brand); }
+html[data-lens=parent] .bobble .head, html[data-lens=parent] .crown, html[data-lens=parent] .rise,
+html[data-lens=parent] .lb-row .bar i, html[data-lens=parent] .gm-praise { animation: none !important; }
+html[data-lens=parent] nav.tabbar button { font-size: .78rem; }
+html[data-lens=parent] .trio .tile b { font-family: var(--font-body); font-weight: 800; }
+html[data-lens=parent] .trio .tile small { font-size: .85rem; }
+html[data-lens=parent] .top { padding-bottom: 14px; }
+@media (prefers-reduced-motion: reduce) { nav.tabbar button { transition: none; } }

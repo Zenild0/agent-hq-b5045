@@ -104,3 +104,22 @@ export function remarksFoldHtml(me, open = false) {
       <div class="muted" style="margin-top:12px">Only you can see these.</div>
     </details>`;
 }
+
+// Home: points, rank and attendance at a glance (shown once the child's code is entered).
+export function trioHtml(me, sc) {
+  const status = new Map();
+  for (const x of me.history || []) {
+    const cur = status.get(x.date);
+    if (x.status === 'present') status.set(x.date, 'present');
+    else if ((x.status === 'absent' || x.status === 'excused') && cur !== 'present') status.set(x.date, 'absent');
+  }
+  const done = [...status.entries()].filter(([d]) => d <= sc.today).sort((a, b) => a[0].localeCompare(b[0]));
+  const present = done.filter(([, v]) => v === 'present').length;
+  const last = done.slice(-5);
+  return `
+    <section class="trio" aria-label="${esc(me.name)} at a glance">
+      <div class="tile t1"><small>Points</small><b>${fmtPts(me.stats?.points ?? 0)}</b><small>${fmtPts(me.monthPoints ?? 0)} this month</small></div>
+      <div class="tile t2"><small>Rank</small><b>${me.yearRank ? `#${me.yearRank}` : '–'}</b><small>${me.yearRank ? `of ${me.yearRanked} this year` : 'this year'}</small></div>
+      <div class="tile t3"><small>Present</small><b>${present}/${done.length}</b><div class="dots">${last.map(([, v]) => `<i class="${v === 'present' ? 'g' : 'r'}"></i>`).join('')}</div></div>
+    </section>`;
+}

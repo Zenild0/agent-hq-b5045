@@ -4,6 +4,8 @@ import {
 } from './common.js';
 import { nextCardHtml, daysFoldHtml, remarksFoldHtml } from './home.js';
 import { pickPhotos } from './photo.js';
+import { applyLook, lookCardHtml, wireLook } from './theme.js';
+import { trioHtml } from './home.js';
 
 const store = {
   get: (k) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } },
@@ -11,7 +13,7 @@ const store = {
 };
 
 let overview;
-let tab = 'board';
+let tab = 'home';
 let range = 'month';
 let code = store.get('choir-code');
 let me = null;
@@ -53,26 +55,29 @@ function clearSaved() {
 
 const app = $('#app');
 
+const TABS = [
+  ['home', 'Home', 'M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z'],
+  ['board', 'Rank', 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3'],
+  ['game', 'Vocals', 'M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zM6 11a6 6 0 0 0 12 0M12 17v4'],
+  ['hymns', 'Hymns', 'M9 18V5l11-2v13M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3zM20 16a3 3 0 1 1-3-3 3 3 0 0 1 3 3z'],
+  ['child', 'Me', 'M20 21a8 8 0 0 0-16 0M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z'],
+];
+
 function shell() {
   app.innerHTML = `
     ${headerHtml("Children's Choir ZD", "Our Lady of Lourdes, Kalyan West")}
     <main>
       <div class="net" id="net" role="status"></div>
-      <nav class="tabs" role="tablist">
-        <button data-tab="board">🏠 Home</button>
-        <button data-tab="ach">⭐ Achievers</button>
-        <button data-tab="hymns">🎵 Hymns</button>
-        <button data-tab="game" id="gameTab" hidden>🎤 Vocals</button>
-        <button data-tab="child">👧 My child</button>
-      </nav>
-      <section id="board"><div class="empty">Loading…</div></section>
+      <section id="home"><div id="homeCards"><div class="empty">Loading…</div></div><div id="homeCode"></div></section>
+      <section id="board" hidden></section>
       <section id="ach" hidden></section>
       <section id="hymns" hidden></section>
       <section id="game" hidden></section>
       <section id="child" hidden></section>
     </main>
-    ${footerHtml()}`;
-  app.querySelectorAll('nav button').forEach((b) => b.addEventListener('click', () => show(b.dataset.tab)));
+    ${footerHtml()}
+    <nav class="tabbar" aria-label="Main">${TABS.map(([id, label, d]) => `<button data-tab="${id}"${id === 'game' ? ' id="gameTab" hidden' : ''}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>${label}</button>`).join('')}</nav>`;
+  app.querySelectorAll('nav.tabbar button').forEach((b) => b.addEventListener('click', () => { show(b.dataset.tab); scrollTo(0, 0); }));
 }
 
 function paintNet() {
@@ -91,12 +96,13 @@ window.addEventListener('offline', paintNet);
 
 // Home: next practice, practice days, the child's remarks. Keeps folds open/closed across redraws.
 function drawHome() {
-  const box = $('#home');
+  const box = $('#homeCards');
   if (!box || !overview?.schedule) return;
   const open = (id) => box.querySelector(`#${id}`)?.open || false;
   const days = open('daysFold');
   const rem = open('remarksFold');
   box.innerHTML = nextCardHtml(overview.schedule)
+    + (me ? trioHtml(me, overview.schedule) : '')
     + daysFoldHtml(overview.schedule, me ? me.history || [] : null, days)
     + (me ? remarksFoldHtml(me, rem) : '');
 }
@@ -114,8 +120,9 @@ function openGame() {
 function show(t) {
   if (tab === 'game' && t !== 'game') { gameCtl?.destroy?.(); gameCtl = null; $('#game').innerHTML = ''; }
   tab = t;
-  app.querySelectorAll('nav button').forEach((b) => b.classList.toggle('on', b.dataset.tab === t));
-  ['board', 'ach', 'hymns', 'game', 'child'].forEach((id) => { $(`#${id}`).hidden = id !== t; });
+  app.querySelectorAll('nav.tabbar button').forEach((b) => b.classList.toggle('on', b.dataset.tab === t));
+  const showing = t === 'board' ? ['board', 'ach'] : [t];
+  ['home', 'board', 'ach', 'hymns', 'game', 'child'].forEach((id) => { $(`#${id}`).hidden = !showing.includes(id); });
   if (t === 'game') openGame();
 }
 
@@ -132,8 +139,6 @@ function drawBoard() {
 function boardTab() {
   const o = overview;
   $('#board').innerHTML = `
-    <div id="home"></div>
-    ${code ? '' : `<div class="card row between"><span><b>Parent?</b> See your child's attendance and contact details.</span><button class="btn primary small" id="goChild">Enter your child's code</button></div>`}
     <div class="stage">
       <h2>🎤 Leaderboard</h2>
       <div class="sub">Choir year ${esc(o.seasonLabel)}<br>Come to every practice, and on time, to climb!</div>
@@ -152,6 +157,7 @@ function boardTab() {
     </div>`;
   drawHome();
   drawBoard();
+  $('#homeCode').innerHTML = code ? '' : `<div class="card row between"><span><b>Parent?</b> See your child's attendance and contact details.</span><button class="btn primary small" id="goChild">Enter your child's code</button></div>`;
   $('#goChild')?.addEventListener('click', () => show('child'));
   $('#board').querySelectorAll('[data-range]').forEach((b) => b.addEventListener('click', () => {
     range = b.dataset.range;
@@ -251,6 +257,7 @@ async function hymnsTab() {
 
 function codeForm(error = '') {
   $('#child').innerHTML = `
+    ${lookCardHtml()}
     <div class="card">
       <h2 style="margin-top:0">👋 Find your child</h2>
       <p class="muted">Type the short code your choir teacher gave you for your child (like a roll number, e.g. 1001). It opens only your own child's page, so everyone's details stay private.</p>
@@ -260,6 +267,7 @@ function codeForm(error = '') {
         <button class="btn primary">Open</button>
       </form>
     </div>`;
+  wireLook($('#child'));
   $('#codeForm').addEventListener('submit', (e) => {
     e.preventDefault();
     code = new FormData(e.target).get('code').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -273,7 +281,7 @@ async function loadMe() {
   try {
     me = await cachedApi('me', { code });
     store.set('choir-code', code);
-    $('#goChild')?.closest('.card')?.remove();
+    $('#homeCode').innerHTML = '';
     childView();
     drawHome();
     drawBoard();
@@ -303,6 +311,7 @@ function childView(msg = '') {
         </div>
       </div>
     </div>
+    ${lookCardHtml()}
     ${leaveAlertHtml(d)}
     ${statsHtml(d)}
     <form class="card" id="editForm">
@@ -317,6 +326,7 @@ function childView(msg = '') {
     </form>
     <h2>Attendance</h2>
     <div class="card">${historyHtml(d.history)}</div>`;
+  wireLook($('#child'));
   const setPhoto = async (file) => {
     if (!file) return;
     $('#picMsg').textContent = '';
@@ -349,6 +359,7 @@ function childView(msg = '') {
 
 // ---------- start ----------
 
+applyLook();
 shell();
 paintNet();
 show(tab);
