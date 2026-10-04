@@ -74,11 +74,28 @@ const tabs = ['home', 'more', 'attendance', 'schedule', 'occasions', 'children',
 const loaders = { home: loadHome, more: loadMore, attendance: loadAttendance, schedule: loadSchedule, occasions: loadOccasions, children: loadChildren, hymns: loadHymns, vocals: loadVocals, board: loadBoard, settings: loadSettings };
 // The teacher's own copy of Vocals: every level and the paid features are open, and progress stays on this device.
 let vocals = null;
+function subsPanelHtml(subs) {
+  const when = (r) => (r.state === 'none' ? 'Not subscribed' : r.state === 'expired' ? `Expired ${esc(fmtDate(r.until))}` : `${r.daysLeft} day${r.daysLeft === 1 ? '' : 's'} left · until ${esc(fmtDate(r.until))}`);
+  const badge = (r) => (r.state === 'none' ? '' : `<span class="badge ${r.state === 'expired' ? 'bad' : r.state === 'soon' ? 'warn' : 'ok'}">${r.state === 'expired' ? 'Expired' : r.state === 'soon' ? 'Renew soon' : 'Active'}</span>`);
+  const row = (r) => `<button class="attn" data-open="${esc(r.id)}"><i class="dot ${r.state === 'expired' ? 'r' : r.state === 'soon' ? 'y' : r.state === 'active' ? 'g' : 'n'}"></i><span class="grow"><b>${esc(r.name)}</b><span class="muted">${when(r)}</span></span>${badge(r)}</button>`;
+  const act = subs.rows.filter((r) => r.state === 'active' || r.state === 'soon');
+  const rest = subs.rows.filter((r) => r.state === 'expired' || r.state === 'none');
+  return `
+    <div class="card" id="subsPanel">
+      <h3 style="margin:0">Subscriptions</h3>
+      <div class="muted" style="margin-bottom:8px">${subs.active} active · ${subs.soon} renew within 30 days · ${subs.expired} expired · ${subs.none} not subscribed. Tap a child to renew or unlock.</div>
+      ${act.length ? `<div class="muted subs-h">Active, fewest days left first</div><div class="attn-list">${act.map(row).join('')}</div>` : '<div class="muted">Nobody has an active subscription yet.</div>'}
+      ${rest.length ? `<div class="muted subs-h">Not subscribed</div><div class="attn-list">${rest.map(row).join('')}</div>` : ''}
+    </div>`;
+}
+
 function loadVocals() {
   vocals?.destroy?.(); vocals = null;
   const box = $('#vocals');
-  box.innerHTML = '<div class="empty">Loading…</div>';
-  return import('./game.js').then((m) => { vocals = m.mountGame(box, { preview: true, teacher: true }); }).catch(() => { box.innerHTML = '<div class="alert bad">Vocals could not load. Please try again.</div>'; });
+  box.innerHTML = '<div id="subsBox"></div><div id="vocalsGame"><div class="empty">Loading…</div></div>';
+  call('teacher/vocals-subs').then((s) => { $('#subsBox').innerHTML = subsPanelHtml(s); }).catch(() => {});
+  const game = $('#vocalsGame');
+  return import('./game.js').then((m) => { vocals = m.mountGame(game, { preview: true, teacher: true }); }).catch(() => { game.innerHTML = '<div class="alert bad">Vocals could not load. Please try again.</div>'; });
 }
 
 function showTab(name) {
@@ -156,7 +173,7 @@ async function loadHome() {
       <div class="tile t2"><small>Last practice</small><b>${ls ? `${ls.present}/${ls.total}` : '–'}</b><small>${ls ? `${esc(fmtDate(ls.date).replace(/ \d{4}$/, ''))}` : 'none yet'}</small></div>
       <div class="tile t3"><small>Watch list</small><b>${d.attention.length}</b><small>on leaves</small></div>
     </section>
-    ${d.gameEnabled || d.subs.rows.length ? `
+    ${d.gameEnabled || d.subs.active + d.subs.expired ? `
     <button class="card subs-card" id="subsCard">
       <span class="si" aria-hidden="true">🎤</span>
       <span class="grow"><b>Vocals subscriptions</b>
@@ -179,22 +196,10 @@ async function loadHome() {
       <button class="btn small ${backupAge === null || backupAge > 14 ? 'primary' : ''}" id="goBackup">Backup</button>
     </div>`;
   $('#goAtt').addEventListener('click', () => showTab('attendance'));
-  $('#subsCard')?.addEventListener('click', () => openSubs(d.subs));
+  $('#subsCard')?.addEventListener('click', () => showTab('vocals'));
   $('#home').querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.go)));
   $('#goBackup').addEventListener('click', async () => { await showTab('settings'); $('#backupBox')?.scrollIntoView({ block: 'start' }); });
   $('#editProfile').addEventListener('click', () => openProfile(p));
-}
-
-function openSubs(subs) {
-  const label = (r) => (r.state === 'expired' ? `Expired ${esc(fmtDate(r.until))}` : `Until ${esc(fmtDate(r.until))} · ${r.daysLeft} day${r.daysLeft === 1 ? '' : 's'} left`);
-  $('#dlgBody').innerHTML = `
-    <div class="dlg-top"><h2 style="margin:0" class="grow">Vocals subscriptions</h2><button class="btn small" id="close" type="button" aria-label="Close">✕</button></div>
-    <div class="muted" style="margin:6px 0 10px">${subs.active} active · ${subs.soon} renew within 30 days · ${subs.expired} expired. Tap a child to renew or change.</div>
-    ${subs.rows.length ? subs.rows.map((r) => `
-      <button class="attn" data-open="${esc(r.id)}"><i class="dot ${r.state === 'expired' ? 'r' : r.state === 'soon' ? 'y' : 'g'}"></i><span class="grow"><b>${esc(r.name)}</b><span class="muted">${label(r)}</span></span><span class="badge ${r.state === 'expired' ? 'bad' : r.state === 'soon' ? 'warn' : 'ok'}">${r.state === 'expired' ? 'Expired' : r.state === 'soon' ? 'Renew soon' : 'Active'}</span></button>`).join('')
-      : '<div class="empty">Nobody has paid yet. Unlock a child under Children → the child → Vocals game.</div>'}`;
-  if (!dlg.open) dlg.showModal();
-  $('#close').addEventListener('click', () => dlg.close());
 }
 
 function openProfile(p) {

@@ -607,3 +607,6 @@ html[data-theme=bright] .more-tile, html[data-theme=bright] .attn { border-color
 html[data-theme=dark] .subs-n { color: #C8FF3D; }
 .attn .dot.g { background: var(--ok); }
 #dlgBody .attn { margin-bottom: 8px; }
+
+.subs-h { font-weight: 800; margin: 10px 0 6px; }
+.attn .dot.n { background: var(--line); }

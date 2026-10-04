@@ -910,15 +910,20 @@ function vocalsSubscriptions(roster, kids) {
   const rows = [];
   for (const c of roster) {
     const kid = kids[c.id];
-    if (!kid?.paid) continue;
+    if (!kid?.paid) { rows.push({ id: c.id, name: c.name, until: '', daysLeft: 0, state: 'none' }); continue; }
     const left = daysLeft(kid, t);
     rows.push({ id: c.id, name: c.name, until: paidUntilOf(kid), daysLeft: left, state: left <= 0 ? 'expired' : left <= 30 ? 'soon' : 'active' });
   }
-  rows.sort((a, b) => a.daysLeft - b.daysLeft || a.name.localeCompare(b.name));
+  // Active subscribers first (fewest days left to most), then everyone else (lapsed ones before those who never paid).
+  const order = { soon: 0, active: 0, expired: 1, none: 2 };
+  rows.sort((a, b) => order[a.state] - order[b.state]
+    || (order[a.state] === 0 ? a.daysLeft - b.daysLeft : order[a.state] === 1 ? b.daysLeft - a.daysLeft : 0)
+    || a.name.localeCompare(b.name));
   return {
-    active: rows.filter((r) => r.state !== 'expired').length,
+    active: rows.filter((r) => r.state === 'active' || r.state === 'soon').length,
     soon: rows.filter((r) => r.state === 'soon').length,
     expired: rows.filter((r) => r.state === 'expired').length,
+    none: rows.filter((r) => r.state === 'none').length,
     rows,
   };
 }
@@ -999,6 +1004,7 @@ async function teacherApi(req, res, q, parts) {
       return res.end(tar);
     }
     if (b === 'home') return send(res, 200, teacherHome());
+    if (b === 'vocals-subs') return send(res, 200, vocalsSubscriptions(store.db.children.filter((c) => c.active && !c.guest), store.db.game?.kids ?? {}));
     if (b === 'board') return send(res, 200, teacherBoard());
     if (b === 'schedule') return send(res, 200, scheduleView());
     if (b === 'occasions') {

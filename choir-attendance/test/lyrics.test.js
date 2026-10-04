@@ -139,6 +139,11 @@ test('home shows Vocals subscriptions: active, renew soon, expired', async () =>
   assert.equal((await put(`children/${kids[1].id}/game`, { paid: true })).status, 200);
   const h = await (await fetch(`${base}/api/teacher/home`)).json();
   assert.ok(h.subs.active >= 2);
+  const all = await (await fetch(`${base}/api/teacher/vocals-subs`)).json();
+  const states = all.rows.map((r) => r.state);
+  assert.ok(states.indexOf('none') > states.lastIndexOf('active'), 'non-subscribers come after active ones');
+  const days = all.rows.filter((r) => r.state === 'active' || r.state === 'soon').map((r) => r.daysLeft);
+  assert.deepEqual(days, [...days].sort((a, b) => a - b), 'fewest days left first');
   const row = h.subs.rows.find((r) => r.name === 'Sub One');
   assert.equal(row.state, 'active');
   assert.ok(row.daysLeft >= 364 && /^\d{4}-\d{2}-\d{2}$/.test(row.until));
