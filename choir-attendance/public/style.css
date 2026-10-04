@@ -314,6 +314,7 @@ details[open] > summary .chev { transform: rotate(180deg); }
 .fold .who { display: flex; align-items: center; gap: 12px; }
 .fold .score { margin-left: auto; text-align: right; }
 .fold .score b { display: block; font: 800 1.7rem/1 var(--font-head); }
+.fold .score span { display: block; font-size: .72rem; line-height: 1.25; }
 .remark { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 12px; display: grid; gap: 4px; }
 .remark .rd { font-weight: 800; font-size: .9rem; }
 

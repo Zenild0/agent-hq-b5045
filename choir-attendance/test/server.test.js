@@ -561,3 +561,25 @@ test('hardening: security headers, HEAD works, a bad address is a 400 not a cras
   assert.equal((await fetch(base + '/%E0%A4%A')).status, 400);
   assert.equal((await fetch(base + '/../server.js')).status, 404);
 });
+
+test('input sanity: duplicate child names, impossible years', async () => {
+  const dup = await j('/api/teacher/children', { method: 'POST', body: { name: 'anna dias' } });
+  assert.equal(dup.status, 409, 'same name in a different case is still a duplicate');
+  assert.match(dup.data.error, /already in the list/);
+  const mark = (date) => j('/api/teacher/mark', { method: 'PUT', body: { date, type: 'saturday', event: '', childId: anna.id, status: 'present' } });
+  assert.equal((await mark('2999-01-01')).status, 400);
+  assert.equal((await mark('1900-01-01')).status, 400);
+  assert.equal((await mark('2026-02-30')).status, 400);
+  assert.equal((await mark('2026-06-20')).status, 200);
+});
+
+test('a child\'s card shows year points and this month\'s points, matching the leaderboard tabs', async () => {
+  await j('/api/teacher/unlock-codes', { method: 'POST', body: {} });
+  anna.code = (await j(`/api/teacher/child/${anna.id}`)).data.code;
+  const me = (await j('/api/me', { code: anna.code })).data;
+  const pub = (await j('/api/public')).data;
+  const year = pub.yearBoard.find((r) => r.id === anna.id);
+  const month = pub.monthBoard.find((r) => r.id === anna.id);
+  assert.equal(me.stats.points, year.points, 'the card total is the year board');
+  assert.equal(me.monthPoints, month ? month.points : 0, 'and the month figure is the month board');
+});

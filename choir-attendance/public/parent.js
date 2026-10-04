@@ -125,6 +125,8 @@ function drawBoard() {
   const o = overview;
   const rows = range === 'month' ? o.monthBoard : o.yearBoard;
   renderBoard($('#lb'), rows, { meId: me?.id });
+  const note = $('#lbNote');
+  if (note) note.textContent = range === 'month' ? `Points scored in ${o.monthLabel} only` : 'Points for the whole choir year';
 }
 
 function boardTab() {
@@ -139,6 +141,7 @@ function boardTab() {
         <button class="pill ${range === 'month' ? 'on' : ''}" data-range="month">${esc(o.monthLabel)}</button>
         <button class="pill ${range === 'year' ? 'on' : ''}" data-range="year">This year</button>
       </div>
+      <div class="muted" id="lbNote" style="text-align:center;color:#fff;opacity:.85"></div>
       <div id="lb"></div>
     </div>
     <div class="card">

@@ -24,7 +24,7 @@ const PORT = Number(process.env.PORT) || 3000;
 const PIN_ENV = process.env.CHOIR_PIN || ''; // optional: lets the teacher in from other devices
 const store = openStore(DATA_FILE);
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => istDate(); // everything in the app runs on Indian time (the server itself keeps UTC)
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript',
   '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg',
@@ -194,6 +194,7 @@ function childDetail(child, season, { teacher = false } = {}) {
     stats: childStats(db, child.id, season), history,
     ...(teacher ? { remarkLog: remarkLogFor(child), ...gameAccess(child.id) } : {}),
     yearRank: yearBoard.find((r) => r.id === child.id)?.rank ?? null, yearRanked: yearBoard.length,
+    monthPoints: monthBoard.find((r) => r.id === child.id)?.points ?? 0, // so a screen can show "this month" next to "this year"
     monthRank: monthBoard.find((r) => r.id === child.id)?.rank ?? null, monthLabel: monthLabel(month),
   };
 }
@@ -895,6 +896,7 @@ async function teacherApi(req, res, q, parts) {
       };
       applyProfile(c, body, { teacher: true });
       if (!c.name) throw new HttpError(400, 'Name is required');
+      if (store.db.children.some((x) => x.name.toLowerCase() === c.name.toLowerCase())) throw new HttpError(409, `${c.name} is already in the list. If it is a different child, add a surname or initial to tell them apart.`); // also stops an accidental double tap
       store.db.children.push(c);
       store.save();
       return send(res, 201, childOut(c));
@@ -986,7 +988,7 @@ async function serveStatic(req, res, pathname) {
   }
   const photo = /^\/photos\/([a-f0-9]{8})(-head)?\.jpg$/.exec(pathname);
   if (photo) return serveFile(res, join(PHOTOS, `${photo[1]}${photo[2] ?? ''}.jpg`), { 'cache-control': 'public, max-age=86400' });
-  const rel = pathname === '/' ? 'index.html' : pathname === '/teacher' ? 'teacher.html' : pathname.slice(1);
+  const rel = pathname === '/' ? 'index.html' : pathname === '/teacher' ? 'teacher.html' : pathname === '/favicon.ico' ? 'icon-192.png' : pathname.slice(1); // browsers ask for /favicon.ico on their own
   const file = normalize(join(PUBLIC, rel));
   if (!file.startsWith(PUBLIC + sep)) throw new HttpError(404, 'Not found');
   return serveFile(res, file);

@@ -93,8 +93,8 @@ export function remarksFoldHtml(me, open = false) {
       <summary>
         <div class="who">${avatarHtml(me, 'sm')}
           <div class="grow"><h2>${esc(me.name)}</h2>
-            <div class="muted">${me.yearRank ? `Rank ${me.yearRank} of ${me.yearRanked} · ` : ''}tap for remarks</div></div>
-          <div class="score"><b>${fmtPts(me.stats?.points ?? 0)}</b><span class="muted">points</span></div>
+            <div class="muted">${me.yearRank ? `Year rank ${me.yearRank} of ${me.yearRanked} · ` : ''}tap for remarks</div></div>
+          <div class="score"><b>${fmtPts(me.stats?.points ?? 0)}</b><span class="muted">points this year</span><span class="muted">${fmtPts(me.monthPoints ?? 0)} this month</span></div>
           <span class="chev" aria-hidden="true">▾</span></div>
       </summary>
       ${rows.map((h) => `

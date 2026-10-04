@@ -55,7 +55,8 @@ const pad = (n) => String(n).padStart(2, '0');
 export function isValidDate(s) {
   if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
   const d = new Date(`${s}T00:00:00Z`);
-  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+  const year = d.getUTCFullYear();
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s && year >= 2000 && year <= 2100; // a typo like 2062 or 1926 is refused
 }
 
 export function defaultType(date) {
