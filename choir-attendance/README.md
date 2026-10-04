@@ -47,6 +47,9 @@ There is no PIN. The teacher pages (children's details and parent codes) open **
 - Adults can play too: add them in Children (as guests if you want them off the main leaderboard).
 - The hidden page `/voice-test.html` is the original test version with every level open and no scores.
 
+## Photos
+- Parents can add or change their child's photo on the **My child** page (take a photo or choose one). The photo opens in a round frame to drag and zoom so only the **face** is kept: the full photo is never stored. The leaderboard bobble-heads show just that face. The teacher uses the same face frame when adding a photo. Photos are small (about 400 pixels) and each child has just one.
+
 ## Rules
 - **Year** = April 1 – March 31. Points: Saturday practice 1, Sunday mass 2, feast practice 1, feast mass 2 (all editable). Late = half points.
 - **Leaves:** unexcused Saturday absences. Up to 5 are allowed. Going over never removes a child: they are flagged "over the leave limit" and you decide, per child, to **keep them in the choir** or mark them **not continuing this year** (hidden from the parent leaderboard; you can undo it). Counts start again from zero each April.

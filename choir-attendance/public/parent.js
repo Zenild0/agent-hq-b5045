@@ -3,6 +3,7 @@ import {
   statsHtml, historyHtml, leaveAlertHtml, openHymnViewer,
 } from './common.js';
 import { nextCardHtml, daysFoldHtml, remarksFoldHtml } from './home.js';
+import { pickFace } from './photo.js';
 
 const store = {
   get: (k) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } },
@@ -290,6 +291,11 @@ function childView(msg = '') {
         <div class="grow">
           <h2 style="margin:0">${esc(d.name)}</h2>
           <div class="muted">${d.standard ? `Standard ${esc(d.standard)}` : ''}${d.standard && d.joinedYear ? ' · ' : ''}${d.joinedYear ? `Joined ${d.joinedYear}` : ''}</div>
+          <div class="row" style="margin-top:8px;gap:6px">
+            <label class="btn small" for="cam">📷 Take photo</label><label class="btn small" for="gal">🖼 Choose photo</label>
+            <input id="cam" type="file" accept="image/*" capture="user" hidden><input id="gal" type="file" accept="image/*" hidden>
+          </div>
+          <div class="muted" id="picMsg" aria-live="polite">Photo of the face, please. It shows on the leaderboard.</div>
           <button class="btn small" id="forget" style="margin-top:8px">Not your child? Switch</button>
         </div>
       </div>
@@ -308,6 +314,22 @@ function childView(msg = '') {
     </form>
     <h2>Attendance</h2>
     <div class="card">${historyHtml(d.history)}</div>`;
+  const setPhoto = async (file) => {
+    if (!file) return;
+    $('#picMsg').textContent = '';
+    try {
+      const image = await pickFace(file); // the parent frames the face; only that square is kept
+      if (!image) return;
+      $('#picMsg').textContent = 'Saving…';
+      const r = await api('me/photo', { method: 'POST', code, body: { image } });
+      me.photo = r.photo;
+      document.querySelector('#child .profile-head').firstElementChild.outerHTML = avatarHtml(me, 'xl');
+      $('#picMsg').textContent = '✅ Photo saved. It now shows on the leaderboard.';
+      overview = await api('public'); drawBoard(); drawHome();
+    } catch (err) { $('#picMsg').textContent = `⚠️ ${err.message}`; }
+  };
+  $('#cam').addEventListener('change', (e) => { setPhoto(e.target.files[0]); e.target.value = ''; });
+  $('#gal').addEventListener('change', (e) => { setPhoto(e.target.files[0]); e.target.value = ''; });
   $('#forget').addEventListener('click', () => { store.set('choir-code', ''); clearSaved(); code = ''; me = null; codeForm(); drawHome(); drawBoard(); });
   $('#editForm').addEventListener('submit', async (e) => {
     e.preventDefault();

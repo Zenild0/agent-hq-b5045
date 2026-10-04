@@ -935,6 +935,11 @@ async function api(req, res, url) {
 
   if (a === 'me') {
     const child = childByCode(req);
+    if (req.method === 'POST' && b === 'photo') { // a parent adds or changes their own child's photo (already cropped to the face)
+      const body = await readBody(req, 1_500_000);
+      await savePhoto(child, body.image);
+      return send(res, 200, { photo: photoUrl(child) });
+    }
     if (req.method === 'GET') return send(res, 200, childDetail(child, seasonFromQuery(q)));
     if (req.method === 'PUT') {
       const body = await readBody(req);

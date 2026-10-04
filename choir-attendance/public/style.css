@@ -161,7 +161,7 @@ button.link { background: none; border: 0; padding: 0; font: inherit; font-weigh
   display: grid; place-items: center; font: 800 calc(var(--size) * .34) var(--font-head); color: hsl(var(--hue) 55% 28%);
   transform-origin: 50% 115%; animation: bobble 2.6s ease-in-out infinite; animation-delay: var(--delay, 0s);
 }
-.bobble .head img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bobble .head img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 22%; display: block; } /* older, uncropped photos: favour the head */
 .slot { position: relative; }
 
 @keyframes bobble {
@@ -421,3 +421,10 @@ details[open] > summary .chev { transform: rotate(180deg); }
 .gm-extras { display: grid; gap: 4px; font-weight: 800; color: var(--ok); }
 @keyframes gm-pop { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .gm-praise { animation: none; } }
+
+/* choosing the face for a photo */
+dialog.face-dlg { border: 0; border-radius: 18px; padding: 16px; max-width: 94vw; }
+dialog.face-dlg::backdrop { background: rgba(20, 15, 50, .55); }
+.face-box { display: grid; gap: 10px; justify-items: center; text-align: center; }
+.face-canvas { width: 280px; height: 280px; max-width: 100%; border-radius: 14px; touch-action: none; cursor: grab; background: #222; }
+.face-zoom { width: 240px; }

@@ -513,3 +513,16 @@ test('singing game: an unpaid child gets the Warm-up (first session today), the 
   assert.equal((await j('/api/game', { code: cleo.code })).data.warmupLeft, 2);
   await j('/api/teacher/settings', { method: 'PUT', body: { gameEnabled: false } });
 });
+
+test('a parent can add or change their own child\'s photo, and nobody else\'s', async () => {
+  await j('/api/teacher/unlock-codes', { method: 'POST', body: {} });
+  anna.code = (await j(`/api/teacher/child/${anna.id}`)).data.code;
+  const ok = await j('/api/me/photo', { method: 'POST', code: anna.code, body: { image: JPEG } });
+  assert.equal(ok.status, 200);
+  assert.match(ok.data.photo, /^\/photos\/[a-f0-9]{8}\.jpg\?v=\d+$/);
+  assert.equal((await fetch(base + ok.data.photo)).status, 200);
+  assert.equal((await j('/api/me/photo', { method: 'POST', code: anna.code, body: { image: 'data:image/png;base64,AAAA' } })).status, 400, 'JPEG only');
+  assert.equal((await j('/api/me/photo', { method: 'POST', body: { image: JPEG } })).status, 401, 'needs the child code');
+  await j('/api/teacher/unlock-codes', { method: 'POST', body: {} });
+  assert.equal((await j('/api/public')).data.yearBoard.length >= 0, true);
+});

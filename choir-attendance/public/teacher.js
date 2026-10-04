@@ -563,7 +563,8 @@ async function openChild(id) {
   const setPhoto = async (file) => {
     if (!file) return;
     try {
-      const image = await resizeToJpeg(file);
+      const image = await pickFace(file); // the teacher frames the face too
+      if (!image) return;
       if (id) {
         const r = await call(`teacher/children/${id}/photo`, { method: 'POST', body: { image } });
         d.photo = `${r.photo}`;
