@@ -422,7 +422,9 @@ test('schedule: usual practice, exceptions, special days, public view without pr
   assert.ok(cancelled.days.find((d) => d.date === sat).cancelled);
   assert.notEqual(cancelled.next.date, sat);
   assert.equal((await put('/day', { date: sat, cancelled: false })).data.days.find((d) => d.date === sat).cancelled, false);
-  const feast = new Date(Date.parse(`${first.today}T00:00:00Z`) + 40 * 86400000).toISOString().slice(0, 10);
+  let feastMs = Date.parse(`${first.today}T00:00:00Z`) + 40 * 86400000;
+  if (new Date(feastMs).getUTCDay() === 6) feastMs += 86400000; // a special day must not be a usual Saturday
+  const feast = new Date(feastMs).toISOString().slice(0, 10);
   const xmas = (await put('/day', { date: feast, special: true, time: '17:00', label: 'Christmas', note: 'White shirts' })).data;
   assert.deepEqual(xmas.days.filter((d) => d.date === feast).map((d) => [d.time, d.label, d.note, d.special]), [['17:00', 'Christmas', 'White shirts', true]]);
   assert.equal((await put('/day', { date: 'nope' })).status, 400);

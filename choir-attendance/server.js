@@ -272,7 +272,7 @@ function gameState(child, q) {
     warmupLeft: warmupsLeft(kid),
     pay: paid ? null : { price: db.settings.gamePrice, mobile: db.settings.gamePayMobile, upi: db.settings.gameUpi },
     levels: LEVELS.map(({ id, tier, name, how, tol, hold, count }) => ({ id, tier, name, how, tol, hold, count, timed: isTimed(id), stages: STAGES.map((st) => stageSpec(id, st.stage)) })),
-    me: { id: child.id, name: child.name, paid, cleared: kid.cleared, stages: kid.stages ?? {}, best: kid.best, badges: kid.badges, maxPlayable: maxPlayable(kid), dailyStreak: dailyStreak(kid, today) },
+    me: { id: child.id, name: child.name, paid, cleared: kid.cleared, stages: kid.stages ?? {}, best: kid.best, top: kid.top ?? {}, badges: kid.badges, maxPlayable: maxPlayable(kid), dailyStreak: dailyStreak(kid, today) },
     // the daily challenge and the weekly boards are part of the full game
     daily: paid ? { date: today, seed: dailySeed(today), count: DAILY_COUNT, mine: daily, board: boardOut(dailyBoard(db.game, gameChildren(), today), child.id) } : null,
     weekly: paid ? { week, level, board: boardOut(weeklyBoard(db.game, gameChildren(), week, level), child.id) } : { week, level, board: null },

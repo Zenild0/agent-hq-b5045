@@ -4,6 +4,7 @@ import { LEVELS, DAILY_COUNT, STAGES, stageSpec, starsFor, isTimed, UNTIMED_CAP_
 import { IST_OFFSET_MIN } from './schedule.js';
 
 export const PASS_SHARE = 0.7;
+export const TOP_SCORES = 3; // each child keeps their best three scores for every stage (date only)
 export class GameError extends Error {}
 // Thrown when a child has not been unlocked yet: Warm-up and Level 1 are free, the rest of the game is paid.
 export class PaywallError extends GameError {}
@@ -11,7 +12,7 @@ export const FREE_LEVELS = 1;
 export const FREE_WARMUPS = 3; // free Warm-up sessions (one per day) before it becomes part of the full game
 
 export const emptyGame = () => ({ kids: {}, daily: {} });
-export const emptyKid = () => ({ cleared: [], stages: {}, best: {}, weekly: {}, badges: {}, dailyDays: [], paid: false, paidOn: '', warmups: 0, warmupLast: '' });
+export const emptyKid = () => ({ cleared: [], stages: {}, best: {}, top: {}, weekly: {}, badges: {}, dailyDays: [], paid: false, paidOn: '', warmups: 0, warmupLast: '' });
 
 // The teacher unlocks (or locks) the full game for one child, after the parent has paid.
 export function setPaid(game, childId, paid, today) {
@@ -101,8 +102,13 @@ export function applyRound(game, childId, level, stage, rawResults, today) {
   const week = weekKeyOf(today);
   const key = `${level}.${stage}`;
 
-  if (better(score, kid.best[key])) kid.best[key] = { won: score.won, ms: score.ms, stars: score.stars, on: today };
-  else if (kid.best[key] && score.stars > kid.best[key].stars) kid.best[key].stars = score.stars;
+  // The best three scores of this stage, each with the date only.
+  kid.top ??= {};
+  const list = (kid.top[key] ??= kid.best[key] ? [{ ...kid.best[key] }] : []);
+  list.push({ won: score.won, ms: score.ms, stars: score.stars, on: today });
+  list.sort((a, b) => b.won - a.won || a.ms - b.ms || a.on.localeCompare(b.on));
+  list.length = Math.min(list.length, TOP_SCORES);
+  kid.best[key] = list[0];
   if (stage === STAGES.length) { // only the full showdown counts for the weekly board
     kid.weekly[week] ??= {};
     if (better(score, kid.weekly[week][level])) kid.weekly[week][level] = { won: score.won, ms: score.ms };

@@ -173,3 +173,19 @@ test('Warm-up: three free sessions (one per day), then it needs the full game', 
   setPaid(g, 'a', false, '2026-10-09');
   assert.throws(() => useWarmup(g, 'a', '2026-10-09'), PaywallError, 'locked again: the free sessions are still used up');
 });
+
+test('every stage keeps the best three scores with the date only', () => {
+  const g = emptyGame();
+  const run = (date, won, ms) => play(g, 'a', 1, 1, date, { won, ms });
+  run('2026-10-05', 3, 9000);   // 3 of 4
+  run('2026-10-06', 4, 8000);   // best so far
+  run('2026-10-07', 4, 5000);   // better
+  run('2026-10-08', 2, 1000);   // worse than all three: not kept once there are four
+  run('2026-10-09', 4, 6000);
+  const top = g.kids.a.top['1.1'];
+  assert.equal(top.length, 3);
+  assert.deepEqual(top.map((t) => [t.won, t.ms / count(1, 1), t.on]), [[4, 5000, '2026-10-07'], [4, 6000, '2026-10-09'], [4, 8000, '2026-10-06']]);
+  assert.deepEqual(Object.keys(top[0]).sort(), ['stars', 'ms', 'on', 'won'].sort(), 'only scores and the date: no time of day, nothing else');
+  assert.deepEqual(g.kids.a.best['1.1'], top[0], 'the single best stays in step');
+  assert.ok(!g.kids.a.top['1.2'], 'each stage has its own list');
+});

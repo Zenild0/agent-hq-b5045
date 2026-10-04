@@ -15,6 +15,7 @@ const read = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || 'nul
 const write = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage full or blocked */ } };
 const fmtMs = (ms) => `${(ms / 1000).toFixed(1)} s`;
 const stars = (n) => '⭐'.repeat(n || 0);
+const fmtDay = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 const WHITE = [{ lv: 1, x: 0 }, { lv: 3, x: 1 }, { lv: 5, x: 2 }, { lv: 6, x: 3 }, { lv: 8, x: 4 }, { lv: 10, x: 5 }, { lv: 12, x: 6 }];
 const BLACK = [{ lv: 2, x: 0.68 }, { lv: 4, x: 1.68 }, { lv: 7, x: 3.68 }, { lv: 9, x: 4.68 }, { lv: 11, x: 5.68 }];
 
@@ -26,7 +27,7 @@ export function mountGame(root, { code = '', preview = false } = {}) {
   // ---------- data: the server, or this phone in preview mode ----------
   const call = (path, opts = {}) => api(`game${path}`, { code, ...opts });
   function previewState() {
-    const p = read(PREVIEW, { cleared: [], stages: {}, best: {}, badges: {} });
+    const p = read(PREVIEW, { cleared: [], stages: {}, best: {}, top: {}, badges: {} });
     const paid = read('choir-preview-paid', true);
     const w = read('choir-preview-warm', { n: 0, last: '' });
     return {
@@ -34,7 +35,7 @@ export function mountGame(root, { code = '', preview = false } = {}) {
       warmupLeft: paid ? null : Math.max(0, 3 - w.n),
       pay: paid ? null : { price: 500, mobile: '98200 00000', upi: 'choir@upi' },
       levels: LEVELS.map((l) => ({ ...l, stages: STAGES.map((st) => stageSpec(l.id, st.stage)) })),
-      me: { id: 'preview', name: 'Tester', paid, cleared: p.cleared, stages: p.stages, best: p.best, badges: p.badges, maxPlayable: maxPlayableOf(p.cleared), dailyStreak: 0 },
+      me: { id: 'preview', name: 'Tester', paid, cleared: p.cleared, stages: p.stages, best: p.best, top: p.top ?? {}, badges: p.badges, maxPlayable: maxPlayableOf(p.cleared), dailyStreak: 0 },
       daily: null, weekly: { level: selected, board: { top: [], me: null, total: 0 } },
     };
   }
@@ -52,12 +53,17 @@ export function mountGame(root, { code = '', preview = false } = {}) {
   }
   async function submit(kind, level, stage, results) {
     if (preview) {
-      const p = read(PREVIEW, { cleared: [], stages: {}, best: {}, badges: {} });
+      const p = read(PREVIEW, { cleared: [], stages: {}, best: {}, top: {}, badges: {} });
       const spec = stageSpec(level, stage);
       const won = results.filter((r) => r.won).length, ms = results.reduce((a, r) => a + r.ms, 0);
       const pass = won >= spec.count * 0.7, st = starsFor(results, (i) => results[i].limit);
       const key = `${level}.${stage}`;
-      if (!p.best[key] || won > p.best[key].won || (won === p.best[key].won && ms < p.best[key].ms)) p.best[key] = { won, ms, stars: st };
+      p.top ??= {};
+      const list = (p.top[key] ??= []);
+      list.push({ won, ms, stars: st, on: new Date().toISOString().slice(0, 10) });
+      list.sort((a, b) => b.won - a.won || a.ms - b.ms);
+      list.length = Math.min(list.length, 3);
+      p.best[key] = list[0];
       let levelCleared = false;
       if (pass && (p.stages[level] ?? 0) < stage) p.stages[level] = stage;
       if (pass && stage === 3 && !p.cleared.includes(level)) { p.cleared.push(level); levelCleared = true; }
@@ -195,9 +201,9 @@ export function mountGame(root, { code = '', preview = false } = {}) {
         <div class="muted">${l.timed ? '⏱ Beat the clock: every note has a countdown.' : '🕊 Take your time: no countdown. Keep trying each note; your score is the total time to get them all right. You can skip a note.'}</div>
         ${behindPay(l.id) ? unlockHtml() : ''}
         <div class="gm-stages">${l.stages.map((s) => {
-          const open = unlocked(l.id, s.stage), best = me.best[`${l.id}.${s.stage}`], got = (me.stages[l.id] ?? 0) >= s.stage;
+          const open = unlocked(l.id, s.stage), tops = (me.top?.[`${l.id}.${s.stage}`] ?? (me.best[`${l.id}.${s.stage}`] ? [me.best[`${l.id}.${s.stage}`]] : [])).filter((t) => t.on), got = (me.stages[l.id] ?? 0) >= s.stage;
           return `<div class="gm-stage${got ? ' done' : ''}${open ? '' : ' lock'}">
-            <div><b>Stage ${s.stage}: ${esc(s.name)}</b> ${got ? '✓' : ''}<div class="muted">${s.count} challenges · margin ±${s.tol} cents${best ? ` · best ${best.won}/${s.count} in ${fmtMs(best.ms)} ${stars(best.stars)}` : ''}</div></div>
+            <div><b>Stage ${s.stage}: ${esc(s.name)}</b> ${got ? '✓' : ''}<div class="muted">${s.count} challenges · margin ±${s.tol} cents</div>${tops ? `<ol class="gm-top">${tops.map((t) => `<li>${t.won}/${s.count} · ${fmtMs(t.ms)} ${stars(t.stars)} <span class="muted">${esc(fmtDay(t.on))}</span></li>`).join('')}</ol>` : ''}</div>
             ${open ? `<button class="btn ${got ? '' : 'primary'} small" data-play="${s.stage}">${got ? 'Play again' : '▶ Play'}</button>` : '<span class="muted">🔒</span>'}</div>`;
         }).join('')}</div>
         ${preview || !state.weekly?.board ? '' : `<h4 style="margin:12px 0 4px">This week's showdowns</h4>
