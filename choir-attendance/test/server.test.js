@@ -407,3 +407,27 @@ test('remarks: one flat penalty per day, a bonus per good remark, dated log for 
   assert.equal(h.data.lyrics, 'Line one\nLine two');
   assert.equal((await j('/api/hymns')).data.hymns.find((x) => x.title === 'Lyric Hymn').lyrics, 'Line one\nLine two');
 });
+
+test('schedule: usual practice, exceptions, special days, public view without private data', async () => {
+  const put = (path, body, method = 'PUT') => j(`/api/teacher/schedule${path}`, { method, body });
+  const first = (await j('/api/public')).data.schedule;
+  assert.equal(first.usual.time, '19:00');
+  assert.equal(first.usual.note, 'Carry your books');
+  assert.ok(first.next && first.next.note === 'Carry your books');
+  assert.equal((await put('', { time: '7pm' })).status, 400);
+  assert.equal((await put('', { time: '19:30' })).data.usual.time, '19:30');
+  const sat = first.next.date;
+  const cancelled = (await put('/day', { date: sat, cancelled: true })).data;
+  assert.ok(cancelled.days.find((d) => d.date === sat).cancelled);
+  assert.notEqual(cancelled.next.date, sat);
+  assert.equal((await put('/day', { date: sat, cancelled: false })).data.days.find((d) => d.date === sat).cancelled, false);
+  const feast = new Date(Date.parse(`${first.today}T00:00:00Z`) + 40 * 86400000).toISOString().slice(0, 10);
+  const xmas = (await put('/day', { date: feast, special: true, time: '17:00', label: 'Christmas', note: 'White shirts' })).data;
+  assert.deepEqual(xmas.days.filter((d) => d.date === feast).map((d) => [d.time, d.label, d.note, d.special]), [['17:00', 'Christmas', 'White shirts', true]]);
+  assert.equal((await put('/day', { date: 'nope' })).status, 400);
+  assert.equal((await j('/api/teacher/schedule', { method: 'DELETE' })).status, 404);
+  const removed = (await put('/day', { date: feast }, 'DELETE')).data;
+  assert.ok(!removed.days.some((d) => d.date === feast));
+  assert.ok(!JSON.stringify((await j('/api/public')).data.schedule).includes(anna.code));
+  await put('', { time: '19:00' });
+});

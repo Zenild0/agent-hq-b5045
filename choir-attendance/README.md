@@ -24,6 +24,7 @@ There is no PIN. The teacher pages (children's details and parent codes) open **
 
 ## For the teacher (`/teacher`)
 - **Attendance:** one compact A–Z list with **P** / **A** / **ML** (medical leave) buttons, a **⋯** panel for behaviour remarks and a private note, and any date for **back-dated** entries.
+- **Schedule:** the usual practice (every Saturday, 7 pm, Indian time) is added automatically with a note for parents ("Carry your books"). You only change the exceptions: cancel a day, change a time, or add a special day (feast rehearsal) with its own time and note.
 - **Occasions** (Christmas, New Year, Maundy Thursday, Good Friday, Easter, Mother Mary's Feast, Communion, Confirmation, or your own name): create an occasion, tick which main-group children take part, and add **guests** who are not in the choir. Practices and the mass are marked from Attendance (Special practice / Special mass) for just those people, and points add to the leaderboard for main-group children. Guests appear only in their occasion; **⬆ Main group** moves a guest across when their remarks are good.
 - **Children:** add one, or **Add many** (one name per line, optionally `Name, Standard`). Details per child: name, standard, year joined, contact, address, parent name and number, and a photo.
 - **Parent access:** one link for everybody plus a short private code per child (4 characters, or choose your own like `1001` or `CC01`). Codes are hidden until you tap Show. Wrong guesses are limited to 5 per half hour per device; **Parent access → Unlock everyone now** clears any lockout instantly.
@@ -32,6 +33,7 @@ There is no PIN. The teacher pages (children's details and parent codes) open **
 - **Settings:** points, leave limit, late-points share, website address for parents.
 
 ## For parents (`/`)
+- **Home:** the next practice with your note, a folded "Practice days" list (past days coloured green for present and red for absent or medical once the child's code is entered), the child's points with day-by-day remarks, then the leaderboard. A small Online/Offline label shows the connection.
 - **Hymns tab:** parents open a category to listen to recordings or follow the music link (no code needed).
 - **One link for everyone.** Parents open it, see the **Leaderboard** and **Achievers** (names, photos and points only), tap **My child**, and type their child's short code. A code opens only that child: attendance, and editing their own contact number, address and the parent-to-call name and number. Name, standard and photo are teacher-only. "Make a new code" cancels an old one.
 

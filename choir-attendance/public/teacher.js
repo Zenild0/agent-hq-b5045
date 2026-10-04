@@ -21,6 +21,7 @@ app.innerHTML = `
   <main>
     <nav class="tabs">
       <button data-tab="attendance" class="on">✅ Attendance</button>
+      <button data-tab="schedule">📅 Schedule</button>
       <button data-tab="occasions">🎄 Occasions</button>
       <button data-tab="children">👧 Children</button>
       <button data-tab="hymns">🎵 Hymns</button>
@@ -29,6 +30,7 @@ app.innerHTML = `
     </nav>
     <div id="msg" aria-live="polite"></div>
     <section id="attendance"></section>
+    <section id="schedule" hidden></section>
     <section id="occasions" hidden></section>
     <section id="children" hidden></section>
     <section id="hymns" hidden></section>
@@ -60,8 +62,8 @@ function lockOut(message) {
   app.querySelector('main').innerHTML = `<div class="card"><h2 style="margin-top:0">🔒 Teacher area</h2><p>${esc(message)}</p><p class="muted">Open <b>http://localhost:3000/teacher</b> on the computer running the app. Parents use the main link and their child's code.</p><a class="btn" href="/">Go to the parent page</a></div>`;
 }
 
-const tabs = ['attendance', 'occasions', 'children', 'hymns', 'board', 'settings'];
-const loaders = { attendance: loadAttendance, occasions: loadOccasions, children: loadChildren, hymns: loadHymns, board: loadBoard, settings: loadSettings };
+const tabs = ['attendance', 'schedule', 'occasions', 'children', 'hymns', 'board', 'settings'];
+const loaders = { attendance: loadAttendance, schedule: loadSchedule, occasions: loadOccasions, children: loadChildren, hymns: loadHymns, board: loadBoard, settings: loadSettings };
 function showTab(name) {
   tabs.forEach((t) => { $(`#${t}`).hidden = t !== name; });
   app.querySelectorAll('nav button').forEach((x) => x.classList.toggle('on', x.dataset.tab === name));
@@ -869,3 +871,83 @@ run(async () => {
 });
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+
+// ======================= Schedule =======================
+
+const fmtClock = (hhmm) => {
+  const [h, m] = hhmm.split(':').map(Number);
+  return `${h % 12 || 12}${m ? `:${String(m).padStart(2, '0')}` : ''} ${h < 12 ? 'am' : 'pm'}`;
+};
+
+async function loadSchedule() {
+  const sc = await call('teacher/schedule');
+  const usual = sc.usual;
+  // Only the exceptions are listed: cancelled, a different time, a note of their own, or a special day.
+  const exceptions = sc.days.filter((d) => d.date >= sc.today && (d.cancelled || d.special || d.time !== usual.time || d.label || (d.note && d.note !== usual.note)));
+  $('#schedule').innerHTML = `
+    <div class="card">
+      <h2 style="margin-top:0">Schedule</h2>
+      <div class="row between" style="background:#f1edff;border-radius:12px;padding:10px 12px">
+        <div><b>Usual practice</b><div class="muted">Every Saturday, ${esc(fmtClock(usual.time))}</div></div>
+        <button class="btn small" id="editUsual">Edit</button></div>
+      <div class="muted" style="margin:8px 0">Saturdays are added automatically. You only change the exceptions.</div>
+      <label class="field">Note shown on every practice<input id="usualNote" maxlength="140" value="${esc(usual.note)}"></label>
+      <h3>Exceptions</h3>
+      ${exceptions.map((d) => `
+        <div class="row between" style="border-top:1px solid var(--line);padding:8px 0${d.cancelled ? ';opacity:.75' : ''}">
+          <span><b>${esc(fmtDate(d.date))}</b> · ${d.cancelled ? 'cancelled' : esc(fmtClock(d.time))}${d.label ? ` · ${esc(d.label)}` : ''}${d.note && d.note !== usual.note ? `<div class="muted">${esc(d.note)}</div>` : ''}</span>
+          <button class="btn small" data-day="${esc(d.date)}">${d.cancelled ? 'Restore' : 'Change'}</button></div>`).join('') || '<div class="muted">No exceptions. Every Saturday is on as usual.</div>'}
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="chgDay">Cancel or change a day</button>
+        <button class="btn primary" id="addSpecial">Add a special day</button></div>
+    </div>`;
+  $('#editUsual').addEventListener('click', () => openUsual(usual));
+  $('#usualNote').addEventListener('change', (e) => run(async () => { await call('teacher/schedule', { method: 'PUT', body: { note: e.target.value } }); flash('Saved', 'ok'); }));
+  $('#chgDay').addEventListener('click', () => openDay(sc, { date: sc.next?.date || sc.today }, 'change'));
+  $('#addSpecial').addEventListener('click', () => openDay(sc, { date: sc.today }, 'special'));
+  $('#schedule').querySelectorAll('[data-day]').forEach((b) => b.addEventListener('click', () => {
+    const d = sc.days.find((x) => x.date === b.dataset.day);
+    if (d.cancelled) return run(async () => { await call('teacher/schedule/day', { method: 'PUT', body: { date: d.date, cancelled: false } }); await loadSchedule(); });
+    openDay(sc, d, d.special ? 'special' : 'change');
+  }));
+}
+
+function openUsual(usual) {
+  $('#dlgBody').innerHTML = `
+    <div class="row between"><h2 style="margin:0">Usual practice time</h2><button class="btn small" id="close" aria-label="Close">✕</button></div>
+    <form id="uf"><label class="field">Every Saturday at<input name="time" type="time" required value="${esc(usual.time)}"></label>
+      <div class="row"><button class="btn primary">Save</button><span id="umsg" class="muted" aria-live="polite"></span></div></form>`;
+  if (!dlg.open) dlg.showModal();
+  $('#close').addEventListener('click', () => dlg.close());
+  $('#uf').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try { await call('teacher/schedule', { method: 'PUT', body: { time: new FormData(e.target).get('time') } }); dlg.close(); await loadSchedule(); }
+    catch (err) { $('#umsg').textContent = `⚠️ ${err.message}`; }
+  });
+}
+
+function openDay(sc, d, mode) {
+  const special = mode === 'special';
+  const exists = sc.days.some((x) => x.date === d.date);
+  $('#dlgBody').innerHTML = `
+    <div class="row between"><h2 style="margin:0">${special ? 'Special day' : 'Change a day'}</h2><button class="btn small" id="close" aria-label="Close">✕</button></div>
+    <form id="df">
+      <label class="field">Date<input name="date" type="date" required value="${esc(d.date)}"></label>
+      <label class="field">Time<input name="time" type="time" value="${esc(d.time || sc.usual.time)}"></label>
+      ${special ? `<label class="field">Name (e.g. Christmas)<input name="label" maxlength="40" value="${esc(d.label || '')}"></label>` : `
+      <label class="row" style="gap:8px;margin:8px 0"><input type="checkbox" name="cancelled"${d.cancelled ? ' checked' : ''}> No practice this day</label>`}
+      <label class="field">Note for this day only (optional)<input name="note" maxlength="140" placeholder="${esc(sc.usual.note)}" value="${esc(d.note && d.note !== sc.usual.note ? d.note : '')}"></label>
+      <div class="row"><button class="btn primary">Save</button>${special && exists ? '<button type="button" class="btn danger" id="rm">Remove this day</button>' : ''}<span id="dmsg" class="muted" aria-live="polite"></span></div>
+    </form>`;
+  if (!dlg.open) dlg.showModal();
+  $('#close').addEventListener('click', () => dlg.close());
+  $('#rm')?.addEventListener('click', () => run(async () => { await call('teacher/schedule/day', { method: 'DELETE', body: { date: d.date } }); dlg.close(); await loadSchedule(); }));
+  $('#df').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const body = { date: f.get('date'), time: f.get('time') === sc.usual.time && !special ? '' : f.get('time'), note: f.get('note') };
+    if (special) { body.special = true; body.label = f.get('label'); } else body.cancelled = f.get('cancelled') === 'on';
+    try { await call('teacher/schedule/day', { method: 'PUT', body }); dlg.close(); await loadSchedule(); }
+    catch (err) { $('#dmsg').textContent = `⚠️ ${err.message}`; }
+  });
+}

@@ -11,6 +11,7 @@ import {
   compareNames, findOccasion, slug,
 } from './lib/logic.js';
 import { openStore, newCode } from './lib/store.js';
+import { istNow, isDate, isTime, scheduleDays, nextPractice, shiftDate } from './lib/schedule.js';
 import { createTar, readTar } from './lib/tar.js';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -197,6 +198,45 @@ function childDetail(child, season, { teacher = false } = {}) {
 
 // ---- public (leaderboard + achievers only: no private details) ------------
 
+
+// ---- practice schedule (Indian time) ---------------------------------------
+
+function scheduleView() {
+  const { schedule } = store.db;
+  const now = istNow();
+  const resolve = (d) => ({ ...d, note: d.note || schedule.note || '' });
+  const days = scheduleDays(schedule, shiftDate(now.date, -150), shiftDate(now.date, 200)).map(resolve);
+  const next = nextPractice(schedule, now);
+  return { today: now.date, next: next ? resolve(next) : null, days, usual: { weekday: schedule.weekday, time: schedule.time, note: schedule.note, from: schedule.from } };
+}
+
+function updateSchedule(body) {
+  const sc = store.db.schedule;
+  if ('time' in body) { if (!isTime(body.time)) throw new HttpError(400, 'Time must look like 19:00'); sc.time = body.time; }
+  if ('note' in body) sc.note = text(body.note ?? '', 140, 'Note');
+  store.save();
+}
+
+function setScheduleDay(body) {
+  if (!isDate(body.date)) throw new HttpError(400, 'Pick a valid date');
+  const sc = store.db.schedule;
+  const o = { ...(sc.days[body.date] || {}) };
+  if ('time' in body) { if (body.time === '' || body.time === null) delete o.time; else if (isTime(body.time)) o.time = body.time; else throw new HttpError(400, 'Time must look like 19:00'); }
+  if ('cancelled' in body) { if (body.cancelled) o.cancelled = true; else delete o.cancelled; }
+  if ('label' in body) { const l = text(body.label ?? '', 40, 'Name'); if (l) o.label = l; else delete o.label; }
+  if ('note' in body) { const n = text(body.note ?? '', 140, 'Note'); if (n) o.note = n; else delete o.note; }
+  if ('special' in body) { if (body.special) o.special = true; else delete o.special; }
+  if (o.special && !o.time) o.time = sc.time;
+  if (Object.keys(o).length) sc.days[body.date] = o; else delete sc.days[body.date];
+  store.save();
+}
+
+function removeScheduleDay(date) {
+  if (!isDate(date)) throw new HttpError(400, 'Pick a valid date');
+  delete store.db.schedule.days[date];
+  store.save();
+}
+
 function publicOverview(q) {
   const { db } = store;
   const season = seasonFromQuery(q);
@@ -207,6 +247,7 @@ function publicOverview(q) {
   return {
     season, seasonLabel: seasonLabel(season), seasons: seasonsWithData(db, today()),
     settings: { satPoints: db.settings.satPoints, sunPoints: db.settings.sunPoints, feastPoints: db.settings.feastPoints, practicePoints: db.settings.practicePoints, remarkPenalty: db.settings.remarkPenalty, remarkBonus: db.settings.remarkBonus },
+    schedule: scheduleView(),
     month, monthLabel: monthLabel(month),
     monthBoard: strip(scoreboard(db, season, mr.start, mr.end, { hideOut: true })),
     yearBoard: strip(scoreboard(db, season, range.start, range.end, { hideOut: true })),
@@ -716,6 +757,7 @@ async function teacherApi(req, res, q, parts) {
       return res.end(tar);
     }
     if (b === 'board') return send(res, 200, teacherBoard());
+    if (b === 'schedule') return send(res, 200, scheduleView());
     if (b === 'occasions') {
       const season = seasonFromQuery(q);
       return send(res, 200, {
@@ -745,6 +787,11 @@ async function teacherApi(req, res, q, parts) {
     const cleared = lockedOutCount();
     failures.clear();
     return send(res, 200, { cleared });
+  }
+  if (b === 'schedule') {
+    if (req.method === 'PUT' && !id) { updateSchedule(body); return send(res, 200, scheduleView()); }
+    if (req.method === 'PUT' && id === 'day') { setScheduleDay(body); return send(res, 200, scheduleView()); }
+    if (req.method === 'DELETE' && id === 'day') { removeScheduleDay(body.date); return send(res, 200, scheduleView()); }
   }
   if (req.method === 'PUT' && b === 'settings') { updateSettings(body); return send(res, 200, store.db.settings); }
   if (b === 'children') {

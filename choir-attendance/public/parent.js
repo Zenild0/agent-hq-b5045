@@ -2,6 +2,7 @@ import {
   $, api, esc, fmtPts, headerHtml, footerHtml, renderBoard, achieversHtml, avatarHtml,
   statsHtml, historyHtml, leaveAlertHtml, openHymnViewer,
 } from './common.js';
+import { nextCardHtml, daysFoldHtml, remarksFoldHtml } from './home.js';
 
 const store = {
   get: (k) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } },
@@ -30,8 +31,9 @@ function shell() {
   app.innerHTML = `
     ${headerHtml("Children's Choir ZD", "Our Lady of Lourdes, Kalyan West")}
     <main>
+      <div class="net" id="net" role="status"></div>
       <nav class="tabs" role="tablist">
-        <button data-tab="board">🏆 Leaderboard</button>
+        <button data-tab="board">🏠 Home</button>
         <button data-tab="ach">⭐ Achievers</button>
         <button data-tab="hymns">🎵 Hymns</button>
         <button data-tab="child">👧 My child</button>
@@ -43,6 +45,26 @@ function shell() {
     </main>
     ${footerHtml()}`;
   app.querySelectorAll('nav button').forEach((b) => b.addEventListener('click', () => show(b.dataset.tab)));
+}
+
+function paintNet() {
+  const on = navigator.onLine;
+  const el = $('#net');
+  if (el) { el.textContent = on ? '● Online' : '● Offline'; el.classList.toggle('off', !on); }
+}
+window.addEventListener('online', paintNet);
+window.addEventListener('offline', paintNet);
+
+// Home: next practice, practice days, the child's remarks. Keeps folds open/closed across redraws.
+function drawHome() {
+  const box = $('#home');
+  if (!box || !overview?.schedule) return;
+  const open = (id) => box.querySelector(`#${id}`)?.open || false;
+  const days = open('daysFold');
+  const rem = open('remarksFold');
+  box.innerHTML = nextCardHtml(overview.schedule)
+    + daysFoldHtml(overview.schedule, me ? me.history || [] : null, days)
+    + (me ? remarksFoldHtml(me, rem) : '');
 }
 
 function show(t) {
@@ -62,6 +84,7 @@ function drawBoard() {
 function boardTab() {
   const o = overview;
   $('#board').innerHTML = `
+    <div id="home"></div>
     ${code ? '' : `<div class="card row between"><span><b>Parent?</b> See your child's attendance and contact details.</span><button class="btn primary small" id="goChild">Enter your child's code</button></div>`}
     <div class="stage">
       <h2>🎤 Leaderboard</h2>
@@ -78,6 +101,7 @@ function boardTab() {
       Feast practices = <b>${fmtPts(o.settings.practicePoints)}</b> point each · Feast mass = <b>${fmtPts(o.settings.feastPoints)}</b> points.
       A day with any remark to improve (late, not paying attention, incomplete book, talking) takes off <b>${fmtPts(o.settings.remarkPenalty ?? 0.5)}</b> in total, however many. Each good remark (well behaved, helped others) adds <b>${fmtPts(o.settings.remarkBonus ?? 0.25)}</b>.</div>
     </div>`;
+  drawHome();
   drawBoard();
   $('#goChild')?.addEventListener('click', () => show('child'));
   $('#board').querySelectorAll('[data-range]').forEach((b) => b.addEventListener('click', () => {
@@ -202,6 +226,7 @@ async function loadMe() {
     store.set('choir-code', code);
     $('#goChild')?.closest('.card')?.remove();
     childView();
+    drawHome();
     drawBoard();
   } catch (e) {
     me = null;
@@ -238,7 +263,7 @@ function childView(msg = '') {
     </form>
     <h2>Attendance</h2>
     <div class="card">${historyHtml(d.history)}</div>`;
-  $('#forget').addEventListener('click', () => { store.set('choir-code', ''); code = ''; me = null; codeForm(); drawBoard(); });
+  $('#forget').addEventListener('click', () => { store.set('choir-code', ''); code = ''; me = null; codeForm(); drawHome(); drawBoard(); });
   $('#editForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target));
@@ -255,6 +280,7 @@ function childView(msg = '') {
 // ---------- start ----------
 
 shell();
+paintNet();
 show(tab);
 api('public')
   .then((o) => {
