@@ -1,4 +1,8 @@
 import { pickPhotos } from './photo.js';
+import { applyLook, lookCardHtml, wireLook, configure } from './theme.js';
+
+configure({ key: 'choir-theme-teacher', lens: false }); // the teacher area keeps its own colour choice
+applyLook();
 import { waLink,
   $, api, esc, fmtPts, fmtDate, typeLabel, headerHtml, footerHtml, avatarHtml, leaveBadge,
   renderBoard, statsHtml, historyHtml, leaveAlertHtml, remarksLogHtml, openHymnViewer,
@@ -676,6 +680,7 @@ async function loadSettings() {
   // step="any": values like 0.25 (the remark bonus) must be allowed, or the browser silently refuses to save the form
   const num = (name, label, val, extra = '') => `<label class="field">${label}<input name="${name}" type="number" ${extra.includes('step') ? '' : 'step="any"'} min="0" value="${val}" ${extra}></label>`;
   $('#settings').innerHTML = `
+    ${lookCardHtml()}
     <form class="card" id="setForm">
       ${num('satPoints', 'Saturday practice points', s.satPoints)}
       ${num('sunPoints', 'Sunday mass points', s.sunPoints)}
@@ -737,6 +742,7 @@ async function loadSettings() {
     if (!confirm('Give EVERY child their 3 free Warm-up sessions again?')) return;
     run(async () => { const r = await call('teacher/game-warmups', { method: 'POST', body: {} }); $('#warmResetMsg').textContent = `✅ Done. ${r.reset} ${r.reset === 1 ? 'child' : 'children'} had used some.`; });
   });
+  wireLook($('#settings'));
   $('#setForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
@@ -823,6 +829,10 @@ function openHymn(id) {
       <label class="field">Link to the music (optional)<input name="link" type="url" placeholder="https://…" maxlength="500" value="${esc(h.link)}"></label>
       <label class="field">Notes (optional)<input name="notes" maxlength="300" placeholder="e.g. Key of D, verses 1 and 3" value="${esc(h.notes)}"></label>
       <label class="field">Lyrics (optional, shown large and full screen for the children)<textarea name="lyrics" rows="8" maxlength="6000" placeholder="Paste the words here">${esc(h.lyrics || '')}</textarea></label>
+      <div class="card" style="margin:6px 0 12px">
+        <div class="row"><button type="button" class="btn small" id="findLy">🔎 Find lyrics online</button><span id="lyMsg" class="muted" aria-live="polite">Searches by the title above. You can edit the words before saving.</span></div>
+        <div id="lyList"></div>
+      </div>
       <div class="row"><button class="btn primary">${id ? 'Save' : 'Add hymn'}</button><span id="hmsg" class="muted" aria-live="polite"></span></div>
     </form>
     ${id ? `
@@ -854,6 +864,30 @@ function openHymn(id) {
       }
       await loadHymns();
     } catch (err) { $('#hmsg').textContent = `⚠️ ${err.message}`; }
+  });
+  $('#findLy').addEventListener('click', async () => {
+    const f = $('#hf');
+    const q = f.elements.title.value.trim();
+    if (q.length < 2) { $('#lyMsg').textContent = 'Type the hymn title above first.'; return; }
+    $('#lyMsg').textContent = 'Searching…';
+    $('#lyList').innerHTML = '';
+    try {
+      const r = await call(`teacher/lyrics?q=${encodeURIComponent(q)}`);
+      $('#lyMsg').textContent = r.results.length ? `${r.results.length} found. Preview one, then use it.` : 'Nothing found. Try fewer words, or type the lyrics yourself.';
+      $('#lyList').innerHTML = r.results.map((x, i) => `
+        <details class="hymn" style="padding:8px 0"><summary><b>${esc(x.title)}</b> <span class="muted">${esc(x.artist)}${x.album ? ` · ${esc(x.album)}` : ''}</span></summary>
+          <pre style="white-space:pre-wrap;font:inherit;margin:8px 0;max-height:200px;overflow:auto">${esc(x.lyrics)}</pre>
+          <button type="button" class="btn small primary" data-use="${i}">Use these lyrics</button></details>`).join('')
+        + (r.results.length ? '<div class="muted" style="margin-top:6px">Many songs are copyrighted. Use words you are allowed to share with the choir (older hymns are usually fine).</div>' : '');
+      $('#lyList').querySelectorAll('[data-use]').forEach((btn) => btn.addEventListener('click', () => {
+        const box = f.elements.lyrics;
+        if (box.value.trim() && !confirm('Replace the lyrics already typed here?')) return;
+        box.value = r.results[Number(btn.dataset.use)].lyrics.slice(0, 6000);
+        if (!f.elements.title.value.trim()) f.elements.title.value = r.results[Number(btn.dataset.use)].title;
+        $('#lyMsg').textContent = '✅ Added to the lyrics box. Edit anything you like, then press Save.';
+        box.scrollIntoView({ block: 'center' });
+      }));
+    } catch (err) { $('#lyMsg').textContent = `⚠️ ${err.message}`; }
   });
   if (!id) return;
   const extType = { mp3: 'audio/mpeg', m4a: 'audio/mp4', wav: 'audio/wav', ogg: 'audio/ogg', aac: 'audio/aac' };

@@ -528,9 +528,33 @@ html[data-theme=dark] dialog { background: var(--card); }
 html[data-theme=dark] .face-dlg, html[data-theme=dark] dialog.face-dlg { background: var(--card); color: var(--ink); }
 html[data-theme=dark] .matrix th:first-child, html[data-theme=dark] .matrix td:first-child { background: var(--card); }
 
-/* light theme tweak for the same new parts */
-html[data-theme=light] { --bg: #F6F3FF; --line: #e3ddf7; }
-html[data-theme=light] .card.next { background: linear-gradient(135deg, #5B3DF5 0%, #9b3df5 60%, #ff4fa3 100%); }
+
+/* ---------- bright theme: lavender to pink, white cards, vivid tiles ---------- */
+html[data-theme=bright] {
+  --bg: #F4F1FF; --card: #fff; --ink: #1B1640; --muted: #6f67a0; --line: #E6DDFF;
+  --brand: #6C4DFF; --brand-dark: #4a2fd6; --stage-1: #6C4DFF; --stage-2: #B04DFF; --seg: #F1EDFF;
+  --shadow: 0 6px 18px rgba(108, 77, 255, .14);
+}
+html[data-theme=bright] body { background: linear-gradient(180deg, #FFD9EC 0%, #E6DDFF 45%, #F4F1FF 100%) fixed; }
+html[data-theme=bright] .top { background: linear-gradient(135deg, #6C4DFF, #FF5FA8); }
+html[data-theme=bright] .card { border-color: transparent; box-shadow: var(--shadow); }
+html[data-theme=bright] .card.next { background: linear-gradient(135deg, #6C4DFF 0%, #B04DFF 60%, #FF5FA8 100%); box-shadow: 0 12px 28px rgba(108, 77, 255, .35); }
+html[data-theme=bright] .pill-lite { background: #FFE14D; color: #1B1640; }
+html[data-theme=bright] nav.tabbar { border-color: transparent; box-shadow: 0 14px 34px rgba(108, 77, 255, .25); }
+html[data-theme=bright] .trio .tile { border-color: transparent; }
+html[data-theme=bright] .trio .t1 { background: #FFC62E; } html[data-theme=bright] .trio .t1 b { color: #1B1640; }
+html[data-theme=bright] .trio .t2 { background: #FF5FA8; } html[data-theme=bright] .trio .t2 b, html[data-theme=bright] .trio .t2 small { color: #fff; }
+html[data-theme=bright] .trio .t3 { background: #5CE1C6; } html[data-theme=bright] .trio .t3 b { color: #1B1640; }
+html[data-theme=bright] .trio .t1 small, html[data-theme=bright] .trio .t3 small { color: #3b3470; }
+html[data-theme=bright] .trio .dots i { background: rgba(255, 255, 255, .6); }
+
+/* teacher area in the dark theme: controls that were hard-coded white */
+html[data-theme=dark] .status button, html[data-theme=dark] .pam button, html[data-theme=dark] .pick-list { background: #241d4a; color: var(--ink); border-color: var(--line); }
+html[data-theme=dark] .status button.on.present, html[data-theme=dark] .pam .pa.on.present { background: var(--ok); color: #0E0B1F; border-color: var(--ok); }
+html[data-theme=dark] .status button.on.absent, html[data-theme=dark] .pam .pa.on.absent { background: var(--bad); color: #0E0B1F; border-color: var(--bad); }
+html[data-theme=dark] .status button.on.excused, html[data-theme=dark] .pam .pa.on.excused { background: var(--info); color: #0E0B1F; border-color: var(--info); }
+html[data-theme=dark] .sym.n { color: #6f68a0; }
+html[data-theme=dark] details.remarks summary { color: #C8FF3D; }
 
 /* ---------- parent view: calmer, larger, nothing moving ---------- */
 html[data-lens=parent] body { font-size: 17px; }

@@ -641,6 +641,37 @@ function applyHymn(h, body) {
   if ('lyrics' in body) h.lyrics = text(body.lyrics, 6000, 'Lyrics');
 }
 
+// Teacher-only helper: look up lyrics online (free LRCLIB catalogue, no key, nothing is stored here).
+// The teacher reads, edits and chooses; only then does anything get saved with the hymn.
+const LYRICS_URL = process.env.CHOIR_LYRICS_URL || 'https://lrclib.net/api/search';
+async function searchLyrics(query) {
+  const term = String(query ?? '').replace(/\s+/g, ' ').trim().slice(0, 100);
+  if (term.length < 2) throw new HttpError(400, 'Type at least two letters of the hymn title');
+  let rows;
+  try {
+    const r = await fetch(`${LYRICS_URL}?q=${encodeURIComponent(term)}`, {
+      signal: AbortSignal.timeout(8000), headers: { 'user-agent': 'ChildrensChoirZD/1.0 (church choir app)' },
+    });
+    if (!r.ok) throw new Error(`status ${r.status}`);
+    rows = await r.json();
+  } catch {
+    throw new HttpError(502, 'Could not reach the online lyrics search right now. You can still type or paste the words.');
+  }
+  const clean = (v, n) => String(v ?? '').replace(/\r\n?/g, '\n').trim().slice(0, n);
+  const seen = new Set();
+  const results = [];
+  for (const x of Array.isArray(rows) ? rows : []) {
+    const lyrics = clean(x?.plainLyrics, 6000);
+    if (!lyrics) continue;
+    const key = `${clean(x.trackName, 120)}|${clean(x.artistName, 80)}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    results.push({ title: clean(x.trackName, 120), artist: clean(x.artistName, 80), album: clean(x.albumName, 80), lyrics });
+    if (results.length >= 8) break;
+  }
+  return { query: term, results };
+}
+
 const sameHymn = (a, b) => a.category === b.category && a.title.toLowerCase() === b.title.toLowerCase();
 const newHymn = () => ({ id: randomUUID().slice(0, 8), title: '', category: '', link: '', notes: '', lyrics: '', audioExt: '', audioVersion: 0 });
 
@@ -862,6 +893,7 @@ async function teacherApi(req, res, q, parts) {
         main: store.db.children.filter((c) => c.active && !c.guest).sort(compareNames).map((c) => ({ id: c.id, name: c.name, photo: photoUrl(c) })),
       });
     }
+    if (b === 'lyrics') return send(res, 200, await searchLyrics(q.get('q')));
     throw new HttpError(404, 'Not found');
   }
 

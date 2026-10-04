@@ -4,7 +4,7 @@ import {
 } from './common.js';
 import { nextCardHtml, daysFoldHtml, remarksFoldHtml } from './home.js';
 import { pickPhotos } from './photo.js';
-import { applyLook, lookCardHtml, wireLook } from './theme.js';
+import { applyLook, lookCardHtml, wireLook, configure } from './theme.js';
 import { trioHtml } from './home.js';
 
 const store = {
@@ -359,6 +359,7 @@ function childView(msg = '') {
 
 // ---------- start ----------
 
+configure({ key: 'choir-theme', lens: true });
 applyLook();
 shell();
 paintNet();
