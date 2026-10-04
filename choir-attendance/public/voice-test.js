@@ -2,8 +2,9 @@ import { detectPitch, noteFromFreq, rms, freqOfMidi, NOTE_NAMES, CHORDS } from '
 
 const $ = (s) => document.querySelector(s);
 const ROUND_MS = 15000, HOLD_MS = 500, CHORD_S = 3.0, GAP_MS = 400;
-const PENALTY = { again: 2000, hint: 3000 };
-const TOLERANCE = 40; // cents: "within the range", not exact
+// How close the child's voice must be (in cents; 100 = one semitone). Tighter at higher levels.
+const TOLERANCE = { 1: 45, 2: 35, 3: 25 };
+const tol = () => TOLERANCE[level] ?? 25;
 
 // ---------- no-flicker DOM helpers: only touch the page when a value really changes ----------
 const cache = new Map();
@@ -15,7 +16,7 @@ const setMsg = (text, cls = '') => { if (cache.get('msgv') !== text + cls) { cac
 let ctx, stream, analyser, buf, raf = 0;
 let level = 1, deck = [], idx = 0, phase = 'ready'; // ready | playing | listening | reveal | done
 let results = [], streak = 0;
-let startAt = 0, hitAt = 0, penalty = 0, listenFrom = 0, lastNote = null, lastNoteAt = 0, recent = [];
+let startAt = 0, hitAt = 0, muteUntil = 0, listenFrom = 0, lastNote = null, lastNoteAt = 0, recent = [];
 let cur = null; // { pc, type, root }
 const forced = new URLSearchParams(location.search).get('force'); // for testing: ?force=0,2,4
 
@@ -33,7 +34,7 @@ function drawDots() {
 function newRound() {
   deck = buildDeck(); idx = 0; results = []; streak = 0; phase = 'ready'; cur = null;
   drawDots(); render();
-  setMsg('Ready? Press Start. You will hear a chord, but not its name.');
+  setMsg('Ready? Press Start.');
   $('#fine').textContent = ' ';
 }
 
@@ -52,18 +53,15 @@ function chordTone(freq, t0, dur, gain) {
     o.connect(og).connect(g); o.start(t0); o.stop(t0 + dur + 0.05);
   });
 }
-// A slightly different voicing each time (octave and inversion move a little), so no two rounds sound identical.
+// The chord is played exactly in tune, always in the same comfortable range (middle C upwards).
 function playChord(c, seconds = CHORD_S) {
-  const rootMidi = 48 + c.pc + 12 * Math.floor(Math.random() * 2);   // C3..B4
-  const inversion = Math.floor(Math.random() * 3);
-  const detune = (Math.random() - 0.5) * 0.3;                         // up to about 15 cents either way
-  const notes = CHORDS[c.type].map((s, i) => rootMidi + s + (i < inversion ? 12 : 0));
+  const rootMidi = 60 + c.pc;
   const t0 = ctx.currentTime + 0.05;
-  notes.forEach((m) => chordTone(freqOfMidi(m + detune), t0, seconds, 0.17));
-  chordTone(freqOfMidi(rootMidi - 12 + detune), t0, seconds, 0.12);    // the root, an octave lower, to anchor it
+  CHORDS[c.type].forEach((st) => chordTone(freqOfMidi(rootMidi + st), t0, seconds, 0.17));
+  chordTone(freqOfMidi(rootMidi - 12), t0, seconds, 0.12); // the root an octave lower, to anchor it
 }
 // A synthetic "singer" for the hint: a buzzy tone shaped like an "ah" vowel, with a gentle vibrato.
-function playSinger(c, seconds = 2.4) {
+function playSinger(c, seconds = CHORD_S) {
   const t0 = ctx.currentTime + 0.05;
   const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = freqOfMidi(60 + c.pc);
   const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = 5.2; lg.gain.value = 4; lfo.connect(lg).connect(o.frequency);
@@ -87,8 +85,8 @@ function chime(ok) {
 }
 
 // ---------- flow ----------
-function beginChord(replay = false) {
-  if (!replay) cur = deck[idx];
+function beginChord() {
+  cur = deck[idx];
   phase = 'playing'; recent = []; hitAt = 0;
   setMsg('🎹 Listen carefully…');
   playChord(cur);
@@ -96,25 +94,26 @@ function beginChord(replay = false) {
   clearTimeout(beginChord.t);
   beginChord.t = setTimeout(() => {
     phase = 'listening'; recent = [];
-    if (!replay || !startAt) { startAt = performance.now(); penalty = penalty || 0; }
-    listenFrom = performance.now();
+    startAt = listenFrom = performance.now(); // the clock starts when the chord stops
     render();
   }, CHORD_S * 1000 + GAP_MS); // a short silence, so the speaker is not mistaken for the child's voice
 }
 function pressGo() {
   if (phase === 'done') return newRound();
-  if (phase === 'reveal') { phase = 'ready'; setMsg('Ready? Press Start for the next chord.'); render(); return; }
+  if (phase === 'reveal') { phase = 'ready'; cur = deck[idx]; setMsg('Ready? Press Start.'); render(); return; }
   if (phase !== 'ready') return;
-  penalty = 0; startAt = 0; beginChord(false);
+  beginChord();
 }
-function useAgain() { if (phase !== 'listening') return; penalty += PENALTY.again; beginChord(true); }
-function useHint() {
+// Hearing the chord or the singer again costs nothing extra: the clock simply keeps running while it plays.
+function replay(kind) {
   if (phase !== 'listening') return;
-  penalty += PENALTY.hint; playSinger(cur);
-  setMsg('🎶 A singer is showing you the note…');
+  muteUntil = performance.now() + CHORD_S * 1000 + GAP_MS; recent = []; hitAt = 0;
+  if (kind === 'hint') { playSinger(cur); setMsg('🎶 Listen to the singer…'); } else { playChord(cur); setMsg('🎹 Listen again…'); }
 }
+const useAgain = () => replay('again');
+const useHint = () => replay('hint');
 function finishNote(won) {
-  const ms = Math.min(ROUND_MS, hitAt && won ? hitAt - startAt : ROUND_MS) + penalty;
+  const ms = Math.min(ROUND_MS, won ? hitAt - startAt : ROUND_MS);
   results[idx] = { won, ms };
   streak = won ? streak + 1 : 0;
   chime(won);
@@ -142,9 +141,12 @@ function render() {
   setText('chordNo', phase === 'done' ? 'All done' : `Chord ${Math.min(idx + 1, deck.length)} of ${deck.length}`);
   setText('streak', streak > 1 ? `🔥 ${streak} in a row` : ' ');
   setText('ringLab', phase === 'listening' ? 'You are singing' : phase === 'playing' ? 'Listen' : 'Ready');
-  if (phase === 'listening' && $('#peek').checked && cur) setText('ringSub', `sing ${NOTE_NAMES[cur.pc]}`);
-  else if (phase !== 'listening') setText('ringSub', ' ');
+  const c = phase === 'ready' || phase === 'playing' || phase === 'listening' ? deck[idx] : null;
+  setText('target', c ? `${NOTE_NAMES[c.pc]} ${c.type}` : phase === 'done' ? 'Well done!' : ' ');
+  setText('tol', `Accuracy needed: ${tol() >= 45 ? 'easy' : tol() >= 35 ? 'medium' : 'tight'} (±${tol()} cents)`);
 }
+
+const doneMs = () => results.reduce((n, r) => n + (r?.ms || 0), 0);
 
 // ---------- the listening loop ----------
 function circDist(freq, pc) { // distance in semitones between a sung pitch and a note name, any octave (0..6)
@@ -157,7 +159,7 @@ function loop(now = performance.now()) {
   analyser.getFloatTimeDomainData(buf);
   const level = rms(buf);
   let freq = 0;
-  if (level > 0.01 && phase === 'listening') {
+  if (level > 0.01 && phase === 'listening' && now >= muteUntil) {
     const p = detectPitch(buf, ctx.sampleRate);
     if (p && p.clarity > 0.85) { recent.push(p.freq); if (recent.length > 5) recent.shift(); freq = [...recent].sort((a, b) => a - b)[Math.floor(recent.length / 2)]; }
   }
@@ -169,19 +171,21 @@ function loop(now = performance.now()) {
 
   if (phase === 'listening') {
     const left = Math.max(0, ROUND_MS - (now - listenFrom));
-    setText('clock', `${((now - startAt + penalty) / 1000).toFixed(1)} s`);
-    const warm = freq ? Math.max(0, 1 - circDist(freq, cur.pc) / 3) : 0;
+    setText('clock', `Total ${((doneMs() + now - startAt) / 1000).toFixed(1)} s`);
+    const warm = freq ? Math.max(0, 1 - circDist(freq, cur.pc) / 1.5) : 0;
     setVar($('#ring'), '--w', warm);
     $('#warmCover').style.transform = `scaleX(${1 - warm})`;
-    const hit = freq && circDist(freq, cur.pc) * 100 <= TOLERANCE;
+    const hit = freq && circDist(freq, cur.pc) * 100 <= tol();
     if (hit) { if (!hitAt) hitAt = now; } else hitAt = 0;
     setVar($('#ring'), '--hold', hit ? Math.min(1, (now - hitAt) / HOLD_MS) : 0, 0.03);
     if (hit && now - hitAt >= HOLD_MS) return finishNote(true);
     if (left <= 0) return finishNote(false);
-    if (level < 0.01 && cache.get('msgv') !== 'quiet') setMsg(`Sing out loud, ${Math.ceil(left / 1000)} s left`);
+    if (now < muteUntil) setMsg('🎧 Listen…');
+    else if (level < 0.01) setMsg(`Sing out loud, ${Math.ceil(left / 1000)} s left`);
     else if (!freq) setMsg(`Sing a steady "Ahh"… ${Math.ceil(left / 1000)} s`);
     else setMsg(warm > 0.66 ? 'Almost there, hold it!' : warm > 0.2 ? 'Getting warmer…' : 'Keep trying, slide your voice…');
   } else {
+    setText('clock', `Total ${(doneMs() / 1000).toFixed(1)} s`);
     setVar($('#ring'), '--w', 0); setVar($('#ring'), '--hold', 0);
     $('#warmCover').style.transform = 'scaleX(1)';
   }
@@ -216,7 +220,6 @@ $('#stop').addEventListener('click', stop);
 $('#go').addEventListener('click', pressGo);
 $('#again').addEventListener('click', useAgain);
 $('#hint').addEventListener('click', useHint);
-$('#peek').addEventListener('change', () => { cache.delete('ringSub'); render(); });
 document.querySelectorAll('[data-lv]').forEach((b) => b.addEventListener('click', () => {
   level = Number(b.dataset.lv);
   document.querySelectorAll('[data-lv]').forEach((x) => x.classList.toggle('on', x === b));
