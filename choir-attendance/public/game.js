@@ -5,7 +5,7 @@ import { api, esc } from './common.js';
 import { openAudio, micMessage } from './audio.js';
 import { createPlayer } from './player.js';
 import { mountWarmup } from './warmup.js';
-import { LEVELS, STAGES, stageSpec, buildDeck, dailyDeck, titleFor, PIANO_KEYS, starsFor } from './levels.js';
+import { LEVELS, STAGES, stageSpec, buildDeck, dailyDeck, titleFor, PIANO_KEYS, starsFor, praiseFor } from './levels.js';
 import { BADGES } from './badges.js';
 
 const CACHE = 'choir-cache:game|';
@@ -56,10 +56,11 @@ export function mountGame(root, { code = '', preview = false } = {}) {
       const p = read(PREVIEW, { cleared: [], stages: {}, best: {}, top: {}, badges: {} });
       const spec = stageSpec(level, stage);
       const won = results.filter((r) => r.won).length, ms = results.reduce((a, r) => a + r.ms, 0);
-      const pass = won >= spec.count * 0.7, st = starsFor(results, (i) => results[i].limit);
+      const pass = won >= spec.count * 0.7, st = pass ? starsFor(results, (i) => results[i].limit) : 0;
       const key = `${level}.${stage}`;
       p.top ??= {};
       const list = (p.top[key] ??= []);
+      const personalBest = !list[0] || won > list[0].won || (won === list[0].won && ms < list[0].ms);
       list.push({ won, ms, stars: st, on: new Date().toISOString().slice(0, 10) });
       list.sort((a, b) => b.won - a.won || a.ms - b.ms);
       list.length = Math.min(list.length, 3);
@@ -69,7 +70,7 @@ export function mountGame(root, { code = '', preview = false } = {}) {
       if (pass && stage === 3 && !p.cleared.includes(level)) { p.cleared.push(level); levelCleared = true; }
       write(PREVIEW, p);
       state = previewState();
-      return { score: { won, ms, pass, stars: st }, newBadges: [], levelCleared, state };
+      return { score: { won, ms, pass, stars: st }, newBadges: [], levelCleared, personalBest, state };
     }
     const out = await call(kind === 'daily' ? '/daily' : '/round', { method: 'POST', body: kind === 'daily' ? { results } : { level, stage, results } });
     state = out.state; write(`${CACHE}${code}`, state); offline = false;
@@ -242,12 +243,23 @@ export function mountGame(root, { code = '', preview = false } = {}) {
     const newB = (out?.newBadges ?? []).map((id) => BADGES.find((b) => b.id === id)).filter(Boolean);
     const l = levelOf(lvId), nextLevel = state.levels.find((x) => x.id === lvId + 1);
     const headline = out?.already ? 'Already played today' : kind === 'daily' ? 'Daily challenge done!'
-      : out?.levelCleared ? `🏆 Level cleared: ${l.name}!` : sc.pass ? `Stage ${stage} cleared!` : 'Good try. Practise and go again!';
+      : out?.levelCleared ? `🏆 Level cleared: ${l.name}!` : sc.pass ? `Stage ${stage} cleared!` : 'Not cleared yet';
+    // Praise is earned: it depends on the score, accuracy, hints, a personal best and the place on the board.
+    const wins = results.filter((r) => r.won && r.err != null);
+    const board = kind === 'daily' ? state.daily?.board : stage === 3 ? state.weekly?.board : null;
+    const rank = out && !out.already && board ? (board.top.find((r) => r.id === state.me.id)?.rank ?? board.me?.rank ?? null) : null;
+    const praise = out?.already ? null : praiseFor({
+      pass: kind === 'daily' ? sc.won >= results.length * 0.7 : sc.pass, stars: sc.stars, won: sc.won, count: results.length,
+      hints: results.reduce((a, r) => a + (r.hints || 0), 0), avgErr: wins.length ? wins.reduce((a, r) => a + r.err, 0) / wins.length : null,
+      personalBest: Boolean(out?.personalBest), rank,
+    });
     const nextStage = sc.pass && stage < 3 ? stage + 1 : 0;
     root.innerHTML = `
       <div class="card gm-result">
+        ${praise ? `<div class="gm-praise gm-${praise.tier}">${esc(praise.title)}</div>` : ''}
         <h2 style="margin:0">${headline}</h2>
         <div class="gm-big">${sc.won} of ${results.length}</div>
+        ${praise?.extras.length ? `<div class="gm-extras">${praise.extras.map((x) => `<div>${esc(x)}</div>`).join('')}</div>` : ''}
         <div>${fmtMs(sc.ms)} ${stars(sc.stars)}</div>
         ${out?.levelCleared ? `<div class="gm-new">A piano key just lit up!${nextLevel ? ` Next: ${esc(nextLevel.name)}` : ''}</div>` : ''}
         ${queued ? '<div class="muted">No signal: your score is saved on this phone and will be sent when you are online.</div>' : ''}

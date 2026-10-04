@@ -169,3 +169,23 @@ export function seededRng(seed) {
 }
 // Today's Legend challenge: the same hard round for everybody.
 export const dailyDeck = (seed) => buildDeck(12, seededRng(seed)).slice(0, DAILY_COUNT);
+
+// Words of praise after a round, earned by how the child actually did. No praise for a round that was not passed.
+// r = { pass, stars, won, count, hints, avgErr, personalBest, rank, showdown }
+const PRAISE = {
+  perfect: ['Perfect pitch! Flawless! 🎯', 'Spot on, every single note! 🎯'],
+  star: ['U R A Star! ⭐', 'Superstar! 🌟', 'Brilliant singing! ✨'],
+  rock: ['You Rock! 🎸', 'Great singing! 🎶', 'Super job! 👏'],
+  well: ['Well done! 👍', 'Nice work! 🙂', 'Good job! 🎵'],
+  try: ['Good try! Keep practising 💪', 'Almost there. Try again! 💪', 'Keep going, you are getting closer! 💪'],
+};
+export function praiseFor(r, pick = (a) => a[Math.floor(Math.random() * a.length)]) {
+  const perfect = r.pass && r.won === r.count && r.hints === 0 && r.avgErr != null && r.avgErr <= 10;
+  const tier = !r.pass ? 'try' : perfect ? 'perfect' : r.stars >= 3 ? 'star' : r.stars === 2 ? 'rock' : 'well';
+  const extras = [];
+  if (r.pass && r.personalBest) extras.push('New personal best! 📈');
+  if (r.pass && r.rank === 1) extras.push("You are No. 1 on this week's board! 🏆");
+  else if (r.pass && r.rank && r.rank <= 3) extras.push(`You are No. ${r.rank} on this week's board!`);
+  if (r.pass && r.hints === 0 && !perfect && r.won === r.count) extras.push('Every note, and no hints! 🙌');
+  return { tier, title: pick(PRAISE[tier]), extras };
+}

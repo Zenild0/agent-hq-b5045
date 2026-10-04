@@ -92,7 +92,8 @@ export function checkResults(results, expected, timed = true) {
 export function scoreRound(results) {
   const won = results.filter((r) => r.won).length;
   const ms = results.reduce((s, r) => s + r.ms, 0);
-  return { won, ms, pass: won >= results.length * PASS_SHARE, stars: starsFor(results, (i) => results[i].limit) };
+  const pass = won >= results.length * PASS_SHARE;
+  return { won, ms, pass, stars: pass ? starsFor(results, (i) => results[i].limit) : 0 }; // stars are only for a passed round
 }
 
 // Better round = more matched, then less time.
@@ -124,6 +125,7 @@ export function applyRound(game, childId, level, stage, rawResults, today) {
   // The best three scores of this stage, each with the date only.
   kid.top ??= {};
   const list = (kid.top[key] ??= kid.best[key] ? [{ ...kid.best[key] }] : []);
+  const personalBest = better(score, list[0]); // beat their own best on this stage
   list.push({ won: score.won, ms: score.ms, stars: score.stars, on: today });
   list.sort((a, b) => b.won - a.won || a.ms - b.ms || a.on.localeCompare(b.on));
   list.length = Math.min(list.length, TOP_SCORES);
@@ -150,7 +152,7 @@ export function applyRound(game, childId, level, stage, rawResults, today) {
   if (score.pass && showdown && level >= 9) give('pro');
   if (score.pass && showdown && level >= 11) give('expert');
   if (score.pass && showdown && level >= 12) give('legend');
-  return { score, newBadges: earned, levelCleared };
+  return { score, newBadges: earned, levelCleared, personalBest };
 }
 
 // One try per child per day at the daily Legend challenge. Later tries are ignored (and reported).

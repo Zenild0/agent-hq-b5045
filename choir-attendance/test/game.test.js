@@ -215,3 +215,10 @@ test('the full game is for one year: it ends after 365 days and can be renewed',
   assert.equal(isPaid(kid, '2028-10-16'), false);
   assert.equal(kid.paidUntil, '');
 });
+
+test('a round reports a new personal best only when it beats the previous best', () => {
+  const g = emptyGame();
+  assert.equal(play(g, 'a', 1, 1, '2026-10-05', { ms: 5000 }).personalBest, true, 'the first round is a best');
+  assert.equal(play(g, 'a', 1, 1, '2026-10-06', { ms: 6000 }).personalBest, false);
+  assert.equal(play(g, 'a', 1, 1, '2026-10-07', { ms: 4000 }).personalBest, true);
+});

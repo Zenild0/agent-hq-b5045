@@ -123,3 +123,20 @@ test('levels 1 to 4 are untimed, level 5 and up are timed', () => {
   assert.deepEqual(LEVELS.map((l) => isTimed(l.id)), [false, false, false, false, ...Array(8).fill(true)]);
   for (const lv of LEVELS) assert.ok(buildDeck(lv.id, rng(2)).every((c) => c.timed === isTimed(lv.id)));
 });
+
+test('praise is earned: none for a round that was not passed, and it grows with the score', async () => {
+  const { praiseFor } = await import('../public/levels.js');
+  const first = (a) => a[0];
+  const base = { pass: true, stars: 1, won: 6, count: 7, hints: 1, avgErr: 25, personalBest: false, rank: null };
+  assert.equal(praiseFor({ ...base, pass: false, stars: 1 }, first).tier, 'try');
+  assert.deepEqual(praiseFor({ ...base, pass: false, personalBest: true, rank: 1 }, first).extras, [], 'no extras without passing');
+  assert.equal(praiseFor(base, first).tier, 'well');
+  assert.equal(praiseFor({ ...base, stars: 2 }, first).title, 'You Rock! 🎸');
+  assert.equal(praiseFor({ ...base, stars: 3 }, first).title, 'U R A Star! ⭐');
+  assert.equal(praiseFor({ ...base, stars: 3, won: 7, hints: 0, avgErr: 8 }, first).tier, 'perfect');
+  assert.equal(praiseFor({ ...base, stars: 3, won: 7, hints: 0, avgErr: 14 }, first).tier, 'star', 'perfect needs real accuracy');
+  const ex = praiseFor({ ...base, personalBest: true, rank: 1 }, first).extras;
+  assert.ok(ex.some((x) => x.includes('personal best')) && ex.some((x) => x.includes('No. 1')));
+  assert.ok(praiseFor({ ...base, rank: 3 }, first).extras.some((x) => x.includes('No. 3')));
+  assert.equal(praiseFor({ ...base, rank: 5 }, first).extras.length, 0);
+});
