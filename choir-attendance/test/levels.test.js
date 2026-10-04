@@ -129,7 +129,11 @@ test('praise is earned: none for a round that was not passed, and it grows with 
   const first = (a) => a[0];
   const base = { pass: true, stars: 1, won: 6, count: 7, hints: 1, avgErr: 25, personalBest: false, rank: null };
   assert.equal(praiseFor({ ...base, pass: false, stars: 1 }, first).tier, 'try');
-  assert.deepEqual(praiseFor({ ...base, pass: false, personalBest: true, rank: 1 }, first).extras, [], 'no extras without passing');
+  const fail = praiseFor({ ...base, pass: false, personalBest: true, rank: 1 }, first);
+  assert.ok(fail.title.startsWith('Good try') && fail.title.toLowerCase().includes('warm'));
+  assert.deepEqual(fail.extras.length, 1, 'only an encouraging tip: no best or board lines without passing');
+  assert.ok(fail.extras[0].startsWith('Tip'));
+  assert.ok(praiseFor({ ...base, pass: false, won: 0 }, first).extras[0].includes('Singer hint'));
   assert.equal(praiseFor(base, first).tier, 'well');
   assert.equal(praiseFor({ ...base, stars: 2 }, first).title, 'You Rock! 🎸');
   assert.equal(praiseFor({ ...base, stars: 3 }, first).title, 'U R A Star! ⭐');

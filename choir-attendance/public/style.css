@@ -416,7 +416,8 @@ details[open] > summary .chev { transform: rotate(180deg); }
 .gm-top .muted { font-weight: 600; }
 .gm-praise { font: 800 2rem/1.15 var(--font-head); color: var(--brand-dark); animation: gm-pop .5s cubic-bezier(.2, 1.4, .4, 1) both; }
 .gm-praise.gm-perfect, .gm-praise.gm-star { color: #c47f00; }
-.gm-praise.gm-try { font-size: 1.4rem; color: var(--muted); }
+.gm-praise.gm-try { font-size: 1.4rem; color: var(--brand-dark); }
+.gm-try ~ .gm-extras { color: var(--muted); }
 .gm-extras { display: grid; gap: 4px; font-weight: 800; color: var(--ok); }
 @keyframes gm-pop { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .gm-praise { animation: none; } }

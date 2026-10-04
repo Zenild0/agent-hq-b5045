@@ -177,12 +177,13 @@ const PRAISE = {
   star: ['U R A Star! ⭐', 'Superstar! 🌟', 'Brilliant singing! ✨'],
   rock: ['You Rock! 🎸', 'Great singing! 🎶', 'Super job! 👏'],
   well: ['Well done! 👍', 'Nice work! 🙂', 'Good job! 🎵'],
-  try: ['Good try! Keep practising 💪', 'Almost there. Try again! 💪', 'Keep going, you are getting closer! 💪'],
+  try: ['Good try! A quick warm-up might help 🔥', 'Nice effort! Warm up your voice and go again 💪', 'Good try! Every singer practises. Try again 🎶'],
 };
 export function praiseFor(r, pick = (a) => a[Math.floor(Math.random() * a.length)]) {
   const perfect = r.pass && r.won === r.count && r.hints === 0 && r.avgErr != null && r.avgErr <= 10;
   const tier = !r.pass ? 'try' : perfect ? 'perfect' : r.stars >= 3 ? 'star' : r.stars === 2 ? 'rock' : 'well';
   const extras = [];
+  if (!r.pass) extras.push(r.won === 0 ? 'Tip: tap 🎶 Singer hint to hear the note sung, then copy it.' : r.hints === 0 ? 'Tip: warm up with a few chords, and use 🎶 Singer hint when a note is tricky.' : 'Tip: warm up with a few chords first. Your voice finds the notes more easily.');
   if (r.pass && r.personalBest) extras.push('New personal best! 📈');
   if (r.pass && r.rank === 1) extras.push("You are No. 1 on this week's board! 🏆");
   else if (r.pass && r.rank && r.rank <= 3) extras.push(`You are No. ${r.rank} on this week's board!`);
