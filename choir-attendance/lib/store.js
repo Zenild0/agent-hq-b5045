@@ -1,5 +1,5 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync, copyFileSync, readdirSync, unlinkSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { randomInt, randomUUID } from 'node:crypto';
 import { defaultSchedule, istNow } from './schedule.js';
 import { emptyGame } from './game.js';
@@ -80,7 +80,24 @@ export function openStore(file) {
     throw new Error(`The data file ${file} is damaged (${e.message}). Nothing was changed. Restore it from a backup (for example the nightly .tar), then start again.`);
   }
   mkdirSync(dirname(file), { recursive: true });
+  // A safety net: the first time each day the data changes, keep a copy of how it looked just before.
+  // The last 30 days are kept next to the data file (snapshots/db-YYYY-MM-DD.json). Small files, no extra cost.
+  const snapDir = join(dirname(file), 'snapshots');
+  let snapDay = '';
+  const snapshot = () => {
+    try {
+      const day = istNow().date;
+      if (day === snapDay || !existsSync(file)) return;
+      snapDay = day;
+      mkdirSync(snapDir, { recursive: true });
+      const dest = join(snapDir, `db-${day}.json`);
+      if (!existsSync(dest)) copyFileSync(file, dest);
+      for (const old of readdirSync(snapDir).filter((n) => /^db-\d{4}-\d{2}-\d{2}\.json$/.test(n)).sort().slice(0, -30)) unlinkSync(join(snapDir, old));
+    } catch { /* a snapshot problem must never stop a save */ }
+  };
+  snapshot();
   const save = () => {
+    snapshot();
     writeFileSync(`${file}.tmp`, JSON.stringify(db, null, 2));
     renameSync(`${file}.tmp`, file);
   };

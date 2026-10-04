@@ -154,8 +154,15 @@ async function loadHome() {
     <section class="trio" aria-label="Snapshot">
       <div class="tile t1"><small>Children</small><b>${d.children}</b><small>in the choir</small></div>
       <div class="tile t2"><small>Last practice</small><b>${ls ? `${ls.present}/${ls.total}` : '–'}</b><small>${ls ? `${esc(fmtDate(ls.date).replace(/ \d{4}$/, ''))}` : 'none yet'}</small></div>
-      <div class="tile t3"><small>${d.gameEnabled ? 'Vocals unlocked' : 'Watch list'}</small><b>${d.gameEnabled ? d.vocalsUnlocked : d.attention.length}</b><small>${d.gameEnabled ? `of ${d.children} children` : 'on leaves'}</small></div>
+      <div class="tile t3"><small>Watch list</small><b>${d.attention.length}</b><small>on leaves</small></div>
     </section>
+    ${d.gameEnabled || d.subs.rows.length ? `
+    <button class="card subs-card" id="subsCard">
+      <span class="si" aria-hidden="true">🎤</span>
+      <span class="grow"><b>Vocals subscriptions</b>
+        <span class="muted">${d.subs.active} active${d.subs.soon ? ` · ${d.subs.soon} renew soon` : ''}${d.subs.expired ? ` · ${d.subs.expired} expired` : ''}</span></span>
+      <span class="subs-n">${d.subs.active}</span><span class="muted">›</span>
+    </button>` : ''}
     <h3 style="margin:6px 0">Needs your attention</h3>
     ${att.length ? `<div class="attn-list">${att.join('')}</div>` : '<div class="card muted" style="margin:0 0 12px">All clear ✓ Nothing needs you right now.</div>'}
     <div class="card" id="topCard">
@@ -172,9 +179,22 @@ async function loadHome() {
       <button class="btn small ${backupAge === null || backupAge > 14 ? 'primary' : ''}" id="goBackup">Backup</button>
     </div>`;
   $('#goAtt').addEventListener('click', () => showTab('attendance'));
+  $('#subsCard')?.addEventListener('click', () => openSubs(d.subs));
   $('#home').querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.go)));
   $('#goBackup').addEventListener('click', async () => { await showTab('settings'); $('#backupBox')?.scrollIntoView({ block: 'start' }); });
   $('#editProfile').addEventListener('click', () => openProfile(p));
+}
+
+function openSubs(subs) {
+  const label = (r) => (r.state === 'expired' ? `Expired ${esc(fmtDate(r.until))}` : `Until ${esc(fmtDate(r.until))} · ${r.daysLeft} day${r.daysLeft === 1 ? '' : 's'} left`);
+  $('#dlgBody').innerHTML = `
+    <div class="dlg-top"><h2 style="margin:0" class="grow">Vocals subscriptions</h2><button class="btn small" id="close" type="button" aria-label="Close">✕</button></div>
+    <div class="muted" style="margin:6px 0 10px">${subs.active} active · ${subs.soon} renew within 30 days · ${subs.expired} expired. Tap a child to renew or change.</div>
+    ${subs.rows.length ? subs.rows.map((r) => `
+      <button class="attn" data-open="${esc(r.id)}"><i class="dot ${r.state === 'expired' ? 'r' : r.state === 'soon' ? 'y' : 'g'}"></i><span class="grow"><b>${esc(r.name)}</b><span class="muted">${label(r)}</span></span><span class="badge ${r.state === 'expired' ? 'bad' : r.state === 'soon' ? 'warn' : 'ok'}">${r.state === 'expired' ? 'Expired' : r.state === 'soon' ? 'Renew soon' : 'Active'}</span></button>`).join('')
+      : '<div class="empty">Nobody has paid yet. Unlock a child under Children → the child → Vocals game.</div>'}`;
+  if (!dlg.open) dlg.showModal();
+  $('#close').addEventListener('click', () => dlg.close());
 }
 
 function openProfile(p) {
@@ -915,6 +935,10 @@ function drawHymnsTab() {
       <div class="row between"><div><h3 style="margin:0">Hymn library</h3><div class="muted">Hymns taught that are not in the book. Parents browse them by category.</div></div>
         <div class="row"><button class="btn primary" id="addHymn">＋ Add hymn</button><button class="btn" id="addHymns">＋ Add many</button></div></div>
       <div class="row" role="group" aria-label="Order of hymns" style="margin-top:8px"><button class="btn small${az ? '' : ' primary'}" data-sort="cat">By category</button><button class="btn small${az ? ' primary' : ''}" data-sort="az">A–Z</button></div>
+      <details style="margin-top:8px"><summary class="muted" style="cursor:pointer;min-height:36px;display:flex;align-items:center">Missing hymns? Bring them back from a backup</summary>
+        <div class="muted" style="margin:6px 0">Choose a backup file (.tar from Settings, or a saved data .json). Only hymns that are missing are added; nothing else changes.</div>
+        <label class="btn small" style="display:inline-block">⬆ Choose backup file<input type="file" id="hRecover" accept=".tar,.json,application/x-tar,application/json" hidden></label>
+        <span class="muted" id="hRecoverMsg" aria-live="polite"></span></details>
       <label class="field"><span class="sr">Search</span><input id="hq" type="search" placeholder="Search hymns…" value="${esc(raw)}"></label>
     </div>
     ${groups.map((c) => {
@@ -935,6 +959,19 @@ function drawHymnsTab() {
     try { localStorage.setItem('choir-hymn-sort', b.dataset.sort); } catch { /* ignore */ }
     drawHymnsTab();
   }));
+  $('#hRecover').addEventListener('change', async (e) => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    $('#hRecoverMsg').textContent = 'Reading…';
+    try {
+      const res = await fetch('/api/teacher/hymns/recover', { method: 'POST', headers: pin ? { 'x-pin': pin } : {}, body: f });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not read that file');
+      await loadHymns();
+      $('#hRecoverMsg').textContent = data.added.length ? `✅ Brought back ${data.added.length}: ${data.added.slice(0, 6).join(', ')}${data.added.length > 6 ? '…' : ''}` : `Nothing to add. All ${data.already} hymns in that file are already here.`;
+    } catch (err) { $('#hRecoverMsg').textContent = `⚠️ ${err.message}`; }
+  });
   $('#addHymn').addEventListener('click', () => openHymn(null));
   $('#addHymns').addEventListener('click', openHymnBulk);
   $('#hymns').querySelectorAll('[data-hview]').forEach((b) => b.addEventListener('click', () => {
@@ -953,20 +990,21 @@ const catOptions = (selected) => hymnState.categories.map((c) => `<option value=
 function openHymn(id, prefill = null) {
   const h = id ? hymnState.hymns.find((x) => x.id === id) : { title: prefill?.title || '', category: hymnState.categories[0].id, link: '', notes: '', audio: null };
   $('#dlgBody').innerHTML = `
-    <div class="row between"><h2 style="margin:0">${id ? 'Edit hymn' : 'Add hymn'}</h2><button class="btn small" id="close" aria-label="Close">✕</button></div>
+    <div class="dlg-top"><h2 style="margin:0" class="grow">${id ? 'Edit hymn' : 'Add hymn'}</h2><button class="btn primary small" form="hf">${id ? 'Save' : 'Add hymn'}</button><button class="btn small" id="close" aria-label="Close" type="button">✕</button></div>
+    <div class="muted" id="hmsg" aria-live="polite" style="min-height:1.4em"></div>
     <form id="hf">
       <label class="field">Hymn title<input name="title" required maxlength="120" value="${esc(h.title)}"></label>
-      <label class="field">Category<select name="category">${catOptions(h.category)}</select></label>
-      <label class="field">Link to the music (optional)<input name="link" type="url" placeholder="https://…" maxlength="500" value="${esc(h.link)}"></label>
-      <label class="field">Notes (optional)<input name="notes" maxlength="300" placeholder="e.g. Key of D, verses 1 and 3" value="${esc(h.notes)}"></label>
-      <label class="field">Lyrics (optional, shown large and full screen for the children)<textarea name="lyrics" rows="8" maxlength="6000" placeholder="Paste the words here">${esc(h.lyrics || '')}</textarea></label>
       <div class="card" style="margin:6px 0 12px">
         <div class="row"><button type="button" class="btn small" id="findLy">🔎 Find lyrics online</button><span id="lyMsg" class="muted" aria-live="polite">Searches by the title above. You can edit the words before saving.</span></div>
         <div class="row" style="margin-top:8px"><a class="btn small" id="gSearch" target="_blank" rel="noopener noreferrer" href="#">🌐 Search Google</a><a class="btn small" id="dhSearch" target="_blank" rel="noopener noreferrer" href="#">🎼 Search DivineHymns</a></div>
         <div class="row" style="margin-top:8px;flex-wrap:nowrap"><input id="lyLink" type="url" class="grow" placeholder="Paste a link to the words (e.g. from divinehymns.com)" aria-label="Link to a page with the words"><button type="button" class="btn small" id="lyImport">Import</button></div>
         <div id="lyList"></div>
       </div>
-      <div class="row"><button class="btn primary">${id ? 'Save' : 'Add hymn'}</button><span id="hmsg" class="muted" aria-live="polite"></span></div>
+      <label class="field">Category<select name="category">${catOptions(h.category)}</select></label>
+      <label class="field">Link to the music (optional)<input name="link" type="url" placeholder="https://…" maxlength="500" value="${esc(h.link)}"></label>
+      <label class="field">Notes (optional)<input name="notes" maxlength="300" placeholder="e.g. Key of D, verses 1 and 3" value="${esc(h.notes)}"></label>
+      <label class="field">Lyrics (optional, shown large and full screen for the children)<textarea name="lyrics" rows="8" maxlength="6000" placeholder="Paste the words here">${esc(h.lyrics || '')}</textarea></label>
+      <div class="row"><button class="btn primary">${id ? 'Save' : 'Add hymn'}</button></div>
     </form>
     ${id ? `
       <h3 style="margin-top:18px">Recording</h3>
@@ -1016,8 +1054,10 @@ function openHymn(id, prefill = null) {
       if (box.value.trim() && !confirm('Replace the lyrics already typed here?')) return;
       box.value = pick.lyrics.slice(0, 6000);
       if (!f.elements.title.value.trim() && pick.title) f.elements.title.value = pick.title;
-      $('#lyMsg').textContent = '✅ Added to the lyrics box. Edit anything you like, then press Save.';
-      box.scrollIntoView({ block: 'center' });
+      $('#lyMsg').textContent = '✅ Lyrics added below. Edit anything you like.';
+      $('#lyList').innerHTML = '';
+      $('#hmsg').textContent = `✅ Lyrics added. Press ${id ? 'Save' : 'Add hymn'} at the top when you are ready.`;
+      $('#dlgBody').scrollTop = 0;
     }));
   };
   $('#lyImport').addEventListener('click', async () => {

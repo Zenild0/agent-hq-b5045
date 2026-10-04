@@ -102,3 +102,44 @@ test('teacher can keep a profile: name, instruments and photo (and it is in the 
   assert.equal(home.profile.name, 'Zenildo Dias');
   assert.equal((await put('profile', { name: 'x'.repeat(200) })).status, 400);
 });
+
+test('missing hymns can be brought back from a data file, without duplicates', async () => {
+  const post = (path, body) => fetch(`${base}/api/teacher/${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  await post('hymns', { title: 'Already Here', category: 'Entrance' });
+  const old = { hymns: [
+    { id: 'aaaaaaaa', title: 'Already Here', category: 'Entrance' },
+    { id: 'bbbbbbbb', title: 'Lost One', category: 'Gloria', lyrics: 'La la la', link: 'https://example.com/x' },
+    { id: 'cccccccc', title: 'Bad Category', category: 'Nope' },
+  ] };
+  const r = await fetch(`${base}/api/teacher/hymns/recover`, { method: 'POST', body: JSON.stringify(old) });
+  assert.equal(r.status, 200);
+  assert.deepEqual(await r.json(), { added: ['Lost One'], already: 1 });
+  const list = await (await fetch(`${base}/api/hymns`)).json();
+  const lost = list.hymns.find((x) => x.title === 'Lost One');
+  assert.equal(lost.lyrics, 'La la la');
+  assert.equal((await fetch(`${base}/api/teacher/hymns/recover`, { method: 'POST', body: '{"x":1}' })).status, 400);
+  const again = await (await fetch(`${base}/api/teacher/hymns/recover`, { method: 'POST', body: JSON.stringify(old) })).json();
+  assert.deepEqual(again.added, []);
+});
+
+test('a daily safety copy of the data is kept next to the data file', async () => {
+  const { existsSync, readdirSync } = await import('node:fs');
+  const { dirname } = await import('node:path');
+  const snaps = join(dirname(process.env.CHOIR_DATA), 'snapshots');
+  assert.ok(existsSync(snaps));
+  assert.ok(readdirSync(snaps).some((n) => /^db-\d{4}-\d{2}-\d{2}\.json$/.test(n)));
+});
+
+test('home shows Vocals subscriptions: active, renew soon, expired', async () => {
+  const put = (path, body) => fetch(`${base}/api/teacher/${path}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const post = (path, body) => fetch(`${base}/api/teacher/${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const kids = [];
+  for (const n of ['Sub One', 'Sub Two']) kids.push(await (await post('children', { name: n })).json());
+  assert.equal((await put(`children/${kids[0].id}/game`, { paid: true })).status, 200);
+  assert.equal((await put(`children/${kids[1].id}/game`, { paid: true })).status, 200);
+  const h = await (await fetch(`${base}/api/teacher/home`)).json();
+  assert.ok(h.subs.active >= 2);
+  const row = h.subs.rows.find((r) => r.name === 'Sub One');
+  assert.equal(row.state, 'active');
+  assert.ok(row.daysLeft >= 364 && /^\d{4}-\d{2}-\d{2}$/.test(row.until));
+});

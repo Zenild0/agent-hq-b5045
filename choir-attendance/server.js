@@ -742,8 +742,44 @@ async function saveHymnAudio(h, req) {
   return hymnOut(h);
 }
 
+// Bring back hymns that are missing from a backup (.tar) or a data file (.json). Nothing else is touched,
+// and hymns already in the list (same title and category) are left alone.
+async function recoverHymns(req) {
+  const buf = await readRaw(req, 400_000_000, 'That file is too big');
+  let saved;
+  let files = [];
+  if (buf[0] === 0x7b) { // "{" : a plain data file
+    try { saved = JSON.parse(buf.toString('utf8')); } catch { saved = null; }
+  } else {
+    try { files = readTar(buf); } catch { files = null; }
+    const dbf = files?.find((f) => f.name === 'db.json');
+    try { saved = JSON.parse(dbf?.data.toString('utf8') ?? ''); } catch { saved = null; }
+  }
+  if (!saved || !Array.isArray(saved.hymns)) throw new HttpError(400, 'That is not a Choir backup or data file');
+  const added = [];
+  let already = 0;
+  for (const old of saved.hymns) {
+    const h = newHymn();
+    try { applyHymn(h, { title: old.title, category: old.category, link: old.link ?? '', notes: old.notes ?? '', lyrics: old.lyrics ?? '' }); } catch { continue; }
+    if (!h.title || !h.category) continue;
+    if (store.db.hymns.some((x) => sameHymn(x, h))) { already += 1; continue; }
+    const audio = old.audioExt && AUDIO_MIME[old.audioExt] ? files.find((f) => f.name === `hymns/${old.id}.${old.audioExt}`) : null;
+    if (audio) {
+      await mkdir(HYMNS_DIR, { recursive: true });
+      await writeFile(join(HYMNS_DIR, `${h.id}.${old.audioExt}`), audio.data);
+      h.audioExt = old.audioExt;
+      h.audioVersion = Date.now();
+    }
+    store.db.hymns.push(h);
+    added.push(h.title);
+  }
+  if (added.length) store.save();
+  return { added, already };
+}
+
 async function teacherHymns(req, res, method, id, action) {
   const { db } = store;
+  if (method === 'POST' && id === 'recover') return send(res, 200, await recoverHymns(req));
   const h = id && id !== 'bulk' ? db.hymns.find((x) => x.id === id) : null;
   if (id && id !== 'bulk' && !h) throw new HttpError(404, 'Hymn not found');
   if (h && action === 'audio') {
@@ -868,6 +904,25 @@ function updateTeacherProfile(body) {
   return profileView();
 }
 
+// Who has an active Vocals year, who is about to run out, and who has run out.
+function vocalsSubscriptions(roster, kids) {
+  const t = istDate();
+  const rows = [];
+  for (const c of roster) {
+    const kid = kids[c.id];
+    if (!kid?.paid) continue;
+    const left = daysLeft(kid, t);
+    rows.push({ id: c.id, name: c.name, until: paidUntilOf(kid), daysLeft: left, state: left <= 0 ? 'expired' : left <= 30 ? 'soon' : 'active' });
+  }
+  rows.sort((a, b) => a.daysLeft - b.daysLeft || a.name.localeCompare(b.name));
+  return {
+    active: rows.filter((r) => r.state !== 'expired').length,
+    soon: rows.filter((r) => r.state === 'soon').length,
+    expired: rows.filter((r) => r.state === 'expired').length,
+    rows,
+  };
+}
+
 // The teacher's home page: a small snapshot, all worked out here so the page stays quick.
 function teacherHome() {
   const { db } = store;
@@ -908,6 +963,7 @@ function teacherHome() {
     children: roster.length, lastSession, attention, top,
     gameEnabled: Boolean(db.settings.gameEnabled),
     vocalsUnlocked: roster.filter((c) => isPaid(kids[c.id], istDate())).length,
+    subs: vocalsSubscriptions(roster, kids),
     lastBackup: db.lastBackupAt ?? null,
     profile: profileView(),
   };
