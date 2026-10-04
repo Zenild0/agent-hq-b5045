@@ -809,6 +809,7 @@ async function buildBackup() {
     try { files.push({ name: `photos/${c.id}.jpg`, data: await readFile(join(PHOTOS, `${c.id}.jpg`)) }); } catch { /* photo file missing */ }
     if (c.headVersion) try { files.push({ name: `photos/${c.id}-head.jpg`, data: await readFile(join(PHOTOS, `${c.id}-head.jpg`)) }); } catch { /* head file missing */ }
   }
+  if (db.teacher?.photoVersion) try { files.push({ name: `photos/${db.teacher.id}.jpg`, data: await readFile(join(PHOTOS, `${db.teacher.id}.jpg`)) }); } catch { /* photo file missing */ }
   for (const h of db.hymns) {
     if (!h.audioExt) continue;
     try { files.push({ name: `hymns/${h.id}.${h.audioExt}`, data: await readFile(join(HYMNS_DIR, `${h.id}.${h.audioExt}`)) }); } catch { /* recording missing */ }
@@ -856,6 +857,62 @@ function teacherBoard() {
   };
 }
 
+// The teacher's own profile (name, instruments, photo). The photo is stored like a child's, under its own random id.
+const teacherProfile = () => (store.db.teacher ??= { id: randomUUID().slice(0, 8), name: '', instruments: '', photoVersion: 0, headVersion: 0 });
+const profileView = () => { const t = teacherProfile(); return { name: t.name, instruments: t.instruments, photo: photoUrl(t) }; };
+function updateTeacherProfile(body) {
+  const t = teacherProfile();
+  if ('name' in body) t.name = text(body.name ?? '', 60, 'Name').replace(/\s+/g, ' ');
+  if ('instruments' in body) t.instruments = text(body.instruments ?? '', 120, 'Instruments').replace(/\s+/g, ' ');
+  store.save();
+  return profileView();
+}
+
+// The teacher's home page: a small snapshot, all worked out here so the page stays quick.
+function teacherHome() {
+  const { db } = store;
+  const t = today();
+  const season = seasonOf(t);
+  const range = seasonRange(season);
+  const mr = monthRange(t.slice(0, 7));
+  const roster = db.children.filter((c) => c.active && !c.guest);
+  const sc = scheduleView();
+
+  // the most recent session that has been recorded
+  const past = Object.values(db.sessions).filter((x) => x.date <= t && !OCCASION_TYPES.includes(x.type));
+  past.sort((a, b) => b.date.localeCompare(a.date));
+  const last = past[0] ?? null;
+  const marked = last ? roster.filter((c) => last.entries[c.id]?.status) : [];
+  const lastSession = last ? {
+    date: last.date, type: last.type,
+    present: marked.filter((c) => last.entries[c.id].status === 'present').length,
+    marked: marked.length, total: roster.length,
+    unmarked: roster.filter((c) => !last.entries[c.id]?.status).map((c) => c.name),
+  } : null;
+
+  // children close to (or over) the leave limit
+  const max = db.settings.maxLeaves;
+  const attention = [];
+  for (const c of roster) {
+    const st = childStats(db, c.id, season);
+    if (st.exceeded) { if (!st.decision) attention.push({ kind: 'over', id: c.id, name: c.name, leaves: st.leaves, max }); } else if (max > 0 && st.leaves >= max - 1 && st.leaves > 0) attention.push({ kind: 'near', id: c.id, name: c.name, leaves: st.leaves, max });
+  }
+  attention.sort((a, b) => (a.kind === 'over' ? 0 : 1) - (b.kind === 'over' ? 0 : 1) || a.name.localeCompare(b.name));
+
+  const top = scoreboard(db, season, mr.start, mr.end).filter((r) => r.eligible && r.points > 0 && r.rank <= 3)
+    .map((r) => ({ id: r.id, name: r.name, points: r.points, rank: r.rank, photo: r.photo, head: r.head }));
+
+  const kids = db.game?.kids ?? {};
+  return {
+    today: t, next: sc.next, season, seasonLabel: seasonLabel(season), monthLabel: monthLabel(t.slice(0, 7)),
+    children: roster.length, lastSession, attention, top,
+    gameEnabled: Boolean(db.settings.gameEnabled),
+    vocalsUnlocked: roster.filter((c) => isPaid(kids[c.id], istDate())).length,
+    lastBackup: db.lastBackupAt ?? null,
+    profile: profileView(),
+  };
+}
+
 async function teacherApi(req, res, q, parts) {
   const [, b, id, action] = parts;
   const childRoute = b === 'children' || b === 'child';
@@ -878,12 +935,14 @@ async function teacherApi(req, res, q, parts) {
     if (b === 'child' && id) return send(res, 200, { ...childDetail(child, seasonFromQuery(q), { teacher: true }), code: child.code, active: child.active, guest: Boolean(child.guest) });
     if (b === 'backup') {
       const tar = await buildBackup();
+      store.db.lastBackupAt = today(); store.save();
       res.writeHead(200, {
         'content-type': 'application/x-tar', 'content-length': tar.length, 'cache-control': 'no-store',
         'content-disposition': `attachment; filename="choir-backup-${today()}.tar"`,
       });
       return res.end(tar);
     }
+    if (b === 'home') return send(res, 200, teacherHome());
     if (b === 'board') return send(res, 200, teacherBoard());
     if (b === 'schedule') return send(res, 200, scheduleView());
     if (b === 'occasions') {
@@ -905,7 +964,9 @@ async function teacherApi(req, res, q, parts) {
   }
   if (req.method === 'POST' && b === 'restore') return send(res, 200, await restoreBackup(req));
 
-  const body = await readBody(req, b === 'children' && action === 'photo' ? 1_500_000 : 100_000);
+  const body = await readBody(req, (b === 'children' && action === 'photo') || (b === 'profile' && id === 'photo') ? 1_500_000 : 100_000);
+  if (req.method === 'PUT' && b === 'profile' && !id) return send(res, 200, updateTeacherProfile(body));
+  if (req.method === 'POST' && b === 'profile' && id === 'photo') { await savePhoto(teacherProfile(), body.image, null); return send(res, 200, profileView()); }
   if (req.method === 'PUT' && b === 'mark') { mark(body); return send(res, 200, { ok: true }); }
   if (req.method === 'POST' && b === 'mark-all-present') { markAllPresent(body); return send(res, 200, { ok: true }); }
   if (req.method === 'POST' && b === 'bulk-children') return send(res, 201, bulkAdd(body));

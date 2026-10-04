@@ -1,4 +1,5 @@
-import { pickPhotos } from './photo.js';
+import { pickPhotos, pickProfilePhoto } from './photo.js';
+import { nextCardHtml } from './home.js';
 import { applyLook, lookCardHtml, wireLook, configure } from './theme.js';
 
 configure({ key: 'choir-theme-teacher', lens: false }); // the teacher area keeps its own colour choice
@@ -24,18 +25,11 @@ const app = $('#app');
 app.innerHTML = `
   ${headerHtml("Children's Choir ZD", 'Teacher area · <a href="/">Parent view</a>')}
   <main>
-    <nav class="tabs">
-      <button data-tab="attendance" class="on">✅ Attendance</button>
-      <button data-tab="schedule">📅 Schedule</button>
-      <button data-tab="occasions">🎄 Occasions</button>
-      <button data-tab="children">👧 Children</button>
-      <button data-tab="hymns">🎵 Hymns</button>
-      <button data-tab="vocals">🎤 Vocals</button>
-      <button data-tab="board">🏆 Leaderboard</button>
-      <button data-tab="settings">⚙️ Settings</button>
-    </nav>
+    <div id="backbar" hidden><button class="btn small" id="backMore">‹ More</button></div>
     <div id="msg" aria-live="polite"></div>
-    <section id="attendance"></section>
+    <section id="home"></section>
+    <section id="more" hidden></section>
+    <section id="attendance" hidden></section>
     <section id="schedule" hidden></section>
     <section id="occasions" hidden></section>
     <section id="children" hidden></section>
@@ -44,7 +38,14 @@ app.innerHTML = `
     <section id="board" hidden></section>
     <section id="settings" hidden></section>
   </main>
-  ${footerHtml()}`;
+  ${footerHtml()}
+  <nav class="tabbar" aria-label="Main">${[
+    ['home', 'Home', 'M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z'],
+    ['attendance', 'Attendance', 'M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9'],
+    ['children', 'Children', 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8'],
+    ['hymns', 'Hymns', 'M9 18V5l11-2v13M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3zM20 16a3 3 0 1 1-3-3 3 3 0 0 1 3 3z'],
+    ['more', 'More', 'M5 12h.01M12 12h.01M19 12h.01'],
+  ].map(([id, label, d]) => `<button data-tab="${id}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>${label}</button>`).join('')}</nav>`;
 
 const flash = (text, kind = 'bad') => {
   $('#msg').innerHTML = text ? `<div class="alert ${kind}">${esc(text)}</div>` : '';
@@ -69,8 +70,8 @@ function lockOut(message) {
   app.querySelector('main').innerHTML = `<div class="card"><h2 style="margin-top:0">🔒 Teacher area</h2><p>${esc(message)}</p><p class="muted">Open <b>http://localhost:3000/teacher</b> on the computer running the app. Parents use the main link and their child's code.</p><a class="btn" href="/">Go to the parent page</a></div>`;
 }
 
-const tabs = ['attendance', 'schedule', 'occasions', 'children', 'hymns', 'vocals', 'board', 'settings'];
-const loaders = { attendance: loadAttendance, schedule: loadSchedule, occasions: loadOccasions, children: loadChildren, hymns: loadHymns, vocals: loadVocals, board: loadBoard, settings: loadSettings };
+const tabs = ['home', 'more', 'attendance', 'schedule', 'occasions', 'children', 'hymns', 'vocals', 'board', 'settings'];
+const loaders = { home: loadHome, more: loadMore, attendance: loadAttendance, schedule: loadSchedule, occasions: loadOccasions, children: loadChildren, hymns: loadHymns, vocals: loadVocals, board: loadBoard, settings: loadSettings };
 // The teacher's own copy of Vocals: every level and the paid features are open, and progress stays on this device.
 let vocals = null;
 function loadVocals() {
@@ -83,10 +84,135 @@ function loadVocals() {
 function showTab(name) {
   if (name !== 'vocals' && vocals) { vocals.destroy?.(); vocals = null; $('#vocals').innerHTML = ''; } // stops the microphone
   tabs.forEach((t) => { $(`#${t}`).hidden = t !== name; });
-  app.querySelectorAll('nav button').forEach((x) => x.classList.toggle('on', x.dataset.tab === name));
+  const underMore = MORE_PAGES.some((p) => p.id === name);
+  app.querySelectorAll('nav.tabbar button').forEach((x) => x.classList.toggle('on', x.dataset.tab === (underMore ? 'more' : name)));
+  $('#backbar').hidden = !underMore;
+  scrollTo(0, 0);
   return run(loaders[name]);
 }
-app.querySelectorAll('nav button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+app.querySelectorAll('nav.tabbar button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+$('#backMore').addEventListener('click', () => showTab('more'));
+
+
+// ======================= Home and More =======================
+
+const MORE_PAGES = [
+  { id: 'schedule', icon: '📅', label: 'Schedule', sub: 'Practice days' },
+  { id: 'occasions', icon: '🎄', label: 'Occasions', sub: 'Feasts and events' },
+  { id: 'vocals', icon: '🎤', label: 'Vocals', sub: 'Test and unlocks' },
+  { id: 'board', icon: '🏆', label: 'Leaderboard', sub: 'Month and year' },
+  { id: 'settings', icon: '⚙️', label: 'Settings', sub: 'Points, payment, look' },
+];
+
+function loadMore() {
+  $('#more').innerHTML = `
+    <h2>More</h2>
+    <div class="more-grid">
+      ${MORE_PAGES.map((p) => `<button class="more-tile" data-go="${p.id}"><span class="mi">${p.icon}</span><b>${p.label}</b><span class="muted">${p.sub}</span></button>`).join('')}
+      <button class="more-tile" data-go="settings" data-backup="1"><span class="mi">💾</span><b>Backup</b><span class="muted">Download or restore</span></button>
+    </div>
+    <div class="muted">Everything else lives here, one tap away. The main tabs stay in the bar.</div>`;
+  $('#more').querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', async () => {
+    await showTab(b.dataset.go);
+    if (b.dataset.backup) $('#backupBox')?.scrollIntoView({ block: 'start' });
+  }));
+}
+
+const daysBetween = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
+
+function greeting() {
+  const h = new Date().getHours();
+  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+}
+
+async function loadHome() {
+  const d = await call('teacher/home');
+  const sc = d.next ? { today: d.today, next: d.next } : { today: d.today, next: null };
+  const p = d.profile;
+  const att = [];
+  if (d.lastSession?.unmarked.length) {
+    const u = d.lastSession.unmarked;
+    att.push(`<button class="attn" data-go="attendance"><i class="dot r"></i><span class="grow"><b>${u.length} ${u.length === 1 ? 'child' : 'children'} not marked on ${esc(fmtDate(d.lastSession.date))}</b><span class="muted">${esc(u.slice(0, 3).join(', '))}${u.length > 3 ? '…' : ''} · tap to finish the register</span></span><span class="muted">›</span></button>`);
+  }
+  for (const a of d.attention) {
+    att.push(`<button class="attn" data-open="${esc(a.id)}"><i class="dot ${a.kind === 'over' ? 'r' : 'y'}"></i><span class="grow"><b>${esc(a.name)} ${a.kind === 'over' ? `is over the leave limit (${a.leaves} of ${a.max})` : `is on ${a.leaves} of ${a.max} leaves`}</b><span class="muted">${a.kind === 'over' ? 'Your decision is needed' : 'One more and you decide'}</span></span><span class="muted">›</span></button>`);
+  }
+  const ls = d.lastSession;
+  const backupAge = d.lastBackup ? daysBetween(d.lastBackup, d.today) : null;
+  $('#home').innerHTML = `
+    <div class="thead">
+      ${avatarHtml({ name: p.name || 'Teacher', photo: p.photo }, 'xl')}
+      <div class="grow">
+        <div class="muted">${greeting()}</div>
+        <h2 style="margin:0">Hello, ${esc(p.name || 'Teacher')}</h2>
+        <div class="muted">${p.instruments ? `🎹 ${esc(p.instruments)}` : 'Add your instruments'}</div>
+      </div>
+      <button class="btn small" id="editProfile">✎ Edit</button>
+    </div>
+    ${nextCardHtml(sc)}
+    <div class="row" style="margin:-4px 0 14px"><button class="btn primary" id="goAtt" style="flex:1">✅ Take attendance</button></div>
+    <section class="trio" aria-label="Snapshot">
+      <div class="tile t1"><small>Children</small><b>${d.children}</b><small>in the choir</small></div>
+      <div class="tile t2"><small>Last practice</small><b>${ls ? `${ls.present}/${ls.total}` : '–'}</b><small>${ls ? `${esc(fmtDate(ls.date).replace(/ \d{4}$/, ''))}` : 'none yet'}</small></div>
+      <div class="tile t3"><small>${d.gameEnabled ? 'Vocals unlocked' : 'Watch list'}</small><b>${d.gameEnabled ? d.vocalsUnlocked : d.attention.length}</b><small>${d.gameEnabled ? `of ${d.children} children` : 'on leaves'}</small></div>
+    </section>
+    <h3 style="margin:6px 0">Needs your attention</h3>
+    ${att.length ? `<div class="attn-list">${att.join('')}</div>` : '<div class="card muted" style="margin:0 0 12px">All clear ✓ Nothing needs you right now.</div>'}
+    <div class="card row between" id="topCard">
+      <div class="grow"><b>Top this month</b><div class="muted">${d.top.length ? d.top.map((t) => `${esc(t.name.split(' ')[0])} ${fmtPts(t.points)}`).join(' · ') : 'Points appear after the first practice'}</div></div>
+      <div class="facepile">${d.top.map((t) => avatarHtml({ name: t.name, photo: t.head || t.photo }, 'sm')).join('')}</div>
+    </div>
+    <div class="card row between">
+      <span style="font-size:1.5rem" aria-hidden="true">💾</span>
+      <div class="grow"><b>${d.lastBackup ? `Last backup ${backupAge === 0 ? 'today' : backupAge === 1 ? 'yesterday' : `${backupAge} days ago`}` : 'No backup yet'}</b><div class="muted">Download one to keep safe</div></div>
+      <button class="btn small ${backupAge === null || backupAge > 14 ? 'primary' : ''}" id="goBackup">Backup</button>
+    </div>`;
+  $('#goAtt').addEventListener('click', () => showTab('attendance'));
+  $('#home').querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.go)));
+  $('#goBackup').addEventListener('click', async () => { await showTab('settings'); $('#backupBox')?.scrollIntoView({ block: 'start' }); });
+  $('#editProfile').addEventListener('click', () => openProfile(p));
+}
+
+function openProfile(p) {
+  $('#dlgBody').innerHTML = `
+    <div class="row between"><h2 style="margin:0">My profile</h2><button class="btn small" id="close" aria-label="Close">✕</button></div>
+    <div class="row" style="margin:12px 0">
+      <span id="pav">${avatarHtml({ name: p.name || 'Teacher', photo: p.photo }, 'xl')}</span>
+      <div class="row" style="gap:6px"><label class="btn small" for="pcam">📷 Take photo</label><label class="btn small" for="pgal">🖼 Choose photo</label>
+        <input id="pcam" type="file" accept="image/*" capture="user" hidden><input id="pgal" type="file" accept="image/*" hidden></div>
+    </div>
+    <div class="muted" id="pmsg" aria-live="polite"></div>
+    <form id="pf">
+      <label class="field">Your name<input name="name" maxlength="60" value="${esc(p.name)}" placeholder="e.g. Zenildo Dias"></label>
+      <label class="field">Instruments you play<input name="instruments" maxlength="120" value="${esc(p.instruments)}" placeholder="e.g. Keyboard, guitar, vocals"></label>
+      <div class="row"><button class="btn primary">Save</button><span id="psaved" class="muted" aria-live="polite"></span></div>
+    </form>`;
+  if (!dlg.open) dlg.showModal();
+  $('#close').addEventListener('click', () => dlg.close());
+  const setPhoto = async (file) => {
+    if (!file) return;
+    try {
+      const image = await pickProfilePhoto(file);
+      if (!image) return;
+      $('#pmsg').textContent = 'Saving…';
+      const r = await call('teacher/profile/photo', { method: 'POST', body: { image } });
+      p.photo = r.photo;
+      $('#pav').innerHTML = avatarHtml({ name: p.name || 'Teacher', photo: r.photo }, 'xl');
+      $('#pmsg').textContent = '✅ Photo saved.';
+      loadHome();
+    } catch (err) { $('#pmsg').textContent = `⚠️ ${err.message}`; }
+  };
+  $('#pcam').addEventListener('change', (e) => { setPhoto(e.target.files[0]); e.target.value = ''; });
+  $('#pgal').addEventListener('change', (e) => { setPhoto(e.target.files[0]); e.target.value = ''; });
+  $('#pf').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      await call('teacher/profile', { method: 'PUT', body: Object.fromEntries(new FormData(e.target)) });
+      dlg.close();
+      await loadHome();
+    } catch (err) { $('#psaved').textContent = `⚠️ ${err.message}`; }
+  });
+}
 
 // ======================= Attendance =======================
 
@@ -968,7 +1094,7 @@ run(async () => {
   const meta = await api('meta');
   if (!meta.teacherAllowed) return lockOut('The teacher area only opens on the computer where the app is running.');
   if (meta.pinRequired && !pin) return askPin();
-  await loadAttendance();
+  await showTab('home');
 });
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});

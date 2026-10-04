@@ -569,3 +569,20 @@ html[data-lens=parent] .trio .tile b { font-family: var(--font-body); font-weigh
 html[data-lens=parent] .trio .tile small { font-size: .85rem; }
 html[data-lens=parent] .top { padding-bottom: 14px; }
 @media (prefers-reduced-motion: reduce) { nav.tabbar button { transition: none; } }
+
+/* ---------- teacher home and More ---------- */
+.thead { display: flex; align-items: center; gap: 14px; margin: 12px 0 14px; }
+.thead .avatar.xl { width: 72px; height: 72px; font-size: 1.5rem; }
+#backbar { padding: 10px 0 0; }
+.more-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
+.more-tile { text-align: left; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 22px; padding: 16px; min-height: 108px; cursor: pointer; display: grid; gap: 2px; align-content: start; font: inherit; }
+.more-tile .mi { font-size: 1.6rem; }
+.more-tile b { font: 800 1rem var(--font-head); margin-top: 6px; }
+.attn-list { display: grid; gap: 8px; margin-bottom: 12px; }
+.attn { display: flex; align-items: center; gap: 10px; text-align: left; width: 100%; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 16px; padding: 10px 12px; min-height: 52px; cursor: pointer; font: inherit; }
+.attn .grow { display: grid; gap: 1px; }
+.attn .dot { flex: none; width: 12px; height: 12px; margin: 0; }
+.attn .dot.y { background: var(--sun); }
+.facepile { display: flex; padding-left: 8px; }
+.facepile .avatar { margin-left: -8px; border: 3px solid var(--card); box-shadow: none; }
+html[data-theme=bright] .more-tile, html[data-theme=bright] .attn { border-color: transparent; box-shadow: var(--shadow); }

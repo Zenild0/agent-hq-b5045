@@ -76,3 +76,16 @@ export async function pickPhotos(file) {
     return { image, head };
   } finally { bmp.close?.(); }
 }
+
+// One square picture only (the teacher's own profile). Returns a data URL, or null if cancelled.
+export async function pickProfilePhoto(file) {
+  let bmp;
+  try { bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch { return null; }
+  try {
+    const image = await frame(bmp, {
+      title: 'Your profile photo', hint: 'Drag and zoom to choose the square picture.',
+      shape: 'square', out: 600, startZoom: 1, focusY: 0.45, ok: 'Use this photo', skip: null,
+    });
+    return image || null;
+  } finally { bmp.close?.(); }
+}

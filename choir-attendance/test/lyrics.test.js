@@ -68,3 +68,37 @@ test('links to this machine or a home network are refused', async () => {
   for (const ip of ['127.0.0.1', '10.1.2.3', '192.168.1.5', '172.16.0.1', '169.254.169.254', '::1', 'fd00::1', '::ffff:127.0.0.1']) assert.ok(isPrivateAddress(ip), ip);
   for (const ip of ['8.8.8.8', '104.21.5.9', '2606:4700::1']) assert.ok(!isPrivateAddress(ip), ip);
 });
+
+test('teacher home snapshot works on an empty choir and after a session', async () => {
+  const post = (path, body) => fetch(`${base}/api/teacher/${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const empty = await (await fetch(`${base}/api/teacher/home`)).json();
+  assert.equal(empty.children, 0);
+  assert.equal(empty.lastSession, null);
+  assert.deepEqual(empty.attention, []);
+  assert.equal(empty.lastBackup, null);
+  const a = await (await post('children', { name: 'Anna Home' })).json();
+  await post('children', { name: 'Ben Home' });
+  const t = empty.today;
+  await fetch(`${base}/api/teacher/mark`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ date: t, type: 'saturday', childId: a.id, status: 'present' }) });
+  const d = await (await fetch(`${base}/api/teacher/home`)).json();
+  assert.equal(d.children, 2);
+  assert.equal(d.lastSession.present, 1);
+  assert.deepEqual(d.lastSession.unmarked, ['Ben Home']);
+  assert.equal(d.top[0].name, 'Anna Home');
+  await fetch(`${base}/api/teacher/backup`);
+  assert.equal((await (await fetch(`${base}/api/teacher/home`)).json()).lastBackup, t);
+});
+
+test('teacher can keep a profile: name, instruments and photo (and it is in the backup)', async () => {
+  const put = (path, body, method = 'PUT') => fetch(`${base}/api/teacher/${path}`, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const r = await put('profile', { name: '  Zenildo   Dias ', instruments: 'Keyboard, guitar' });
+  assert.equal(r.status, 200);
+  assert.deepEqual(await r.json(), { name: 'Zenildo Dias', instruments: 'Keyboard, guitar', photo: null });
+  const JPEG = `data:image/jpeg;base64,${Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64')}`;
+  const p = await (await put('profile/photo', { image: JPEG }, 'POST')).json();
+  assert.match(p.photo, /^\/photos\/[a-f0-9]{8}\.jpg\?v=\d+$/);
+  assert.equal((await fetch(base + p.photo)).status, 200);
+  const home = await (await fetch(`${base}/api/teacher/home`)).json();
+  assert.equal(home.profile.name, 'Zenildo Dias');
+  assert.equal((await put('profile', { name: 'x'.repeat(200) })).status, 400);
+});
