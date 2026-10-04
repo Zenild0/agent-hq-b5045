@@ -831,6 +831,8 @@ function openHymn(id) {
       <label class="field">Lyrics (optional, shown large and full screen for the children)<textarea name="lyrics" rows="8" maxlength="6000" placeholder="Paste the words here">${esc(h.lyrics || '')}</textarea></label>
       <div class="card" style="margin:6px 0 12px">
         <div class="row"><button type="button" class="btn small" id="findLy">🔎 Find lyrics online</button><span id="lyMsg" class="muted" aria-live="polite">Searches by the title above. You can edit the words before saving.</span></div>
+        <div class="row" style="margin-top:8px"><a class="btn small" id="gSearch" target="_blank" rel="noopener noreferrer" href="#">🌐 Search Google</a><a class="btn small" id="dhSearch" target="_blank" rel="noopener noreferrer" href="#">🎼 Search DivineHymns</a></div>
+        <div class="row" style="margin-top:8px;flex-wrap:nowrap"><input id="lyLink" type="url" class="grow" placeholder="Paste a link to the words (e.g. from divinehymns.com)" aria-label="Link to a page with the words"><button type="button" class="btn small" id="lyImport">Import</button></div>
         <div id="lyList"></div>
       </div>
       <div class="row"><button class="btn primary">${id ? 'Save' : 'Add hymn'}</button><span id="hmsg" class="muted" aria-live="polite"></span></div>
@@ -865,6 +867,39 @@ function openHymn(id) {
       await loadHymns();
     } catch (err) { $('#hmsg').textContent = `⚠️ ${err.message}`; }
   });
+  const q2 = (extra = '') => encodeURIComponent(`${$('#hf').elements.title.value.trim()} hymn lyrics${extra}`);
+  const setLinks = () => {
+    $('#gSearch').href = `https://www.google.com/search?q=${q2()}`;
+    $('#dhSearch').href = `https://www.google.com/search?q=${q2(' site:divinehymns.com')}`;
+  };
+  setLinks();
+  $('#hf').elements.title.addEventListener('input', setLinks);
+  const showCards = (list) => {
+    $('#lyList').innerHTML = list.map((x, i) => `
+      <details class="hymn" style="padding:8px 0" open><summary><b>${esc(x.title || 'Words from the page')}</b> <span class="muted">${esc(x.artist || x.host || '')}${x.album ? ` · ${esc(x.album)}` : ''}</span></summary>
+        <pre style="white-space:pre-wrap;font:inherit;margin:8px 0;max-height:200px;overflow:auto">${esc(x.lyrics)}</pre>
+        <button type="button" class="btn small primary" data-use="${i}">Use these lyrics</button></details>`).join('')
+      + (list.length ? '<div class="muted" style="margin-top:6px">Many songs are copyrighted. Use words you are allowed to share with the choir (older hymns are usually fine).</div>' : '');
+    $('#lyList').querySelectorAll('[data-use]').forEach((btn) => btn.addEventListener('click', () => {
+      const f = $('#hf'); const box = f.elements.lyrics; const pick = list[Number(btn.dataset.use)];
+      if (box.value.trim() && !confirm('Replace the lyrics already typed here?')) return;
+      box.value = pick.lyrics.slice(0, 6000);
+      if (!f.elements.title.value.trim() && pick.title) f.elements.title.value = pick.title;
+      $('#lyMsg').textContent = '✅ Added to the lyrics box. Edit anything you like, then press Save.';
+      box.scrollIntoView({ block: 'center' });
+    }));
+  };
+  $('#lyImport').addEventListener('click', async () => {
+    const url = $('#lyLink').value.trim();
+    if (!url) { $('#lyMsg').textContent = 'Paste a link first.'; return; }
+    $('#lyMsg').textContent = 'Reading the page…';
+    $('#lyList').innerHTML = '';
+    try {
+      const r = await call('teacher/lyrics-link', { method: 'POST', body: { url } });
+      $('#lyMsg').textContent = `Read from ${r.host}.${r.cut ? ' It was long, so the end was cut.' : ''} Check it, remove anything extra, then use it.`;
+      showCards([r]);
+    } catch (err) { $('#lyMsg').textContent = `⚠️ ${err.message}`; }
+  });
   $('#findLy').addEventListener('click', async () => {
     const f = $('#hf');
     const q = f.elements.title.value.trim();
@@ -873,20 +908,8 @@ function openHymn(id) {
     $('#lyList').innerHTML = '';
     try {
       const r = await call(`teacher/lyrics?q=${encodeURIComponent(q)}`);
-      $('#lyMsg').textContent = r.results.length ? `${r.results.length} found. Preview one, then use it.` : 'Nothing found. Try fewer words, or type the lyrics yourself.';
-      $('#lyList').innerHTML = r.results.map((x, i) => `
-        <details class="hymn" style="padding:8px 0"><summary><b>${esc(x.title)}</b> <span class="muted">${esc(x.artist)}${x.album ? ` · ${esc(x.album)}` : ''}</span></summary>
-          <pre style="white-space:pre-wrap;font:inherit;margin:8px 0;max-height:200px;overflow:auto">${esc(x.lyrics)}</pre>
-          <button type="button" class="btn small primary" data-use="${i}">Use these lyrics</button></details>`).join('')
-        + (r.results.length ? '<div class="muted" style="margin-top:6px">Many songs are copyrighted. Use words you are allowed to share with the choir (older hymns are usually fine).</div>' : '');
-      $('#lyList').querySelectorAll('[data-use]').forEach((btn) => btn.addEventListener('click', () => {
-        const box = f.elements.lyrics;
-        if (box.value.trim() && !confirm('Replace the lyrics already typed here?')) return;
-        box.value = r.results[Number(btn.dataset.use)].lyrics.slice(0, 6000);
-        if (!f.elements.title.value.trim()) f.elements.title.value = r.results[Number(btn.dataset.use)].title;
-        $('#lyMsg').textContent = '✅ Added to the lyrics box. Edit anything you like, then press Save.';
-        box.scrollIntoView({ block: 'center' });
-      }));
+      $('#lyMsg').textContent = r.results.length ? `${r.results.length} found. Preview one, then use it.` : 'Nothing found. Try the Google or DivineHymns button, then paste the page link below.';
+      showCards(r.results);
     } catch (err) { $('#lyMsg').textContent = `⚠️ ${err.message}`; }
   });
   if (!id) return;

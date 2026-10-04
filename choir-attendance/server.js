@@ -15,6 +15,7 @@ import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak
 import { LEVELS, DAILY_COUNT, STAGES, stageSpec, isTimed } from './public/levels.js';
 import { istNow, isDate, isTime, scheduleDays, nextPractice, shiftDate } from './lib/schedule.js';
 import { createTar, readTar } from './lib/tar.js';
+import { fetchPageText, PageError } from './lib/webpage.js';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const PUBLIC = resolve(here, 'public');
@@ -898,6 +899,10 @@ async function teacherApi(req, res, q, parts) {
   }
 
   if (b === 'hymns') return teacherHymns(req, res, req.method, id, action);
+  if (req.method === 'POST' && b === 'lyrics-link') {
+    const body = await readBody(req);
+    try { return send(res, 200, await fetchPageText(body.url)); } catch (e) { throw e instanceof PageError ? new HttpError(400, e.message) : e; }
+  }
   if (req.method === 'POST' && b === 'restore') return send(res, 200, await restoreBackup(req));
 
   const body = await readBody(req, b === 'children' && action === 'photo' ? 1_500_000 : 100_000);
