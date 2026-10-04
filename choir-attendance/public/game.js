@@ -28,8 +28,10 @@ export function mountGame(root, { code = '', preview = false } = {}) {
   function previewState() {
     const p = read(PREVIEW, { cleared: [], stages: {}, best: {}, badges: {} });
     const paid = read('choir-preview-paid', true);
+    const w = read('choir-preview-warm', { n: 0, last: '' });
     return {
       paid,
+      warmupLeft: paid ? null : Math.max(0, 3 - w.n),
       pay: paid ? null : { price: 500, mobile: '98200 00000', upi: 'choir@upi' },
       levels: LEVELS.map((l) => ({ ...l, stages: STAGES.map((st) => stageSpec(l.id, st.stage)) })),
       me: { id: 'preview', name: 'Tester', paid, cleared: p.cleared, stages: p.stages, best: p.best, badges: p.badges, maxPlayable: maxPlayableOf(p.cleared), dailyStreak: 0 },
@@ -102,7 +104,7 @@ export function mountGame(root, { code = '', preview = false } = {}) {
     return `
       <div class="card gm-unlock">
         <h3 style="margin:0">Unlock the full game · ₹${esc(price)}</h3>
-        <div>Warm-up and Level 1 are free. The full game adds <b>Level 2 to Legend</b>, the <b>daily Legend challenge</b> and the <b>weekly leaderboards</b>.</div>
+        <div>Level 1 is free, and the Warm-up is free for 3 sessions. The full game adds <b>Level 2 to Legend</b>, the <b>daily Legend challenge</b>, the <b>weekly leaderboards</b> and <b>unlimited Warm-up</b>.</div>
         <div class="gm-note">This paid feature is to cover the expenses of building and maintaining this app. It is a vocal training feature.<br>Thank you for your support in helping to make this a better app for the kids. 🙏</div>
         ${p.mobile || p.upi ? `
           <div class="gm-pay">
@@ -149,7 +151,7 @@ export function mountGame(root, { code = '', preview = false } = {}) {
         ${pianoHtml()}
         <div class="muted gm-tip">Each cleared level lights a piano key. Tap a key to open that level.</div>
         ${allDone ? '<div class="gm-new">You have cleared every level. Legend!</div>' : behindPay(t.level) ? '<button class="btn primary gm-cta" data-a="unlock">🔓 Unlock the full game to keep going</button>' : `<button class="btn primary gm-cta" data-a="continue">▶ Continue: ${esc(lv.name)}, Stage ${t.stage}</button>`}
-        <div class="row"><button class="btn" data-a="levels">All levels</button><button class="btn" data-a="warm">🔥 Warm-up</button></div>
+        <div class="row"><button class="btn" data-a="levels">All levels</button><button class="btn" data-a="warm">${state.warmupLeft === 0 ? '🔒' : '🔥'} Warm-up${typeof state.warmupLeft === 'number' && state.warmupLeft > 0 ? ` (${state.warmupLeft} free left)` : ''}</button></div>
       </div>
       ${!paid() ? `<div id="unlock">${unlockHtml()}</div>` : ''}
       ${d ? `<div class="card">
@@ -190,6 +192,7 @@ export function mountGame(root, { code = '', preview = false } = {}) {
         <div class="row between"><h2 style="margin:0">Level ${l.id}: ${esc(l.name)}</h2><button class="btn small" data-a="levels">← Levels</button></div>
         <div class="muted">${esc(l.tier)}</div>
         <div style="margin:6px 0">${esc(l.how)}</div>
+        <div class="muted">${l.timed ? '⏱ Beat the clock: every note has a countdown.' : '🕊 Take your time: no countdown. Keep trying each note; your score is the total time to get them all right. You can skip a note.'}</div>
         ${behindPay(l.id) ? unlockHtml() : ''}
         <div class="gm-stages">${l.stages.map((s) => {
           const open = unlocked(l.id, s.stage), best = me.best[`${l.id}.${s.stage}`], got = (me.stages[l.id] ?? 0) >= s.stage;
@@ -250,6 +253,29 @@ export function mountGame(root, { code = '', preview = false } = {}) {
     try { await load(selected); } catch { /* use what we have */ }
     if (view === 'level') level(selected); else if (view === 'levels') levels(); else home();
   }
+  // Three free Warm-up sessions (one per day), then it is part of the full game.
+  async function openWarm() {
+    let blocked = false;
+    if (preview) {
+      const w = read('choir-preview-warm', { n: 0, last: '' }), today = new Date().toISOString().slice(0, 10);
+      if (!paid() && w.last !== today) { if (w.n >= 3) blocked = true; else write('choir-preview-warm', { n: w.n + 1, last: today }); }
+      state = previewState();
+    } else {
+      try { const r = await call('/warmup', { method: 'POST', body: {} }); state.warmupLeft = r.left; write(`${CACHE}${code}`, state); }
+      catch (e) {
+        if (e.status === 403) blocked = true;
+        else if (e.status) { root.insertAdjacentHTML('afterbegin', `<div class="alert bad">${esc(e.message)}</div>`); return; }
+        else if (state.warmupLeft === 0) blocked = true; // offline: go by what this phone last knew
+      }
+    }
+    if (blocked) {
+      home();
+      root.insertAdjacentHTML('afterbegin', '<div class="alert warn">Your free Warm-up sessions are used up. The Warm-up is part of the full game.</div>');
+      return document.getElementById('unlock')?.scrollIntoView({ behavior: 'smooth' });
+    }
+    const w = mountWarmup(root, { onExit: () => { w.destroy(); load().then(home); } });
+    current = w;
+  }
   async function openLevel(id) {
     selected = id;
     try { await load(id); } catch { /* keep what we have */ }
@@ -276,7 +302,7 @@ export function mountGame(root, { code = '', preview = false } = {}) {
     if (a === 'unlock') { home(); return document.getElementById('unlock')?.scrollIntoView({ behavior: 'smooth' }); }
     if (a === 'togglePaid') { write('choir-preview-paid', !paid()); return load().then(home); }
     if (a === 'toLevel') return openLevel(Number(b.dataset.lvl) || selected);
-    if (a === 'warm') { const w = mountWarmup(root, { onExit: () => { w.destroy(); home(); } }); current = w; }
+    if (a === 'warm') return openWarm();
   });
   root.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.closest?.('[data-lv]')) { e.preventDefault(); e.target.closest('[data-lv]').dispatchEvent(new MouseEvent('click', { bubbles: true })); } });
 

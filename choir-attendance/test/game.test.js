@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyGame, setPaid, isPaid, PaywallError, applyRound, applyDaily, weeklyBoard, dailyBoard, weekKeyOf, dailySeed, maxPlayable, maxStage, GameError, dailyStreak } from '../lib/game.js';
+import { emptyGame, setPaid, isPaid, useWarmup, warmupsLeft, PaywallError, applyRound, applyDaily, weeklyBoard, dailyBoard, weekKeyOf, dailySeed, maxPlayable, maxStage, GameError, dailyStreak } from '../lib/game.js';
 import { LEVELS, DAILY_COUNT, stageSpec } from '../public/levels.js';
 
 const round = (n, { won = n, ms = 3000, err = 20, hints = 0, limit = 15000 } = {}) =>
@@ -146,4 +146,30 @@ test('Warm-up and Level 1 are free; level 2 onwards and the daily challenge need
   assert.deepEqual(g.kids.a.cleared, [1]);
   assert.throws(() => applyRound(g, 'a', 2, 2, round(count(2, 2)), '2026-10-07'), PaywallError);
   assert.equal(g.kids.a.paidOn, '');
+});
+
+test('levels 1 to 4 have no countdown, so slow rounds are fine; from level 5 a note cannot take longer than its countdown', () => {
+  const slow = (n) => Array.from({ length: n }, () => ({ won: true, ms: 90000, limit: 14000, err: 15, hints: 0 }));
+  const g = emptyGame();
+  assert.doesNotThrow(() => applyRound(g, 'a', 1, 1, slow(count(1, 1)), '2026-10-05'), 'a minute and a half per note on level 1');
+  assert.throws(() => applyRound(g, 'a', 1, 2, Array.from({ length: count(1, 2) }, () => ({ won: true, ms: 700000, limit: 14000, err: 15, hints: 0 })), '2026-10-05'), GameError, 'but not more than 10 minutes');
+  clearLevel(g, 'a', 1, '2026-10-05'); clearLevel(g, 'a', 2, '2026-10-05'); clearLevel(g, 'a', 3, '2026-10-05'); clearLevel(g, 'a', 4, '2026-10-05');
+  setPaid(g, 'a', true, '2026-10-05');
+  assert.throws(() => applyRound(g, 'a', 5, 1, slow(count(5, 1)), '2026-10-05'), GameError, 'level 5 is timed');
+  assert.doesNotThrow(() => applyRound(g, 'a', 5, 1, round(count(5, 1)), '2026-10-05'));
+});
+
+test('Warm-up: three free sessions (one per day), then it needs the full game', () => {
+  const g = emptyGame();
+  assert.equal(useWarmup(g, 'a', '2026-10-05').left, 2);
+  assert.equal(useWarmup(g, 'a', '2026-10-05').left, 2, 'the same day is the same session');
+  assert.equal(useWarmup(g, 'a', '2026-10-06').left, 1);
+  assert.equal(useWarmup(g, 'a', '2026-10-07').left, 0);
+  assert.equal(useWarmup(g, 'a', '2026-10-07').left, 0, 'today is still allowed');
+  assert.throws(() => useWarmup(g, 'a', '2026-10-08'), PaywallError);
+  setPaid(g, 'a', true, '2026-10-08');
+  assert.equal(useWarmup(g, 'a', '2026-10-08').left, null, 'unlimited once unlocked');
+  assert.equal(warmupsLeft(g.kids.a), null);
+  setPaid(g, 'a', false, '2026-10-09');
+  assert.throws(() => useWarmup(g, 'a', '2026-10-09'), PaywallError, 'locked again: the free sessions are still used up');
 });

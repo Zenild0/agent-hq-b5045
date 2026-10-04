@@ -1,6 +1,6 @@
 // Rules, scores, badges and leaderboards for the singing game. Pure functions on plain data, so they can be tested.
 // Only small numbers are kept per child: no audio and no recordings, ever.
-import { LEVELS, DAILY_COUNT, STAGES, stageSpec, starsFor } from '../public/levels.js';
+import { LEVELS, DAILY_COUNT, STAGES, stageSpec, starsFor, isTimed, UNTIMED_CAP_MS } from '../public/levels.js';
 import { IST_OFFSET_MIN } from './schedule.js';
 
 export const PASS_SHARE = 0.7;
@@ -8,9 +8,10 @@ export class GameError extends Error {}
 // Thrown when a child has not been unlocked yet: Warm-up and Level 1 are free, the rest of the game is paid.
 export class PaywallError extends GameError {}
 export const FREE_LEVELS = 1;
+export const FREE_WARMUPS = 3; // free Warm-up sessions (one per day) before it becomes part of the full game
 
 export const emptyGame = () => ({ kids: {}, daily: {} });
-export const emptyKid = () => ({ cleared: [], stages: {}, best: {}, weekly: {}, badges: {}, dailyDays: [], paid: false, paidOn: '' });
+export const emptyKid = () => ({ cleared: [], stages: {}, best: {}, weekly: {}, badges: {}, dailyDays: [], paid: false, paidOn: '', warmups: 0, warmupLast: '' });
 
 // The teacher unlocks (or locks) the full game for one child, after the parent has paid.
 export function setPaid(game, childId, paid, today) {
@@ -20,6 +21,19 @@ export function setPaid(game, childId, paid, today) {
   return kid;
 }
 export const isPaid = (kid) => Boolean(kid?.paid);
+
+// Free Warm-up sessions still available (null = unlimited, the child has the full game).
+export const warmupsLeft = (kid) => (isPaid(kid) ? null : Math.max(0, FREE_WARMUPS - (kid?.warmups ?? 0)));
+
+// Opening the Warm-up room. One session per day: opening it again the same day is the same session.
+export function useWarmup(game, childId, today) {
+  const kid = (game.kids[childId] ??= emptyKid());
+  if (isPaid(kid) || kid.warmupLast === today) return { left: warmupsLeft(kid) };
+  if ((kid.warmups ?? 0) >= FREE_WARMUPS) throw new PaywallError('The free Warm-up sessions are used up. Unlock the full game to keep warming up');
+  kid.warmups = (kid.warmups ?? 0) + 1;
+  kid.warmupLast = today;
+  return { left: warmupsLeft(kid) };
+}
 
 const dayMs = 86400000;
 const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
@@ -43,12 +57,12 @@ const num = (v, min, max, label) => {
 };
 
 // Checks what the phone reported for a round. Returns clean results.
-export function checkResults(results, expected) {
+export function checkResults(results, expected, timed = true) {
   if (!Array.isArray(results) || results.length !== expected) throw new GameError('That round was not complete');
   return results.map((r, i) => {
     if (typeof r?.won !== 'boolean') throw new GameError(`Result ${i + 1} looks wrong`);
     const limit = num(r.limit, 5000, 40000, 'Time limit');
-    const ms = num(r.ms, r.won ? 400 : 0, limit + 1000, 'Time');
+    const ms = num(r.ms, r.won ? 400 : 0, timed ? limit + 1000 : UNTIMED_CAP_MS, 'Time');
     const err = r.err == null ? null : num(r.err, 0, 600, 'Accuracy');
     const hints = Math.round(num(r.hints ?? 0, 0, 50, 'Hints'));
     return { won: r.won, ms: Math.round(ms), limit: Math.round(limit), err, hints };
@@ -82,7 +96,7 @@ export function applyRound(game, childId, level, stage, rawResults, today) {
   kid.stages ??= {};
   if (level > FREE_LEVELS && !isPaid(kid)) throw new PaywallError('Unlock the full game to play this level');
   if (stage > maxStage(kid, level)) throw new GameError(level > maxPlayable(kid) ? 'Clear the level before this one first' : 'Clear the stage before this one first');
-  const results = checkResults(rawResults, stageSpec(level, stage).count);
+  const results = checkResults(rawResults, stageSpec(level, stage).count, isTimed(level));
   const score = scoreRound(results);
   const week = weekKeyOf(today);
   const key = `${level}.${stage}`;

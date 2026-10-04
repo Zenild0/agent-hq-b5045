@@ -4,6 +4,12 @@
 
 import { CHORDS } from './pitch.js';
 
+// Levels 1 to 4 have no countdown (try until you get it, your score is the total time).
+// From level 5 every note has a countdown.
+export const FIRST_TIMED_LEVEL = 5;
+export const isTimed = (levelId) => levelId >= FIRST_TIMED_LEVEL;
+export const UNTIMED_CAP_MS = 600000; // a note never counts more than 10 minutes
+
 export const NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
 const MAJOR_SCALE = [0, 2, 4, 5, 7, 9, 11];
 const INTERVALS = [{ n: 'major 3rd', s: 4 }, { n: '4th', s: 5 }, { n: '5th', s: 7 }, { n: '6th', s: 9 }];
@@ -29,7 +35,7 @@ const rootMidi = (pc) => 60 + pc;
 
 // One challenge of the given kind. `lv` carries the level's tolerance and hold time.
 function make(kind, lv, r, { pc = Math.floor(r() * 12), quality = 'major', blind = false } = {}) {
-  const base = { kind, tol: lv.tol, hold: lv.hold, blind, level: lv.id };
+  const base = { kind, tol: lv.tol, hold: lv.hold, blind, level: lv.id, timed: isTimed(lv.id) };
   const chord = { type: 'chord', root: rootMidi(pc), quality };
   const chordName = `${NAMES[pc]} ${quality}`;
   if (kind === 'root') return { ...base, title: chordName, how: 'Sing the FIRST note', play: chord, targets: [pc], limit: 15 - Math.min(5, lv.id) };

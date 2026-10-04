@@ -449,6 +449,7 @@ test('singing game: off by default, unlocks level by level, one daily try, board
   const s0 = (await game('', { code: anna.code })).data;
   assert.equal(s0.levels.length, 12);
   assert.equal(s0.me.maxPlayable, 1);
+  const free0 = s0;
   const spec = s0.levels[0].stages;
   assert.deepEqual(spec.map((x) => x.count), [4, 6, 7]);
   const post = (code, level, stage, n, won) => game('/round', { method: 'POST', code, body: { level, stage, results: round(n, won) } });
@@ -461,6 +462,7 @@ test('singing game: off by default, unlocks level by level, one daily try, board
   assert.deepEqual(st1.data.state.me.cleared, []);
   assert.ok(st1.data.newBadges.includes('first_note'));
   await post(anna.code, 1, 2, 6);
+  assert.equal(free0.warmupLeft, 3);
   const ok = await post(anna.code, 1, 3, 7);
   assert.equal(ok.data.levelCleared, true);
   // Level 1 is free; the rest of the game needs the teacher's unlock after the parent pays
@@ -476,6 +478,7 @@ test('singing game: off by default, unlocks level by level, one daily try, board
   assert.equal((await j(`/api/teacher/children/${ben.id}/game`, { method: 'PUT', body: { paid: true } })).data.gamePaid, true);
   assert.equal((await j(`/api/teacher/child/${anna.id}`)).data.gamePaid, true);
   assert.equal((await game('', { code: anna.code })).data.pay, null, 'no payment details once unlocked');
+  assert.equal((await game('/warmup', { method: 'POST', code: anna.code, body: {} })).data.left, null, 'unlimited warm-up once unlocked');
   assert.deepEqual(ok.data.state.me.cleared, [1]);
   assert.equal(ok.data.state.me.maxPlayable, 2);
   for (const [n, w] of [[4, 4], [6, 6], [7, 5]]) await post(ben.code, 1, [4, 6, 7].indexOf(n) + 1, n, w);
@@ -494,4 +497,17 @@ test('singing game: off by default, unlocks level by level, one daily try, board
   assert.equal(d2.data.state.daily.count, 6);
   await j('/api/teacher/settings', { method: 'PUT', body: { gameEnabled: false } });
   assert.equal((await game('', { code: anna.code })).status, 403);
+});
+
+test('singing game: an unpaid child gets the Warm-up (first session today), the game switch gates it', async () => {
+  await j('/api/teacher/settings', { method: 'PUT', body: { gameEnabled: true } });
+  const cleo = (await j('/api/teacher/children', { method: 'POST', body: { name: 'Cleo Warm' } })).data;
+  await j('/api/teacher/unlock-codes', { method: 'POST', body: {} });
+  const st = (await j('/api/game', { code: cleo.code })).data;
+  assert.deepEqual([st.paid, st.warmupLeft], [false, 3]);
+  const w1 = (await j('/api/game/warmup', { method: 'POST', code: cleo.code, body: {} })).data;
+  assert.equal(w1.left, 2);
+  assert.equal((await j('/api/game/warmup', { method: 'POST', code: cleo.code, body: {} })).data.left, 2, 'same day, same session');
+  assert.equal((await j('/api/game', { code: cleo.code })).data.warmupLeft, 2);
+  await j('/api/teacher/settings', { method: 'PUT', body: { gameEnabled: false } });
 });

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LEVELS, buildDeck, makeTracker, centsTo, NAMES, stageSpec, titleFor, PIANO_KEYS } from '../public/levels.js';
+import { LEVELS, buildDeck, makeTracker, centsTo, NAMES, stageSpec, titleFor, PIANO_KEYS, isTimed } from '../public/levels.js';
 
 const rng = (seed = 1) => () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 
@@ -117,4 +117,9 @@ test('your title follows the highest level cleared, and every level has a piano 
   assert.equal(titleFor(0), 'Newcomer');
   assert.deepEqual([1, 3, 4, 6, 7, 9, 10, 11, 12].map(titleFor), ['Beginner', 'Beginner', 'Amateur', 'Amateur', 'Pro', 'Pro', 'Expert', 'Expert', 'Legend']);
   assert.equal(PIANO_KEYS.length, LEVELS.length);
+});
+
+test('levels 1 to 4 are untimed, level 5 and up are timed', () => {
+  assert.deepEqual(LEVELS.map((l) => isTimed(l.id)), [false, false, false, false, ...Array(8).fill(true)]);
+  for (const lv of LEVELS) assert.ok(buildDeck(lv.id, rng(2)).every((c) => c.timed === isTimed(lv.id)));
 });

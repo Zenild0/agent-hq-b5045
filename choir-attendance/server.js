@@ -11,8 +11,8 @@ import {
   compareNames, findOccasion, slug,
 } from './lib/logic.js';
 import { openStore, newCode } from './lib/store.js';
-import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, setPaid, isPaid, GameError, PaywallError } from './lib/game.js';
-import { LEVELS, DAILY_COUNT, STAGES, stageSpec } from './public/levels.js';
+import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, setPaid, isPaid, warmupsLeft, useWarmup, GameError, PaywallError } from './lib/game.js';
+import { LEVELS, DAILY_COUNT, STAGES, stageSpec, isTimed } from './public/levels.js';
 import { istNow, isDate, isTime, scheduleDays, nextPractice, shiftDate } from './lib/schedule.js';
 import { createTar, readTar } from './lib/tar.js';
 
@@ -269,8 +269,9 @@ function gameState(child, q) {
   const paid = isPaid(kid);
   return {
     paid,
+    warmupLeft: warmupsLeft(kid),
     pay: paid ? null : { price: db.settings.gamePrice, mobile: db.settings.gamePayMobile, upi: db.settings.gameUpi },
-    levels: LEVELS.map(({ id, tier, name, how, tol, hold, count }) => ({ id, tier, name, how, tol, hold, count, stages: STAGES.map((st) => stageSpec(id, st.stage)) })),
+    levels: LEVELS.map(({ id, tier, name, how, tol, hold, count }) => ({ id, tier, name, how, tol, hold, count, timed: isTimed(id), stages: STAGES.map((st) => stageSpec(id, st.stage)) })),
     me: { id: child.id, name: child.name, paid, cleared: kid.cleared, stages: kid.stages ?? {}, best: kid.best, badges: kid.badges, maxPlayable: maxPlayable(kid), dailyStreak: dailyStreak(kid, today) },
     // the daily challenge and the weekly boards are part of the full game
     daily: paid ? { date: today, seed: dailySeed(today), count: DAILY_COUNT, mine: daily, board: boardOut(dailyBoard(db.game, gameChildren(), today), child.id) } : null,
@@ -281,6 +282,10 @@ async function gameApi(req, res, q, child, action) {
   gameOn();
   if (req.method === 'GET' && !action) return send(res, 200, gameState(child, q));
   if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed');
+  if (action === 'warmup') { // opening the Warm-up room: 3 free sessions, then part of the full game
+    try { const w = useWarmup(store.db.game, child.id, istDate()); store.save(); return send(res, 200, w); }
+    catch (e) { if (e instanceof PaywallError) throw new HttpError(403, e.message); throw e; }
+  }
   const body = await readBody(req, 20_000);
   gameThrottle(child.id);
   try {

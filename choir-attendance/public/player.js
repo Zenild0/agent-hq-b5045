@@ -1,17 +1,19 @@
 // One round of the singing game: plays a challenge, listens to the voice, times it, reports the results.
+// Levels 1 to 4 are untimed: keep trying a note, skip it, and move front and back between notes; the score is
+// the total time spent. From level 5 each note has a countdown and the round runs front to back.
 // Every box has a fixed size, so nothing moves or flickers while a child sings.
 import { detectPitch, rms } from './pitch.js';
-import { NAMES, makeTracker } from './levels.js';
+import { NAMES, makeTracker, UNTIMED_CAP_MS } from './levels.js';
 import { micMessage } from './audio.js';
 
 const GAP_MS = 400;
 
 export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }) {
-  const $ = (s) => root.querySelector(s);
+  const untimed = !deck[0]?.timed;
   root.innerHTML = `
     <div class="card pl-hud">
       <div class="row between"><b>${heading}</b><button class="btn small" data-x="exit">✕ Leave</button></div>
-      <div class="pl-dots" data-x="dots" aria-label="Progress"></div>
+      <div class="pl-dots" data-x="dots" aria-label="Notes in this round"></div>
       <div class="pl-stats"><span data-x="no">&nbsp;</span><span data-x="streak">&nbsp;</span><span data-x="clock">Total 0.0 s</span></div>
     </div>
     <div class="card pl-arena">
@@ -25,6 +27,9 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
       <button class="btn primary pl-go" data-x="go">▶ Start</button>
       <button class="btn" data-x="again" disabled>🔁 Hear it again</button>
       <button class="btn" data-x="hint" disabled>🎶 Singer hint</button>
+      ${untimed ? `<button class="btn" data-x="prev">◀ Back</button><button class="btn" data-x="next">Next ▶</button>
+      <button class="btn pl-skip" data-x="finish">✔ Finish round</button>`
+    : '<button class="btn pl-skip" data-x="skip" disabled>⏭ Skip this note</button>'}
     </div>
     <div class="pl-fine" data-x="fine">&nbsp;</div>`;
   const X = (n) => root.querySelector(`[data-x="${n}"]`);
@@ -35,37 +40,53 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
   const setVar = (n, name, v, step = 0.02) => { const k = n + name; const old = cache.get(k) ?? -9; if (Math.abs(old - v) >= step || (v === 0) !== (old === 0)) { cache.set(k, v); X(n).style.setProperty(name, v); } };
   const setMsg = (text, cls = '') => { if (cache.get('msgv') !== text + cls) { cache.set('msgv', text + cls); const m = X('msg'); m.className = `pl-msg ${cls}`; m.textContent = text; } };
 
-  let idx = 0, phase = 'ready', results = [], streak = 0, tracker = null, cur = deck[0];
-  let startAt = 0, muteUntil = 0, lastMidi = null, lastAt = 0, recent = [], raf = 0, timer = 0, hints = 0;
+  // One entry per note. ms is the time really spent listening to this child on that note (all tries added up).
+  const notes = deck.map(() => ({ won: false, ms: 0, err: null, hints: 0, tried: false }));
+  let idx = 0, phase = 'ready', streak = 0, tracker = null, cur = deck[0]; // phase: ready | playing | listening | reveal | done
+  let startAt = 0, muteUntil = 0, lastMidi = null, lastAt = 0, recent = [], raf = 0, timer = 0;
   let errSum = 0, errN = 0, stepErrs = [], micReady = false, dead = false;
 
-  const dots = () => { X('dots').innerHTML = deck.map((_, i) => `<i class="${results[i] ? (results[i].won ? 'done' : 'miss') : i === idx && phase !== 'done' ? 'now' : ''}"></i>`).join(''); };
+  const spentOn = (i, now) => notes[i].ms + (phase === 'listening' && i === idx ? now - startAt : 0);
+  const totalMs = (now) => notes.reduce((n, _, i) => n + spentOn(i, now), 0);
+  const dots = () => {
+    X('dots').innerHTML = deck.map((_, i) => `<i data-i="${i}" class="${notes[i].won ? 'done' : i === idx && phase !== 'done' ? 'now' : notes[i].tried ? 'miss' : ''}"></i>`).join('');
+  };
   const slots = (n, done) => Array.from({ length: n }, (_, i) => (i < done ? '●' : '○')).join('');
+  const allWon = () => notes.every((n) => n.won);
 
   function render(stepDone = 0) {
-    const label = phase === 'done' ? '✔ Finish' : phase === 'reveal' ? '➡ Next' : '▶ Start';
+    const n = notes[idx];
+    const label = phase === 'done' ? '✔ Finish' : untimed ? (n?.won ? '✓ Done' : n?.tried ? '▶ Try again' : '▶ Start') : phase === 'reveal' ? '➡ Next' : '▶ Start';
     if (X('go').textContent !== label) X('go').textContent = label;
-    X('go').disabled = phase === 'playing' || phase === 'listening';
+    X('go').disabled = phase === 'playing' || phase === 'listening' || (untimed && n?.won && phase !== 'done');
     X('again').disabled = X('hint').disabled = phase !== 'listening';
-    setText('no', phase === 'done' ? 'All done' : `Challenge ${Math.min(idx + 1, deck.length)} of ${deck.length}`);
+    if (!untimed) X('skip').disabled = phase !== 'listening';
+    else { X('prev').disabled = idx === 0 || phase === 'done'; X('next').disabled = idx >= deck.length - 1 || phase === 'done'; X('finish').disabled = phase === 'playing'; }
+    setText('no', phase === 'done' ? 'All done' : `Note ${Math.min(idx + 1, deck.length)} of ${deck.length}`);
     setText('streak', streak > 1 ? `🔥 ${streak} in a row` : ' ');
     setText('ringLab', phase === 'listening' ? 'You are singing' : phase === 'playing' ? 'Listen' : 'Ready');
-    const c = phase === 'ready' || phase === 'playing' || phase === 'listening' ? cur : null;
+    const c = phase === 'done' || phase === 'reveal' ? null : cur;
     const shown = c ? (c.blind && c.kind !== 'echo' ? '🙈 Hidden chord' : c.title) : phase === 'done' ? 'Well done!' : ' ';
     if (!(c?.hideAfterPlay && phase === 'listening')) setText('target', shown);
     setText('how', c ? c.how : ' ');
-    setText('ringSub', c && c.targets.length > 1 && phase !== 'reveal' ? slots(c.targets.length, stepDone) : ' ');
+    setText('ringSub', c && c.targets.length > 1 ? slots(c.targets.length, stepDone) : ' ');
   }
 
+  const noteStatus = () => {
+    const n = notes[idx];
+    setMsg(n.won ? `✓ Done in ${(n.ms / 1000).toFixed(1)} s` : n.tried ? `Try again. ${(n.ms / 1000).toFixed(1)} s so far` : 'Ready? Press Start.', n.won ? 'ok' : '');
+  };
+
   async function go() {
-    if (phase === 'done') return onDone?.(results);
+    if (phase === 'done') return finishRound();
     if (phase === 'reveal') { phase = 'ready'; cur = deck[idx]; setMsg('Ready? Press Start.'); render(); return; }
     if (phase !== 'ready') return;
+    if (untimed && notes[idx].won) return;
     if (!micReady) {
       try { await audio.enableMic(); micReady = true; loop(); } catch (e) { setMsg(micMessage(e)); return; }
     }
     if (dead) return;
-    phase = 'playing'; recent = []; lastMidi = null; hints = 0; errSum = errN = 0; stepErrs = [];
+    phase = 'playing'; recent = []; lastMidi = null; errSum = errN = 0; stepErrs = []; cur = deck[idx];
     setMsg('🎹 Listen carefully…');
     const ms = audio.sound.play(cur);
     render();
@@ -82,27 +103,55 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
   // Hearing it again or the singer costs nothing extra: the clock keeps running while it plays.
   function replay(kind) {
     if (phase !== 'listening') return;
-    hints += 1;
+    notes[idx].hints += 1;
     const ms = kind === 'hint' ? audio.sound.singer(cur) : audio.sound.play(cur);
     muteUntil = performance.now() + ms + GAP_MS; recent = [];
     setMsg(kind === 'hint' ? '🎶 Listen to the singer…' : '🎹 Listen again…');
   }
-  function finish(won, now) {
+
+  // Stop listening to the current note (leaving it, or moving on), adding the time spent to its total.
+  function leaveNote(now) {
+    clearTimeout(timer);
+    if (phase === 'listening') notes[idx].ms = Math.min(UNTIMED_CAP_MS, notes[idx].ms + (now - startAt));
+    if (phase === 'listening') notes[idx].tried = true;
+    tracker = null; phase = 'ready';
+  }
+  function goTo(i, now = performance.now()) {
+    if (!untimed || i < 0 || i >= deck.length || i === idx || phase === 'done') return;
+    leaveNote(now);
+    idx = i; cur = deck[idx]; lastMidi = null;
+    noteStatus(); dots(); render();
+  }
+
+  // A note finished: matched, or (timed levels) the countdown ran out or it was skipped.
+  function finishNote(won, now, byTimeout = false) {
+    const n = notes[idx];
     const limit = cur.limit * 1000;
-    const ms = Math.min(limit, now - startAt);
-    const err = stepErrs.length ? Math.round(stepErrs.reduce((a, b) => a + b, 0) / stepErrs.length) : null;
-    results[idx] = { won, ms: Math.round(ms), limit, err: won ? err : null, hints };
+    const spent = now - startAt;
+    if (cur.timed) n.ms = won ? Math.min(limit, spent) : limit; // a miss costs the whole countdown
+    else n.ms = Math.min(UNTIMED_CAP_MS, n.ms + spent);
+    n.won = won; n.tried = true;
+    n.err = won && stepErrs.length ? Math.round(stepErrs.reduce((a, b) => a + b, 0) / stepErrs.length) : null;
     streak = won ? streak + 1 : 0;
     audio.sound.chime(won);
-    const name = cur.targets.map((t) => NAMES[t]).join(' ');
-    setMsg(won ? `🎉 Got it! ${(ms / 1000).toFixed(1)} s` : `⏰ The note${cur.targets.length > 1 ? 's were' : ' was'} ${name}`, won ? 'ok' : 'bad');
-    idx += 1; tracker = null;
-    phase = idx >= deck.length ? 'done' : 'reveal';
-    dots(); render();
-    if (phase === 'done') {
-      const won2 = results.filter((r) => r.won).length;
-      X('fine').textContent = `${won2} of ${results.length} matched · ${(results.reduce((s, r) => s + r.ms, 0) / 1000).toFixed(1)} s`;
+    tracker = null;
+    if (untimed) {
+      phase = allWon() ? 'done' : 'ready';
+      setMsg(won ? `🎉 Got it! ${(n.ms / 1000).toFixed(1)} s${phase === 'ready' ? ' Use Next ▶ for the next note' : ''}` : 'Skipped', won ? 'ok' : '');
+      if (phase === 'done') X('fine').textContent = `All ${deck.length} matched · ${(totalMs(now) / 1000).toFixed(1)} s`;
+    } else {
+      const name = cur.targets.map((t) => NAMES[t]).join(' ');
+      setMsg(won ? `🎉 Got it! ${(n.ms / 1000).toFixed(1)} s` : `⏰ The note${cur.targets.length > 1 ? 's were' : ' was'} ${name}`, won ? 'ok' : 'bad');
+      idx += 1;
+      phase = idx >= deck.length ? 'done' : 'reveal';
+      if (phase === 'done') X('fine').textContent = `${notes.filter((x) => x.won).length} of ${deck.length} matched · ${(totalMs(now) / 1000).toFixed(1)} s`;
     }
+    dots(); render();
+  }
+
+  function finishRound() {
+    leaveNote(performance.now());
+    onDone?.(notes.map((n, i) => ({ won: n.won, ms: Math.round(Math.min(n.ms, UNTIMED_CAP_MS)), limit: deck[i].limit * 1000, err: n.won ? n.err : null, hints: n.hints })));
   }
 
   function loop(now = performance.now()) {
@@ -122,15 +171,13 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
     if (midi != null) { lastMidi = midi; lastAt = now; }
     const r = lastMidi != null ? Math.round(lastMidi) : 0;
     setText('note', phase === 'listening' ? (lastMidi != null && now - lastAt < 350 ? `${NAMES[((r % 12) + 12) % 12]}${Math.floor(r / 12) - 1}` : '–') : '♪');
-    const doneMs = results.reduce((n, x) => n + (x?.ms || 0), 0);
+    setText('clock', `Total ${(totalMs(now) / 1000).toFixed(1)} s`);
     if (phase !== 'listening') {
-      setText('clock', `Total ${(doneMs / 1000).toFixed(1)} s`);
       setVar('ring', '--w', 0); setVar('ring', '--hold', 0);
       X('cover').style.transform = 'scaleX(1)';
       return;
     }
-    const left = Math.max(0, cur.limit * 1000 - (now - startAt));
-    setText('clock', `Total ${((doneMs + now - startAt) / 1000).toFixed(1)} s`);
+    const left = cur.timed ? Math.max(0, cur.limit * 1000 - (now - startAt)) : Infinity;
     const t = tracker.feed(now, midi);
     if (t.hold > 0) { errSum += t.cents; errN += 1; } else { errSum = errN = 0; }
     if (t.justAdvanced) { if (errN) stepErrs.push(errSum / errN); errSum = errN = 0; }
@@ -139,11 +186,12 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
     setVar('ring', '--hold', t.hold, 0.03);
     render(t.step);
     if (t.justAdvanced && !t.done) navigator.vibrate?.(20);
-    if (t.done) return finish(true, now);
-    if (left <= 0) return finish(false, now);
+    if (t.done) return finishNote(true, now);
+    if (cur.timed && left <= 0) return finishNote(false, now, true);
+    if (!cur.timed && spentOn(idx, now) >= UNTIMED_CAP_MS) return finishNote(false, now);
     if (now < muteUntil) setMsg('🎧 Listen…');
-    else if (vol < 0.01) setMsg(`Sing out loud, ${Math.ceil(left / 1000)} s left`);
-    else if (midi == null) setMsg(`Sing a steady "Ahh"… ${Math.ceil(left / 1000)} s`);
+    else if (vol < 0.01) setMsg(cur.timed ? `Sing out loud, ${Math.ceil(left / 1000)} s left` : 'Sing out loud, take your time');
+    else if (midi == null) setMsg(cur.timed ? `Sing a steady "Ahh"… ${Math.ceil(left / 1000)} s` : 'Sing a steady "Ahh"… no rush');
     else setMsg(t.hold > 0.1 ? 'Hold it!' : t.warm > 0.66 ? 'Almost there!' : t.warm > 0.2 ? 'Getting warmer…' : 'Keep trying, slide your voice…');
   }
 
@@ -151,6 +199,12 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
   X('again').addEventListener('click', () => replay('again'));
   X('hint').addEventListener('click', () => replay('hint'));
   X('exit').addEventListener('click', () => { destroy(); onExit?.(); });
+  if (untimed) {
+    X('prev').addEventListener('click', () => goTo(idx - 1));
+    X('next').addEventListener('click', () => goTo(idx + 1));
+    X('finish').addEventListener('click', finishRound);
+    X('dots').addEventListener('click', (e) => { const d = e.target.closest('[data-i]'); if (d) goTo(Number(d.dataset.i)); });
+  } else X('skip').addEventListener('click', () => { if (phase === 'listening') finishNote(false, performance.now()); });
   function destroy() { dead = true; cancelAnimationFrame(raf); clearTimeout(timer); audio.stopMic(); }
   dots(); render(); setMsg('Ready? Press Start.');
   return { destroy };
