@@ -656,6 +656,7 @@ async function loadSettings() {
       ${num('remarkPenalty', 'Points taken off a session with any negative remark (charged once, however many)', s.remarkPenalty)}
       ${num('remarkBonus', 'Points added for each positive remark (well behaved, helped others)', s.remarkBonus)}
       ${num('latePointsFactor', 'Share of points when late (1 = full points; the remark penalty applies on top)', s.latePointsFactor, 'step="0.1" max="1"')}
+      <label class="chk"><input name="gameEnabled" type="checkbox"${s.gameEnabled ? ' checked' : ''}> 🎮 Singing game is on for parents</label>
       <label class="chk"><input name="countSundayAbsences" type="checkbox"${s.countSundayAbsences ? ' checked' : ''}> Missing Sunday mass also counts as a leave</label>
       <label class="field">Website address to share with parents<input name="publicUrl" type="url" placeholder="https://your-choir-app.example.com" value="${esc(s.publicUrl || '')}"></label>
       <label class="field">First year (starts April of)<input name="firstSeason" type="number" placeholder="${firstSeason}" value="${s.firstSeason ?? ''}"></label>
@@ -703,6 +704,7 @@ async function loadSettings() {
     run(async () => {
       const body = Object.fromEntries(['satPoints', 'sunPoints', 'practicePoints', 'feastPoints', 'maxLeaves', 'latePointsFactor', 'remarkPenalty', 'remarkBonus'].map((k) => [k, f.get(k)]));
       body.countSundayAbsences = f.get('countSundayAbsences') === 'on';
+      body.gameEnabled = f.get('gameEnabled') === 'on';
       body.firstSeason = f.get('firstSeason') || null;
       body.publicUrl = f.get('publicUrl') || '';
       await call('teacher/settings', { method: 'PUT', body });

@@ -11,6 +11,8 @@ import {
   compareNames, findOccasion, slug,
 } from './lib/logic.js';
 import { openStore, newCode } from './lib/store.js';
+import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, GameError } from './lib/game.js';
+import { LEVELS, DAILY_COUNT } from './public/levels.js';
 import { istNow, isDate, isTime, scheduleDays, nextPractice, shiftDate } from './lib/schedule.js';
 import { createTar, readTar } from './lib/tar.js';
 
@@ -237,6 +239,59 @@ function removeScheduleDay(date) {
   store.save();
 }
 
+
+// ---- singing game (scores only: no audio is ever sent or stored) -------------
+
+const GAME_GAP_MS = Number(process.env.CHOIR_GAME_GAP_MS ?? 8000);
+const roundGate = new Map(); // child id -> { last, day, n } to stop floods
+function gameOn() { if (!store.db.settings.gameEnabled) throw new HttpError(403, 'The singing game is switched off right now'); }
+function gameThrottle(id) {
+  const now = Date.now();
+  const g = roundGate.get(id) || { last: 0, day: istDate(), n: 0 };
+  if (g.day !== istDate()) { g.day = istDate(); g.n = 0; }
+  if (now - g.last < GAME_GAP_MS || g.n >= 300) throw new HttpError(429, 'Slow down a little and try again');
+  g.last = now; g.n += 1; roundGate.set(id, g);
+}
+const gameChildren = () => store.db.children.filter((c) => c.active);
+const boardOut = (rows, meId) => {
+  const top = rows.slice(0, 10).map((r) => ({ id: r.id, name: r.name, photo: photoUrl(store.db.children.find((c) => c.id === r.id)), won: r.won, ms: r.ms, rank: r.rank, stars: r.stars }));
+  const mine = rows.find((r) => r.id === meId);
+  return { top, me: mine && !top.some((t) => t.id === meId) ? { rank: mine.rank, won: mine.won, ms: mine.ms } : null, total: rows.length };
+};
+
+function gameState(child, q) {
+  const { db } = store;
+  const kid = db.game.kids[child.id] ?? emptyKid();
+  const today = istDate();
+  const level = Math.min(LEVELS.length, Math.max(1, Number(q.get('level')) || Math.min(LEVELS.length, maxPlayable(kid))));
+  const week = weekKeyOf(today);
+  const daily = db.game.daily[today]?.[child.id] ?? null;
+  return {
+    levels: LEVELS.map(({ id, tier, emoji, name, how, tol, hold, count }) => ({ id, tier, emoji, name, how, tol, hold, count })),
+    me: { id: child.id, name: child.name, cleared: kid.cleared, best: kid.best, badges: kid.badges, maxPlayable: maxPlayable(kid), dailyStreak: dailyStreak(kid, today) },
+    daily: { date: today, seed: dailySeed(today), count: DAILY_COUNT, mine: daily, board: boardOut(dailyBoard(db.game, gameChildren(), today), child.id) },
+    weekly: { week, level, board: boardOut(weeklyBoard(db.game, gameChildren(), week, level), child.id) },
+  };
+}
+async function gameApi(req, res, q, child, action) {
+  gameOn();
+  if (req.method === 'GET' && !action) return send(res, 200, gameState(child, q));
+  if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed');
+  const body = await readBody(req, 20_000);
+  gameThrottle(child.id);
+  try {
+    let out;
+    if (action === 'round') out = applyRound(store.db.game, child.id, Number(body.level), body.results, istDate());
+    else if (action === 'daily') out = applyDaily(store.db.game, child.id, istDate(), body.results);
+    else throw new HttpError(404, 'Not found');
+    store.save();
+    return send(res, 200, { ...out, state: gameState(child, new URLSearchParams({ level: String(Number(body.level) || '') })) });
+  } catch (e) {
+    if (e instanceof GameError) throw new HttpError(400, e.message);
+    throw e;
+  }
+}
+
 function publicOverview(q) {
   const { db } = store;
   const season = seasonFromQuery(q);
@@ -246,7 +301,7 @@ function publicOverview(q) {
   const strip = (rows) => rows.map(({ id, name, photo, points, rank }) => ({ id, name, photo, points, rank }));
   return {
     season, seasonLabel: seasonLabel(season), seasons: seasonsWithData(db, today()),
-    settings: { satPoints: db.settings.satPoints, sunPoints: db.settings.sunPoints, feastPoints: db.settings.feastPoints, practicePoints: db.settings.practicePoints, remarkPenalty: db.settings.remarkPenalty, remarkBonus: db.settings.remarkBonus },
+    settings: { satPoints: db.settings.satPoints, sunPoints: db.settings.sunPoints, feastPoints: db.settings.feastPoints, practicePoints: db.settings.practicePoints, remarkPenalty: db.settings.remarkPenalty, remarkBonus: db.settings.remarkBonus, gameEnabled: Boolean(db.settings.gameEnabled) },
     schedule: scheduleView(),
     month, monthLabel: monthLabel(month),
     monthBoard: strip(scoreboard(db, season, mr.start, mr.end, { hideOut: true })),
@@ -389,6 +444,7 @@ function updateSettings(body) {
   if ('latePointsFactor' in body) s.latePointsFactor = num(body.latePointsFactor, 0, 1);
   if ('remarkPenalty' in body) s.remarkPenalty = num(body.remarkPenalty, 0, 5);
   if ('remarkBonus' in body) s.remarkBonus = num(body.remarkBonus, 0, 5);
+  if ('gameEnabled' in body) s.gameEnabled = Boolean(body.gameEnabled);
   if ('countSundayAbsences' in body) s.countSundayAbsences = Boolean(body.countSundayAbsences);
   if ('firstSeason' in body) s.firstSeason = body.firstSeason === null || body.firstSeason === '' ? null : Math.round(num(body.firstSeason, 2000, 2200));
   store.save();
@@ -856,6 +912,8 @@ async function api(req, res, url) {
     }
     throw new HttpError(405, 'Method not allowed');
   }
+
+  if (a === 'game') return gameApi(req, res, q, childByCode(req), b);
 
   if (a !== 'teacher') throw new HttpError(404, 'Not found');
   checkTeacher(req);

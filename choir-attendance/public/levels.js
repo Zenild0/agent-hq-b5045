@@ -131,3 +131,13 @@ export const starsFor = (results, limitOf) => {
   const share = won.length / results.length;
   return share >= 0.9 && ratio < 0.35 ? 3 : share >= 0.7 && ratio < 0.6 ? 2 : 1;
 };
+
+export const DAILY_COUNT = 6;
+
+// A small deterministic random generator: the same seed gives the same sequence on every phone.
+export function seededRng(seed) {
+  let a = seed >>> 0;
+  return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+// Today's Legend challenge: the same hard round for everybody.
+export const dailyDeck = (seed) => buildDeck(12, seededRng(seed)).slice(0, DAILY_COUNT);

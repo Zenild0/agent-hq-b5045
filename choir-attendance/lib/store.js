@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from '
 import { dirname } from 'node:path';
 import { randomInt, randomUUID } from 'node:crypto';
 import { defaultSchedule, istNow } from './schedule.js';
+import { emptyGame } from './game.js';
 import { DEFAULT_SETTINGS, OCCASION_TYPES, seasonOf, slug } from './logic.js';
 
 // No 0/O/1/I/L so codes are easy to read out over the phone.
@@ -33,6 +34,7 @@ function migrate(db) {
     if (c.joinedYear === null && c.joinedOn) { c.joinedYear = Number(c.joinedOn.slice(0, 4)); changed = true; }
     if (!c.code) { c.code = newCode(db); changed = true; }
   }
+  if (!db.game || typeof db.game !== 'object') { db.game = emptyGame(); changed = true; }
   if (!db.schedule || typeof db.schedule !== 'object') { db.schedule = defaultSchedule(istNow().date); changed = true; }
   for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) {
     if (!(k in db.settings)) { db.settings[k] = v; changed = true; }
@@ -68,7 +70,7 @@ function migrate(db) {
 }
 
 // Tiny JSON-file store. Writes are atomic (tmp file + rename).
-const blank = () => ({ settings: { ...DEFAULT_SETTINGS }, children: [], sessions: {}, occasions: [], hymns: [], codesShortened: false, latePolicyV2: true, schedule: defaultSchedule(istNow().date) });
+const blank = () => ({ settings: { ...DEFAULT_SETTINGS }, children: [], sessions: {}, occasions: [], hymns: [], codesShortened: false, latePolicyV2: true, schedule: defaultSchedule(istNow().date), game: emptyGame() });
 const withDefaults = (saved) => ({ ...blank(), ...saved, settings: { ...DEFAULT_SETTINGS, ...saved.settings } });
 
 export function openStore(file) {

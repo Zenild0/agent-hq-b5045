@@ -7,6 +7,7 @@ import { join } from 'node:path';
 const dir = mkdtempSync(join(tmpdir(), 'choir-'));
 process.env.CHOIR_DATA = join(dir, 'db.json');
 delete process.env.CHOIR_PIN;
+process.env.CHOIR_GAME_GAP_MS = '0';
 const { server } = await import('../server.js');
 
 let base;
@@ -430,4 +431,46 @@ test('schedule: usual practice, exceptions, special days, public view without pr
   assert.ok(!removed.days.some((d) => d.date === feast));
   assert.ok(!JSON.stringify((await j('/api/public')).data.schedule).includes(anna.code));
   await put('', { time: '19:00' });
+});
+
+test('singing game: off by default, unlocks level by level, one daily try, boards without private data', async () => {
+  const game = (path, opts = {}) => j(`/api/game${path}`, opts);
+  const round = (n, won = n) => Array.from({ length: n }, (_, i) => ({ won: i < won, ms: i < won ? 2500 : 15000, limit: 15000, err: 12, hints: 0 }));
+  // codes may have been changed by earlier tests: ask the teacher view for the current ones
+  anna.code = (await j(`/api/teacher/child/${anna.id}`)).data.code;
+  ben.code = (await j(`/api/teacher/child/${ben.id}`)).data.code;
+  await j('/api/teacher/unlock-codes', { method: 'POST', body: {} }); // earlier tests used wrong codes on purpose
+  assert.equal((await game('', { code: anna.code })).status, 403, 'switched off until the teacher turns it on');
+  assert.equal((await j('/api/public')).data.settings.gameEnabled, false);
+  assert.equal((await j('/api/teacher/settings', { method: 'PUT', body: { gameEnabled: true } })).status, 200);
+  assert.equal((await j('/api/public')).data.settings.gameEnabled, true);
+  assert.equal((await game('')).status, 401, 'needs the child code');
+  await j('/api/teacher/unlock-codes', { method: 'POST', body: {} });
+  const s0 = (await game('', { code: anna.code })).data;
+  assert.equal(s0.levels.length, 12);
+  assert.equal(s0.me.maxPlayable, 1);
+  assert.equal((await game('/round', { method: 'POST', code: anna.code, body: { level: 2, results: round(7) } })).status, 400, 'level 2 is locked');
+  assert.equal((await game('/round', { method: 'POST', code: anna.code, body: { level: 1, results: round(3) } })).status, 400, 'incomplete round');
+  const ok = await game('/round', { method: 'POST', code: anna.code, body: { level: 1, results: round(7) } });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.data.score.pass, true);
+  assert.deepEqual(ok.data.state.me.cleared, [1]);
+  assert.equal(ok.data.state.me.maxPlayable, 2);
+  assert.ok(ok.data.newBadges.includes('first_note'));
+  await game('/round', { method: 'POST', code: ben.code, body: { level: 1, results: round(7, 5) } });
+  const gb = await game('?level=1', { code: ben.code });
+  assert.equal(gb.status, 200, JSON.stringify(gb.data));
+  const board = gb.data.weekly.board;
+  assert.deepEqual(board.top.map((r) => [r.name, r.rank]), [['Anna Dias', 1], ['Ben Fernandes', 2]]);
+  const text = JSON.stringify(board);
+  for (const secret of ['Rose Lane', 'SECRET STREET', '98200', anna.code, ben.code]) assert.ok(!text.includes(secret), `leaked ${secret}`);
+  const d1 = await game('/daily', { method: 'POST', code: anna.code, body: { results: round(6, 4) } });
+  assert.equal(d1.data.already, false);
+  const d2 = await game('/daily', { method: 'POST', code: anna.code, body: { results: round(6, 6) } });
+  assert.equal(d2.data.already, true);
+  assert.equal(d2.data.state.daily.mine.won, 4);
+  assert.equal(d2.data.state.daily.board.top[0].name, 'Anna Dias');
+  assert.equal(d2.data.state.daily.count, 6);
+  await j('/api/teacher/settings', { method: 'PUT', body: { gameEnabled: false } });
+  assert.equal((await game('', { code: anna.code })).status, 403);
 });

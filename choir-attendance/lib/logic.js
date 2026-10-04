@@ -41,6 +41,7 @@ export const DEFAULT_SETTINGS = {
   latePointsFactor: 1, // share of the points a "Late" present earns (1 = full; the remark penalty below applies on top)
   remarkPenalty: 0.5, // points taken off a session that has one OR MORE negative remarks (charged once, never per remark)
   remarkBonus: 0.25, // points added for EACH positive remark (Well behaved, Helped others)
+  gameEnabled: false, // the singing game: the teacher switches it on when ready
   countSundayAbsences: false, // by default only Saturday practice absences are leaves
   firstSeason: null, // season (start year) whose private prize date is Easter; null = auto
   publicUrl: '', // address shared with parents (e.g. https://choir.example.com)
