@@ -74,7 +74,11 @@ const blank = () => ({ settings: { ...DEFAULT_SETTINGS }, children: [], sessions
 const withDefaults = (saved) => ({ ...blank(), ...saved, settings: { ...DEFAULT_SETTINGS, ...saved.settings } });
 
 export function openStore(file) {
-  let db = existsSync(file) ? withDefaults(JSON.parse(readFileSync(file, 'utf8'))) : blank();
+  let db;
+  try { db = existsSync(file) ? withDefaults(JSON.parse(readFileSync(file, 'utf8'))) : blank(); }
+  catch (e) { // never overwrite a file we cannot read: stop with a clear message so it can be restored from a backup
+    throw new Error(`The data file ${file} is damaged (${e.message}). Nothing was changed. Restore it from a backup (for example the nightly .tar), then start again.`);
+  }
   mkdirSync(dirname(file), { recursive: true });
   const save = () => {
     writeFileSync(`${file}.tmp`, JSON.stringify(db, null, 2));

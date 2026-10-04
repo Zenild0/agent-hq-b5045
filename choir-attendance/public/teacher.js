@@ -671,7 +671,8 @@ async function loadBoard() {
 
 async function loadSettings() {
   const { settings: s, firstSeason } = await call('teacher/children');
-  const num = (name, label, val, extra = '') => `<label class="field">${label}<input name="${name}" type="number" step="0.5" min="0" value="${val}" ${extra}></label>`;
+  // step="any": values like 0.25 (the remark bonus) must be allowed, or the browser silently refuses to save the form
+  const num = (name, label, val, extra = '') => `<label class="field">${label}<input name="${name}" type="number" ${extra.includes('step') ? '' : 'step="any"'} min="0" value="${val}" ${extra}></label>`;
   $('#settings').innerHTML = `
     <form class="card" id="setForm">
       ${num('satPoints', 'Saturday practice points', s.satPoints)}

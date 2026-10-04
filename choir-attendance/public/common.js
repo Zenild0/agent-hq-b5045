@@ -66,7 +66,7 @@ export function bobbleHtml(c, size = 56) {
   const pic = c.head || c.photo; // the bobble-head shows the tight face crop; older photos fall back to the profile photo
   const face = pic ? `<img src="${esc(pic)}" alt="${esc(c.name)}">` : esc(initials(c.name));
   return `
-    <div class="bobble" style="--size:${size}px;--hue:${hue};--delay:${delay}s">
+    <div class="bobble${pic ? ' photo' : ''}" style="--size:${size}px;--hue:${hue};--delay:${delay}s">
       <svg class="body" viewBox="0 0 60 24" aria-hidden="true"><path d="M2 24C2 12 14 5 30 5s28 7 28 19z" fill="hsl(${hue} 60% 42%)"/><path d="M22 6l8 9 8-9" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <div class="head">${face}</div>
     </div>`;

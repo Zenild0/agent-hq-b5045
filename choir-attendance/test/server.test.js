@@ -548,3 +548,16 @@ test('profile photo (square) and head (for the bobble-heads) are kept separately
   assert.equal((await fetch(base + both.data.head.split('?')[0])).status, 404);
   await j('/api/teacher/unlock-codes', { method: 'POST', body: {} });
 });
+
+test('hardening: security headers, HEAD works, a bad address is a 400 not a crash', async () => {
+  const r = await fetch(base + '/');
+  assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(r.headers.get('x-frame-options'), 'DENY');
+  assert.equal(r.headers.get('referrer-policy'), 'same-origin');
+  assert.match(r.headers.get('permissions-policy'), /microphone=\(self\)/);
+  const h = await fetch(base + '/', { method: 'HEAD' });
+  assert.equal(h.status, 200);
+  assert.equal((await h.text()), '');
+  assert.equal((await fetch(base + '/%E0%A4%A')).status, 400);
+  assert.equal((await fetch(base + '/../server.js')).status, 404);
+});

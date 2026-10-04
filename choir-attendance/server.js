@@ -993,10 +993,20 @@ async function serveStatic(req, res, pathname) {
 }
 
 export const server = createServer(async (req, res) => {
+  // Basic hardening on every response: no type sniffing, no framing, no referrer leaks, and only this site may use the camera and microphone.
+  res.setHeader('x-content-type-options', 'nosniff');
+  res.setHeader('x-frame-options', 'DENY');
+  res.setHeader('referrer-policy', 'same-origin');
+  res.setHeader('permissions-policy', 'camera=(self), microphone=(self), geolocation=()');
   try {
-    const url = new URL(req.url, 'http://localhost');
+    let url;
+    try { url = new URL(req.url, 'http://localhost'); } catch { throw new HttpError(400, 'Bad address'); }
     if (url.pathname.startsWith('/api/')) await api(req, res, url);
-    else if (req.method === 'GET') await serveStatic(req, res, decodeURIComponent(url.pathname));
+    else if (req.method === 'GET' || req.method === 'HEAD') { // HEAD: the same answer without the body (Node leaves it out)
+      let path;
+      try { path = decodeURIComponent(url.pathname); } catch { throw new HttpError(400, 'Bad address'); }
+      await serveStatic(req, res, path);
+    }
     else throw new HttpError(405, 'Method not allowed');
   } catch (err) {
     if (!(err instanceof HttpError)) console.error(err);
