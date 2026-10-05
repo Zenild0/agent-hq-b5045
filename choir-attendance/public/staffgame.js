@@ -7,6 +7,7 @@ import { createPlayer } from './player.js';
 import { mountWarmup } from './warmup.js';
 import { spell, staffSvg } from './staff.js';
 import { shuffle } from './levels.js';
+import { xpFor, awardLine } from './xp.js';
 
 export const FREE_NOTATION_LEVELS = 2;
 
@@ -93,9 +94,10 @@ const stars = (n) => '⭐'.repeat(n) + '☆'.repeat(3 - n);
 const clefLabel = (c) => (c === 'treble' ? 'Treble clef' : c === 'bass' ? 'Bass clef' : 'Both clefs');
 
 // access: { full: bool } from the server (omit for the teacher's own copy: everything open).
-export function mountStaffGame(host, { access = null } = {}) {
+export function mountStaffGame(host, { access = null, xp: xpIn = null } = {}) {
   const root = document.createElement('div'); // its own container, so listeners from an earlier visit never pile up
   host.replaceChildren(root);
+  const xp = xpIn ?? xpFor('teacher');
   let current = null, audio = null, view = 'home', learnAudio = null, nameHandler = null;
   const dropName = () => { if (nameHandler) { root.removeEventListener('click', nameHandler); nameHandler = null; } };
   const full = () => (access ? Boolean(access.full) : true);
@@ -195,12 +197,14 @@ export function mountStaffGame(host, { access = null } = {}) {
     const was = best[levelId]?.stars ?? 0;
     if (passed && n > was) { best[levelId] = { stars: n, on: new Date().toISOString().slice(0, 10) }; writeBest(best); }
     const next = STAFF_LEVELS.find((l) => l.id === levelId + 1);
+    const earned = xp.award('quiz', { passed, stars: n, won, reading: true, game: 'notation' });
     const msg = n === 3 ? 'Brilliant! You read them like a pro.' : n === 2 ? 'Well done! Your reading is getting strong.' : passed ? 'Good work. Keep practising.' : 'Good try. Review the lesson, then go again.';
     root.innerHTML = `
       <div class="card gm-result">
         <div class="gm-praise ${passed ? '' : 'gm-try'}">${msg}</div>
         <div class="gm-big">${passed ? stars(n) : ''}</div>
         <div><b>${won} of ${results.length}</b> notes ${named ? 'named' : 'read and sung'}${helped ? ` · ${helped} with help` : ''}</div>
+        ${awardLine(earned) ? `<div class="gm-new">${awardLine(earned)}</div>` : ''}
         <div class="row" style="justify-content:center">
           ${passed && next && !locked(next.id, readBest()) ? `<button class="btn primary" data-learn="${next.id}">Next: ${next.name}</button>` : ''}
           <button class="btn${passed && next ? '' : ' primary'}" ${named ? `data-name-start="${levelId}"` : `data-lvl="${levelId}"`}>🔁 ${passed ? 'Play again' : 'Try again'}</button>

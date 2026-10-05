@@ -6,6 +6,7 @@ import { openAudio, micMessage, INSTRUMENTS, getInstrument, setInstrument } from
 import { createPlayer } from './player.js';
 import { mountWarmup } from './warmup.js';
 import { mountSingPath, pathProgress, UNITS } from './singpath.js';
+import { xpFor, awardLine } from './xp.js';
 import { LEVELS, STAGES, stageSpec, buildDeck, dailyDeck, titleFor, PIANO_KEYS, starsFor, praiseFor } from './levels.js';
 import { BADGES } from './badges.js';
 
@@ -21,9 +22,10 @@ const WHITE = [{ lv: 1, x: 0 }, { lv: 3, x: 1 }, { lv: 5, x: 2 }, { lv: 6, x: 3 
 const BLACK = [{ lv: 2, x: 0.68 }, { lv: 4, x: 1.68 }, { lv: 7, x: 3.68 }, { lv: 9, x: 4.68 }, { lv: 11, x: 5.68 }];
 
 // `preview` = the hidden test version: every level is open and progress stays on this phone only.
-export function mountGame(host, { code = '', preview = false, teacher = false } = {}) {
+export function mountGame(host, { code = '', preview = false, teacher = false, xp: xpIn = null } = {}) {
   const root = document.createElement('div'); // its own container, so listeners from an earlier visit never pile up
   host.replaceChildren(root);
+  const xp = xpIn ?? xpFor(code || 'teacher'); // the XP, streak and badges kept on this phone
   let state = null, offline = false, view = 'home', selected = 1, current = null, audio = null, pathCtl = null;
   const maxPlayableOf = (cleared) => Math.min(LEVELS.length, Math.max(0, ...cleared) + 1);
 
@@ -268,6 +270,7 @@ export function mountGame(host, { code = '', preview = false, teacher = false } 
       personalBest: Boolean(out?.personalBest), rank,
     });
     const nextStage = sc.pass && stage < 3 ? stage + 1 : 0;
+    const earned = out?.already ? null : xp.award('level', { passed: sc.pass, stars: sc.stars, game: 'vocal' });
     root.innerHTML = `
       <div class="card gm-result">
         ${praise ? `<div class="gm-praise gm-${praise.tier}">${esc(praise.title)}</div>` : ''}
@@ -275,6 +278,7 @@ export function mountGame(host, { code = '', preview = false, teacher = false } 
         <div class="gm-big">${sc.won} of ${results.length}</div>
         ${praise?.extras.length ? `<div class="gm-extras">${praise.extras.map((x) => `<div>${esc(x)}</div>`).join('')}</div>` : ''}
         <div>${fmtMs(sc.ms)} ${stars(sc.stars)}</div>
+        ${earned && awardLine(earned) ? `<div class="gm-new">${esc(awardLine(earned))}</div>` : ''}
         ${out?.levelCleared ? `<div class="gm-new">A piano key just lit up!${nextLevel ? ` Next: ${esc(nextLevel.name)}` : ''}</div>` : ''}
         ${queued ? '<div class="muted">No signal: your score is saved on this phone and will be sent when you are online.</div>' : ''}
         ${out?.already ? '<div class="muted">Your first try today is the one that counts.</div>' : ''}
@@ -341,7 +345,7 @@ export function mountGame(host, { code = '', preview = false, teacher = false } 
     if (a === 'togglePaid') { write('choir-preview-paid', !paid()); return load().then(home); }
     if (a === 'toLevel') return openLevel(Number(b.dataset.lvl) || selected);
     if (a === 'warm') return openWarm();
-    if (a === 'path') { pathCtl = mountSingPath(root, { full: paid(), onExit: () => { pathCtl?.destroy(); pathCtl = null; home(); } }); return; }
+    if (a === 'path') { pathCtl = mountSingPath(root, { full: paid(), xp, onExit: () => { pathCtl?.destroy(); pathCtl = null; home(); } }); return; }
     if (a === 'hear') { // a short sample of the chosen sound (no microphone)
       return openAudio().then((au) => { const ms = au.sound.note(60); setTimeout(() => au.close(), ms + 600); }).catch(() => {});
     }

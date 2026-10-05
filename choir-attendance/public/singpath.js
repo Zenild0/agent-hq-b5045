@@ -8,6 +8,7 @@ import { createPlayer } from './player.js';
 import { staffSvg, spell } from './staff.js';
 import { NAMES, shuffle } from './levels.js';
 import { staffDeck, STAFF_LEVELS } from './staffgame.js';
+import { xpFor, xpCardHtml, awardLine } from './xp.js';
 
 export const FREE_UNITS = 2;
 // The course is shown in chapters so the path feels like a journey.
@@ -276,9 +277,11 @@ const write = (v) => { try { localStorage.setItem(KEY, JSON.stringify(v)); } cat
 export const pathProgress = () => { const p = read(); const done = UNITS.filter((u) => p[u.id]?.stars).length; const next = UNITS.find((u) => !p[u.id]?.stars) ?? null; return { done, total: UNITS.length, next }; };
 const stars = (n) => '⭐'.repeat(n) + '☆'.repeat(3 - n);
 
-export function mountSingPath(host, { full = true, onExit } = {}) {
+export function mountSingPath(host, { full = true, xp: xpIn = null, onExit } = {}) {
   const root = document.createElement('div'); // its own container, so listeners from an earlier visit never pile up
   host.replaceChildren(root);
+  const xp = xpIn ?? xpFor('teacher');
+  let lastAward = null;
   let audio = null, current = null, view = 'home', unitId = 1, card = 0, learnAudio = null, deckUsed = [];
   const closeLearn = () => { learnAudio?.close(); learnAudio = null; };
   const state = () => read();
@@ -288,6 +291,7 @@ export function mountSingPath(host, { full = true, onExit } = {}) {
     closeLearn(); view = 'home';
     const p = state();
     root.innerHTML = `
+      ${xpCardHtml(xp.view())}
       <div class="card gm-hero">
         <div class="row between"><h2 class="gm-title" style="margin:0">Learn to sing</h2><button class="btn small" data-p="exit">‹ Back</button></div>
         <div class="muted">A step-by-step course. Each unit has a short lesson, free practice, and then a quiz. ${UNITS.filter((u) => p[u.id]?.stars).length} of ${UNITS.length} units done.</div>
@@ -317,6 +321,7 @@ export function mountSingPath(host, { full = true, onExit } = {}) {
           <button class="path-step ${seen ? '' : 'lock'}" data-p="quiz"><span class="ps-n">3</span><span class="grow"><b>Quiz</b><span class="muted">${u.count} notes, some of them revision from earlier units. Get 70% to pass${p[id]?.stars ? ` · best ${stars(p[id].stars)}` : ''}</span></span><span>${p[id]?.stars ? '✓' : '›'}</span></button>
         </div>
         ${seen ? '' : '<div class="muted" style="margin-top:6px">Start with the lesson. Practice and the quiz open after it.</div>'}
+        ${lastAward && awardLine(lastAward) ? `<div class="gm-new" style="margin-top:8px">${awardLine(lastAward)}</div>` : ''}
       </div>`;
   }
 
@@ -355,8 +360,10 @@ export function mountSingPath(host, { full = true, onExit } = {}) {
   function practiceDone(u, results) {
     view = 'result';
     const won = results.filter((r) => r.won).length;
+    const a = xp.award('practice', { won, game: 'course' });
     root.innerHTML = `
       <div class="card gm-result"><div class="gm-praise gm-try">Nice practice!</div>
+        ${awardLine(a) ? `<div class="gm-new">${awardLine(a)}</div>` : ''}
         <div><b>${won} of ${results.length}</b> found. There is no score here, it is just for learning.</div>
         <div class="row" style="justify-content:center"><button class="btn" data-p="practice">🔁 Practise more</button><button class="btn primary" data-p="quiz">Take the quiz</button><button class="btn" data-p="unit">Back</button></div></div>`;
   }
@@ -371,12 +378,15 @@ export function mountSingPath(host, { full = true, onExit } = {}) {
     p[u.id] = { ...(p[u.id] || {}), seen: true };
     if (passed && n > (p[u.id].stars ?? 0)) { p[u.id].stars = n; p[u.id].on = new Date().toISOString().slice(0, 10); }
     write(p);
+    const revRight = results.filter((r, i) => r.won && deckUsed[i]?.review).length;
+    const a = xp.award('quiz', { passed, stars: n, won, review: revRight, reading: Boolean(u.reading), game: 'course' });
     const next = UNITS.find((x) => x.id === u.id + 1);
     root.innerHTML = `
       <div class="card gm-result"><div class="gm-praise ${passed ? '' : 'gm-try'}">${n === 3 ? 'Perfect! You have got this.' : passed ? 'Well done! Unit complete.' : 'Good try. Review the lesson, practise, then try again.'}</div>
         <div class="gm-big">${passed ? stars(n) : ''}</div>
         <div><b>${won} of ${results.length}</b> correct${helped ? ` · ${helped} with help` : ''}</div>
         ${(() => { const rv = results.map((r, i) => ({ r, c: deckUsed[i] })).filter((x) => x.c?.review); return rv.length ? `<div class="muted">Revision from earlier units: ${rv.filter((x) => x.r.won).length} of ${rv.length} right.</div>` : ''; })()}
+        ${awardLine(a) ? `<div class="gm-new">${awardLine(a)}</div>` : ''}
         ${u.fact ? `<div class="gm-note">💡 Did you know? ${u.fact}</div>` : ''}
         ${passed && next ? `<div class="muted">Coming next: <b>${next.name}</b>. ${next.goal}</div>` : ''}
         <div class="row" style="justify-content:center">
@@ -404,7 +414,7 @@ export function mountSingPath(host, { full = true, onExit } = {}) {
     if (a === 'next') return lesson(unitId, card + 1);
     if (a === 'prev') return lesson(unitId, card - 1);
     if (a === 'hear') return playDemo(UNITS.find((x) => x.id === unitId).lessons[card].demo.notes);
-    if (a === 'finish') { p[unitId] = { ...(p[unitId] || {}), seen: true }; write(p); return unit(unitId); }
+    if (a === 'finish') { p[unitId] = { ...(p[unitId] || {}), seen: true }; write(p); lastAward = xp.award('lesson', { unit: unitId, game: 'course' }); return unit(unitId); }
     if (a === 'practice' || a === 'quiz') { if (!p[unitId]?.seen) return lesson(unitId, 0); return run(a); }
   });
   home();

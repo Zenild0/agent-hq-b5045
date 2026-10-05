@@ -736,3 +736,16 @@ html[data-theme=dark] .path-dots i.now { background: #C8FF3D; }
 .path-card { display: grid; gap: 8px; border-color: var(--brand); }
 .staff .sn.new .head { fill: var(--brand); }
 html[data-theme=dark] .staff .sn.new .head { fill: #C8FF3D; }
+
+/* XP, daily goal, streak */
+.xp-card { display: grid; gap: 10px; }
+.xp-top { display: flex; flex-wrap: wrap; gap: 8px; }
+.xp-chip { padding: 6px 12px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); font-weight: 800; font-size: .85rem; }
+.xp-chip.fire { color: #ff8a1f; }
+.xp-chip.title { background: var(--brand); border-color: var(--brand); color: #fff; }
+html[data-theme=dark] .xp-chip.title { background: #C8FF3D; border-color: #C8FF3D; color: #0E0B1F; }
+.xp-goal { display: flex; align-items: center; gap: 14px; }
+.xp-goal .grow { display: grid; gap: 2px; }
+.xp-ring { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; flex: none; background: conic-gradient(var(--ok) calc(var(--p) * 1turn), var(--line) 0); position: relative; font-weight: 800; font-size: .8rem; }
+.xp-ring::before { content: ''; position: absolute; inset: 7px; border-radius: 50%; background: var(--card); }
+.xp-ring span { position: relative; }
