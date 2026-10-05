@@ -35,6 +35,7 @@ app.innerHTML = `
     <section id="occasions" hidden></section>
     <section id="children" hidden></section>
     <section id="hymns" hidden></section>
+    <section id="games" hidden></section>
     <section id="vocals" hidden></section>
     <section id="staffgame" hidden></section>
     <section id="board" hidden></section>
@@ -72,8 +73,8 @@ function lockOut(message) {
   app.querySelector('main').innerHTML = `<div class="card"><h2 style="margin-top:0">🔒 Teacher area</h2><p>${esc(message)}</p><p class="muted">Open <b>http://localhost:3000/teacher</b> on the computer running the app. Parents use the main link and their child's code.</p><a class="btn" href="/">Go to the parent page</a></div>`;
 }
 
-const tabs = ['home', 'more', 'staffgame', 'attendance', 'schedule', 'occasions', 'children', 'hymns', 'vocals', 'board', 'settings'];
-const loaders = { staffgame: loadStaffGame, home: loadHome, more: loadMore, attendance: loadAttendance, schedule: loadSchedule, occasions: loadOccasions, children: loadChildren, hymns: loadHymns, vocals: loadVocals, board: loadBoard, settings: loadSettings };
+const tabs = ['home', 'more', 'games', 'staffgame', 'attendance', 'schedule', 'occasions', 'children', 'hymns', 'vocals', 'board', 'settings'];
+const loaders = { games: loadGamesHub, staffgame: loadStaffGame, home: loadHome, more: loadMore, attendance: loadAttendance, schedule: loadSchedule, occasions: loadOccasions, children: loadChildren, hymns: loadHymns, vocals: loadVocals, board: loadBoard, settings: loadSettings };
 // The teacher's own copy of Vocals: every level and the paid features are open, and progress stays on this device.
 let vocals = null;
 function subsPanelHtml(subs) {
@@ -91,6 +92,21 @@ function subsPanelHtml(subs) {
     </div>`;
 }
 
+// Training games: one page that holds every game, so more can be added. The subscription is shared by all of them.
+async function loadGamesHub() {
+  $('#games').innerHTML = `
+    <div class="card"><h2 style="margin:0">Training games</h2>
+      <div class="muted">Try each game yourself. Everyone gets every game free for 7 days (guests 3 days); one payment then unlocks all of them.</div></div>
+    <div class="tg-list">
+      <button class="tg-card" data-game="vocals"><span class="tg-n">1</span><span class="grow"><b>Vocal trainer</b><span class="muted">Hear a note, sing it. Levels, daily challenge, badges.</span></span><span>›</span></button>
+      <button class="tg-card" data-game="staffgame"><span class="tg-n">2</span><span class="grow"><b>Notation trainer</b><span class="muted">Learn to read music: 20 levels, treble and bass clef.</span></span><span>›</span></button>
+      <div class="tg-card soon"><span class="tg-n">3</span><span class="grow"><b>Rhythm trainer</b><span class="muted">Coming soon.</span></span></div>
+    </div>
+    <div id="subsBox"></div>`;
+  $('#games').querySelectorAll('[data-game]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.game)));
+  call('teacher/vocals-subs').then((s) => { $('#subsBox').innerHTML = subsPanelHtml(s); }).catch(() => {});
+}
+
 let staffTest = null;
 function loadStaffGame() {
   staffTest?.destroy?.(); staffTest = null;
@@ -102,8 +118,7 @@ function loadStaffGame() {
 function loadVocals() {
   vocals?.destroy?.(); vocals = null;
   const box = $('#vocals');
-  box.innerHTML = '<div id="subsBox"></div><div id="vocalsGame"><div class="empty">Loading…</div></div>';
-  call('teacher/vocals-subs').then((s) => { $('#subsBox').innerHTML = subsPanelHtml(s); }).catch(() => {});
+  box.innerHTML = '<div id="vocalsGame"><div class="empty">Loading…</div></div>';
   const game = $('#vocalsGame');
   return import('./game.js').then((m) => { vocals = m.mountGame(game, { preview: true, teacher: true }); }).catch(() => { game.innerHTML = '<div class="alert bad">Vocals could not load. Please try again.</div>'; });
 }
@@ -115,14 +130,16 @@ function showTab(name, fromBack = false) {
   if (name !== 'staffgame' && staffTest) { staffTest.destroy?.(); staffTest = null; $('#staffgame').innerHTML = ''; }
   if (name !== 'vocals' && vocals) { vocals.destroy?.(); vocals = null; $('#vocals').innerHTML = ''; } // stops the microphone
   tabs.forEach((t) => { $(`#${t}`).hidden = t !== name; });
-  const underMore = MORE_PAGES.some((p) => p.id === name);
+  const inGame = name === 'vocals' || name === 'staffgame'; // these two sit under Training games
+  const underMore = inGame || MORE_PAGES.some((p) => p.id === name);
   app.querySelectorAll('nav.tabbar button').forEach((x) => x.classList.toggle('on', x.dataset.tab === (underMore ? 'more' : name)));
   $('#backbar').hidden = !underMore;
+  $('#backMore').textContent = inGame ? '‹ Training games' : '‹ More';
   scrollTo(0, 0);
   return run(loaders[name]);
 }
 app.querySelectorAll('nav.tabbar button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
-$('#backMore').addEventListener('click', () => showTab('more'));
+$('#backMore').addEventListener('click', () => showTab(currentTab === 'vocals' || currentTab === 'staffgame' ? 'games' : 'more'));
 
 
 // ======================= Home and More =======================
@@ -130,8 +147,7 @@ $('#backMore').addEventListener('click', () => showTab('more'));
 const MORE_PAGES = [
   { id: 'schedule', icon: '📅', label: 'Schedule', sub: 'Practice days' },
   { id: 'occasions', icon: '🎄', label: 'Occasions', sub: 'Feasts and events' },
-  { id: 'vocals', icon: '🎤', label: 'Vocal trainer', sub: 'Test it, see subscribers' },
-  { id: 'staffgame', icon: '🎼', label: 'Notation trainer', sub: 'Try it yourself' },
+  { id: 'games', icon: '🎮', label: 'Training games', sub: 'Try them, see subscribers' },
   { id: 'board', icon: '🏆', label: 'Leaderboard', sub: 'Month and year' },
   { id: 'settings', icon: '⚙️', label: 'Settings', sub: 'Points, payment, look' },
 ];
@@ -214,7 +230,7 @@ async function loadHome() {
   $('#lastTile').addEventListener('click', openRecent);
   $('#watchTile').addEventListener('click', () => $('#attnHead').scrollIntoView({ behavior: 'smooth', block: 'start' }));
   $('#unmarkedRow')?.addEventListener('click', () => { date = ls.date; type = ls.type; event = ls.event || ''; showTab('attendance'); });
-  $('#subsCard')?.addEventListener('click', () => showTab('vocals'));
+  $('#subsCard')?.addEventListener('click', () => showTab('games'));
   $('#home').querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.go)));
   $('#goBackup').addEventListener('click', async () => { await showTab('settings'); $('#backupBox')?.scrollIntoView({ block: 'start' }); });
   $('#editProfile').addEventListener('click', () => openProfile(p));
