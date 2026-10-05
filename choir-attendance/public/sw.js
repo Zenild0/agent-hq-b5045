@@ -1,7 +1,7 @@
 // Offline support for the PARENT pages only. Always tries the network first, so updates show at once;
 // the saved copy is used only when the network fails. The teacher area, the API and the hymn audio are
 // never touched here (the parent page keeps its own small copy of the data it last loaded).
-const CACHE = 'choir-app-v11';
+const CACHE = 'choir-app-v12';
 const PRECACHE = ['/', '/style.css', '/common.js', '/parent.js', '/home.js', '/theme.js', '/nav.js', '/synth.js', '/staff.js', '/staffgame.js', '/games.js', '/singpath.js', '/xp.js', '/game.js', '/player.js', '/warmup.js', '/audio.js', '/levels.js', '/pitch.js', '/badges.js', '/logo.png', '/manifest.webmanifest', '/icon-192.png'];
 const WAIT_MS = 4000; // on a very slow connection, fall back to the saved copy after this long
 
