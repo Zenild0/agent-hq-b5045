@@ -153,7 +153,7 @@ async function loadHome() {
   const att = [];
   if (d.lastSession?.unmarked.length) {
     const u = d.lastSession.unmarked;
-    att.push(`<button class="attn" data-go="attendance"><i class="dot r"></i><span class="grow"><b>${u.length} ${u.length === 1 ? 'child' : 'children'} not marked on ${esc(fmtDate(d.lastSession.date))}</b><span class="muted">${esc(u.slice(0, 3).join(', '))}${u.length > 3 ? '…' : ''} · tap to finish the register</span></span><span class="muted">›</span></button>`);
+    att.push(`<button class="attn" id="unmarkedRow"><i class="dot r"></i><span class="grow"><b>${u.length} ${u.length === 1 ? 'child' : 'children'} not marked on ${esc(fmtDate(d.lastSession.date))}</b><span class="muted">${esc(u.slice(0, 3).join(', '))}${u.length > 3 ? '…' : ''} · tap to finish the register</span></span><span class="muted">›</span></button>`);
   }
   for (const a of d.attention) {
     att.push(`<button class="attn" data-open="${esc(a.id)}"><i class="dot ${a.kind === 'over' ? 'r' : 'y'}"></i><span class="grow"><b>${esc(a.name)} ${a.kind === 'over' ? `is over the leave limit (${a.leaves} of ${a.max})` : `is on ${a.leaves} of ${a.max} leaves`}</b><span class="muted">${a.kind === 'over' ? 'Your decision is needed' : 'One more and you decide'}</span></span><span class="muted">›</span></button>`);
@@ -173,9 +173,9 @@ async function loadHome() {
     ${nextCardHtml(sc)}
     <div class="row" style="margin:-4px 0 14px"><button class="btn primary" id="goAtt" style="flex:1">✅ Take attendance</button></div>
     <section class="trio" aria-label="Snapshot">
-      <div class="tile t1"><small>Children</small><b>${d.children}</b><small>in the choir</small></div>
-      <div class="tile t2"><small>Last practice</small><b>${ls ? `${ls.present}/${ls.total}` : '–'}</b><small>${ls ? `${esc(fmtDate(ls.date).replace(/ \d{4}$/, ''))}` : 'none yet'}</small></div>
-      <div class="tile t3"><small>Watch list</small><b>${d.attention.length}</b><small>on leaves</small></div>
+      <button class="tile t1" data-go="children"><small>Children</small><b>${d.children}</b><small>in the choir ›</small></button>
+      <button class="tile t2" id="lastTile"><small>Last practice</small><b>${ls ? `${ls.present}/${ls.total}` : '–'}</b><small>${ls ? `${esc(fmtDate(ls.date).replace(/ \d{4}$/, ''))} ›` : 'none yet'}</small></button>
+      <button class="tile t3" id="watchTile"><small>Watch list</small><b>${d.attention.length}</b><small>on leaves ›</small></button>
     </section>
     ${d.gameEnabled || d.subs.active + d.subs.expired ? `
     <button class="card subs-card" id="subsCard">
@@ -184,7 +184,7 @@ async function loadHome() {
         <span class="muted">${d.subs.active} active${d.subs.soon ? ` · ${d.subs.soon} renew soon` : ''}${d.subs.expired ? ` · ${d.subs.expired} expired` : ''}</span></span>
       <span class="subs-n">${d.subs.active}</span><span class="muted">›</span>
     </button>` : ''}
-    <h3 style="margin:6px 0">Needs your attention</h3>
+    <h3 style="margin:6px 0" id="attnHead">Needs your attention</h3>
     ${att.length ? `<div class="attn-list">${att.join('')}</div>` : '<div class="card muted" style="margin:0 0 12px">All clear ✓ Nothing needs you right now.</div>'}
     <div class="card" id="topCard">
       <b>Top this month</b>
@@ -200,10 +200,42 @@ async function loadHome() {
       <button class="btn small ${backupAge === null || backupAge > 14 ? 'primary' : ''}" id="goBackup">Backup</button>
     </div>`;
   $('#goAtt').addEventListener('click', () => showTab('attendance'));
+  $('#lastTile').addEventListener('click', openRecent);
+  $('#watchTile').addEventListener('click', () => $('#attnHead').scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  $('#unmarkedRow')?.addEventListener('click', () => { date = ls.date; type = ls.type; event = ls.event || ''; showTab('attendance'); });
   $('#subsCard')?.addEventListener('click', () => showTab('vocals'));
   $('#home').querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.go)));
   $('#goBackup').addEventListener('click', async () => { await showTab('settings'); $('#backupBox')?.scrollIntoView({ block: 'start' }); });
   $('#editProfile').addEventListener('click', () => openProfile(p));
+}
+
+// The last practices, newest first. Tap a date to see who was there.
+async function openRecent() {
+  $('#dlgBody').innerHTML = '<div class="dlg-top"><h2 style="margin:0" class="grow">Recent practices</h2><button class="btn small" id="close" type="button" aria-label="Close">✕</button></div><div class="empty">Loading…</div>';
+  if (!dlg.open) dlg.showModal();
+  $('#close').addEventListener('click', () => dlg.close());
+  try {
+    const { sessions } = await call('teacher/sessions');
+    const group = (title, cls, names) => (names.length ? `<div class="rg"><div class="muted">${title} (${names.length})</div><div class="chips">${names.map((n) => `<span class="chip ${cls}">${esc(n)}</span>`).join('')}</div></div>` : '');
+    const marked = (x) => x.present.length + x.absent.length + x.excused.length;
+    $('#dlgBody').innerHTML = `
+      <div class="dlg-top"><h2 style="margin:0" class="grow">Recent practices</h2><button class="btn small" id="close" type="button" aria-label="Close">✕</button></div>
+      <div class="muted" style="margin:6px 0 10px">Tap a date to see who was there.</div>
+      ${sessions.map((x, i) => `
+        <details class="rs"${i === 0 ? ' open' : ''}>
+          <summary><span class="grow"><b>${esc(fmtDate(x.date))}</b><span class="muted">${esc(typeLabel(x.type, x.event))}</span></span>
+            <span class="badge ok">${x.present.length} present</span>${x.absent.length + x.excused.length ? `<span class="badge bad">${x.absent.length + x.excused.length} away</span>` : ''}</summary>
+          ${group('Present', 'p', x.present)}${group('Absent', 'a', x.absent)}${group('Medical leave', 'm', x.excused)}${group('Not marked', 'n', x.unmarked)}
+          <div class="row" style="margin-top:8px"><button class="btn small" data-edit-day="${i}">Open this day in Attendance</button></div>
+        </details>`).join('') || '<div class="empty">No practices recorded yet. Take attendance to see them here.</div>'}`;
+    $('#close').addEventListener('click', () => dlg.close());
+    $('#dlgBody').querySelectorAll('[data-edit-day]').forEach((b) => b.addEventListener('click', () => {
+      const x = sessions[Number(b.dataset.editDay)];
+      date = x.date; type = x.type; event = x.event || '';
+      dlg.close();
+      showTab('attendance');
+    }));
+  } catch (err) { $('#dlgBody').innerHTML = `<div class="alert bad">${esc(err.message)}</div>`; }
 }
 
 function openProfile(p) {

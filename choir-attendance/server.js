@@ -765,7 +765,7 @@ async function saveHymnAudio(h, req) {
 // Bring back hymns that are missing from a backup (.tar) or a data file (.json). Nothing else is touched,
 // and hymns already in the list (same title and category) are left alone.
 async function recoverHymns(req) {
-  const buf = await readRaw(req, 400_000_000, 'That file is too big');
+  const buf = await readRaw(req, 120_000_000, 'That file is too big to read here. Use Settings → Restore for a whole backup.'); // kept modest: the server has little memory
   let saved;
   let files = [];
   if (buf[0] === 0x7b) { // "{" : a plain data file
@@ -948,6 +948,25 @@ function vocalsSubscriptions(roster, kids) {
   };
 }
 
+// The last recorded practices and masses, with who was there (for the teacher's Home page).
+function recentSessions(limit = 15) {
+  const { db } = store;
+  const byId = new Map(db.children.map((c) => [c.id, c]));
+  const name = (id) => byId.get(id)?.name ?? 'Former child';
+  const roster = db.children.filter((c) => c.active && !c.guest);
+  const t = today();
+  return Object.values(db.sessions)
+    .filter((x) => x.date <= t && Object.values(x.entries).some((e) => e.status))
+    .sort((a, b) => b.date.localeCompare(a.date) || a.type.localeCompare(b.type))
+    .slice(0, limit)
+    .map((x) => {
+      const pick = (...st) => Object.entries(x.entries).filter(([, e]) => st.includes(e.status)).map(([id]) => name(id)).sort((a, b) => a.localeCompare(b));
+      const occasion = OCCASION_TYPES.includes(x.type);
+      const unmarked = occasion ? [] : roster.filter((c) => !x.entries[c.id]?.status).map((c) => c.name).sort((a, b) => a.localeCompare(b));
+      return { date: x.date, type: x.type, event: x.event || '', present: pick('present'), absent: pick('absent'), excused: pick('excused'), unmarked };
+    });
+}
+
 // The teacher's home page: a small snapshot, all worked out here so the page stays quick.
 function teacherHome() {
   const { db } = store;
@@ -964,7 +983,7 @@ function teacherHome() {
   const last = past[0] ?? null;
   const marked = last ? roster.filter((c) => last.entries[c.id]?.status) : [];
   const lastSession = last ? {
-    date: last.date, type: last.type,
+    date: last.date, type: last.type, event: last.event || '',
     present: marked.filter((c) => last.entries[c.id].status === 'present').length,
     marked: marked.length, total: roster.length,
     unmarked: roster.filter((c) => !last.entries[c.id]?.status).map((c) => c.name),
@@ -1024,6 +1043,7 @@ async function teacherApi(req, res, q, parts) {
       return res.end(tar);
     }
     if (b === 'home') return send(res, 200, teacherHome());
+    if (b === 'sessions') return send(res, 200, { sessions: recentSessions() });
     if (b === 'vocals-subs') return send(res, 200, vocalsSubscriptions(store.db.children.filter((c) => c.active && !c.guest), store.db.game?.kids ?? {}));
     if (b === 'board') return send(res, 200, teacherBoard());
     if (b === 'schedule') return send(res, 200, scheduleView());

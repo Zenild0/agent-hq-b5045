@@ -161,3 +161,19 @@ test('teacher can set several regular practices through the schedule route', asy
   assert.equal((await put({ rules: [{ weekday: 6, time: '7pm' }] })).status, 400);
   assert.equal((await put({ rules: [{ weekday: 6, time: '19:00' }] })).status, 200);
 });
+
+test('recent practices list who was present, absent and not marked', async () => {
+  const j = async (path, method = 'GET', body) => (await fetch(`${base}/api/teacher/${path}`, { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })).json();
+  const a = await j('children', 'POST', { name: 'Rec Alpha' });
+  const b = await j('children', 'POST', { name: 'Rec Beta' });
+  await j('children', 'POST', { name: 'Rec Gamma' });
+  const d = '2020-01-04'; // a Saturday in the past
+  await j('mark', 'PUT', { date: d, type: 'saturday', childId: a.id, status: 'present' });
+  await j('mark', 'PUT', { date: d, type: 'saturday', childId: b.id, status: 'absent' });
+  const r = await j('sessions');
+  const s = r.sessions.find((x) => x.date === d);
+  assert.deepEqual(s.present, ['Rec Alpha']);
+  assert.deepEqual(s.absent, ['Rec Beta']);
+  assert.ok(s.unmarked.includes('Rec Gamma'));
+  assert.ok(r.sessions.every((x, i, arr) => i === 0 || arr[i - 1].date >= x.date), 'newest first');
+});
