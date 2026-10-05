@@ -666,3 +666,16 @@ html[data-theme=dark] .staff .sn.on .head { fill: #C8FF3D; }
 .wu-meet { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
 .pl-target.staff { height: auto; white-space: normal; padding: 4px 0; }
 .pl-arena:has(.pl-target.staff) { height: 460px; }
+
+/* teacher Attendance and Children: card layout like Home */
+.att-list { padding: 0; margin: 8px 0; display: grid; gap: 8px; background: none; border: 0; box-shadow: none; }
+.att-list .att-row { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 10px 12px; margin: 0; box-shadow: 0 1px 0 rgba(0,0,0,.02); }
+.att-list .att-row:last-child { border-bottom: 1px solid var(--line); }
+.att-list .pam button { width: 46px; height: 48px; border-radius: 14px; font-size: 1rem; }
+.att-list .pam .more { width: 36px; }
+.att-list .att-name .link { font-size: 1.02rem; text-decoration: none; }
+html[data-theme=bright] .att-list .att-row, html[data-theme=bright] .kid-card { border-color: transparent; box-shadow: var(--shadow); }
+.kid-card { cursor: pointer; padding: 12px 14px; }
+.kid-card .avatar { width: 48px; height: 48px; }
+.kid-card .link { font-size: 1.05rem; text-decoration: none; }
+.kid-card:active { transform: scale(.99); }

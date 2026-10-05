@@ -354,7 +354,7 @@ function renderAttendance() {
     <div class="row between"><span class="muted" id="sumline">${summaryText()}</span>
       <button class="btn small" id="allPresent">Mark all present</button></div>
     <div class="muted legend"><b>P</b> Present · <b>A</b> Absent · <b>ML</b> Medical leave · <b>⋯</b> remarks &amp; notes</div>
-    <div class="card att-list">${view.children.length ? view.children.map(childRow).join('') : '<div class="empty">Add children in the Children tab first.</div>'}</div>`}`;
+    <div class="att-list">${view.children.length ? view.children.map(childRow).join('') : '<div class="empty">Add children in the Children tab first.</div>'}</div>`}`;
   $('#type').value = type;
   $('#date').addEventListener('change', (e) => {
     if (!e.target.value) return;
@@ -578,9 +578,9 @@ async function loadChildren() {
   const main = children.filter((c) => !c.guest);
   const guests = children.filter((c) => c.guest);
   const row = (c) => `
-    <div class="card row">
+    <div class="card row kid-card" data-open="${esc(c.id)}" data-name="${esc(c.name.toLowerCase())}">
       ${avatarHtml(c)}
-      <div class="grow"><button class="link" data-open="${esc(c.id)}">${esc(c.name)}</button>
+      <div class="grow"><button class="link">${esc(c.name)}</button>
         <div class="muted">${c.standard ? `Std ${esc(c.standard)}` : 'No standard yet'}${c.joinedYear ? ` · joined ${c.joinedYear}` : ''}</div></div>
       ${c.active ? '' : '<span class="badge">left choir</span>'}
       ${c.gamePaid ? '<span class="badge ok" title="Full Vocals game unlocked">🎤 unlocked</span>' : ''}
@@ -588,21 +588,28 @@ async function loadChildren() {
     </div>`;
   $('#children').innerHTML = `
     ${pendingHtml(pending)}
-    <div class="row between"><h3 style="margin:8px 0">${main.filter((c) => c.active).length} children (A–Z)</h3>
-      <div class="row"><button class="btn primary" id="addChild">＋ Add child</button>
-        <button class="btn" id="addMany">＋ Add many</button>
-        <button class="btn" id="parentLinks">🔑 Parent access</button></div></div>
+    <div class="card">
+      <div class="row between"><div><h2 style="margin:0">${main.filter((c) => c.active).length} children</h2><div class="muted">Tap a child to see details, points and attendance.</div></div>
+        <button class="btn primary" id="addChild">＋ Add child</button></div>
+      <div class="row" style="margin-top:10px"><button class="btn small" id="addMany">＋ Add many</button>
+        <button class="btn small" id="parentLinks">🔑 Parent access</button></div>
+      <label class="field" style="margin-bottom:0"><span class="sr">Find a child</span><input id="cq" type="search" placeholder="Find a child…" autocomplete="off"></label>
+    </div>
     ${main.map(row).join('') || '<div class="empty">No children yet — tap “Add child”.</div>'}
     ${guests.length ? `<h3 style="margin:18px 0 4px">Guests <span class="muted">(only in special occasions)</span></h3>${guests.map(row).join('')}` : ''}`;
+  $('#cq').addEventListener('input', (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    $('#children').querySelectorAll('.kid-card').forEach((c) => { c.hidden = Boolean(q) && !c.dataset.name.includes(q); });
+  });
   $('#addChild').addEventListener('click', () => run(() => openChild(null)));
   $('#addMany').addEventListener('click', openBulk);
   $('#parentLinks').addEventListener('click', () => run(openLinks));
-  $('#children').querySelectorAll('[data-promote]').forEach((b) => b.addEventListener('click', () => run(async () => {
+  $('#children').querySelectorAll('[data-promote]').forEach((b) => b.addEventListener('click', (ev) => { ev.stopPropagation(); run(async () => {
     const c = guests.find((x) => x.id === b.dataset.promote);
     if (!confirm(`Move ${c.name} to the main group? They will appear in regular attendance and on the leaderboard.`)) return;
     await call(`teacher/children/${c.id}`, { method: 'PATCH', body: { guest: false } });
     await loadChildren();
-  })));
+  }); }));
 }
 
 // ---- child details dialog ----
