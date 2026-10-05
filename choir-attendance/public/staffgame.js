@@ -69,11 +69,12 @@ const clefLabel = (c) => (c === 'treble' ? 'Treble clef' : c === 'bass' ? 'Bass 
 
 // access: { full: bool } from the server (omit for the teacher's own copy: everything open).
 export function mountStaffGame(root, { access = null } = {}) {
-  let current = null, audio = null, view = 'home', learnAudio = null;
+  let current = null, audio = null, view = 'home', learnAudio = null, nameHandler = null;
+  const dropName = () => { if (nameHandler) { root.removeEventListener('click', nameHandler); nameHandler = null; } };
   const full = () => (access ? Boolean(access.full) : true);
   const locked = (id, best) => (id > FREE_NOTATION_LEVELS && !full()) ? 'pay' : (id > 1 && !best[id - 1]) ? 'order' : '';
 
-  function closeLearnAudio() { learnAudio?.close(); learnAudio = null; }
+  function closeLearnAudio() { learnAudio?.close(); learnAudio = null; dropName(); }
 
   function home() {
     closeLearnAudio();
@@ -117,7 +118,8 @@ export function mountStaffGame(root, { access = null } = {}) {
         ${show(treble, 'treble')}${show(bass, 'bass')}
         <div class="gm-note" style="margin-top:8px">💡 ${lv.tip}</div>
         <div class="muted" style="margin-top:6px">Tap a note name to hear it on the piano.</div>
-        <button class="btn primary gm-cta" data-lvl-start="${lv.id}" style="margin-top:10px">▶ Start the quiz</button>
+        <div class="row" style="margin-top:10px"><button class="btn primary" data-lvl-start="${lv.id}">🎤 Sing the notes</button><button class="btn primary" data-name-start="${lv.id}">🔤 Name the notes</button></div>
+        <div class="muted" style="margin-top:6px">Two ways to practise the same level: sing each note, or tap its letter name.</div>
       </div>`;
   }
 
@@ -133,7 +135,7 @@ export function mountStaffGame(root, { access = null } = {}) {
     });
   }
 
-  function finish(levelId, results) {
+  function finish(levelId, results, named = false) {
     view = 'result';
     const won = results.filter((r) => r.won).length;
     const share = results.length ? won / results.length : 0;
@@ -149,13 +151,61 @@ export function mountStaffGame(root, { access = null } = {}) {
       <div class="card gm-result">
         <div class="gm-praise ${passed ? '' : 'gm-try'}">${msg}</div>
         <div class="gm-big">${passed ? stars(n) : ''}</div>
-        <div><b>${won} of ${results.length}</b> notes read and sung${helped ? ` · ${helped} with help` : ''}</div>
+        <div><b>${won} of ${results.length}</b> notes ${named ? 'named' : 'read and sung'}${helped ? ` · ${helped} with help` : ''}</div>
         <div class="row" style="justify-content:center">
-          ${passed && next && !locked(next.id, readBest()) ? `<button class="btn primary" data-lvl="${next.id}">Next: ${next.name}</button>` : ''}
-          <button class="btn${passed && next ? '' : ' primary'}" data-lvl="${levelId}">🔁 ${passed ? 'Play again' : 'Try again'}</button>
+          ${passed && next && !locked(next.id, readBest()) ? `<button class="btn primary" data-learn="${next.id}">Next: ${next.name}</button>` : ''}
+          <button class="btn${passed && next ? '' : ' primary'}" ${named ? `data-name-start="${levelId}"` : `data-lvl="${levelId}"`}>🔁 ${passed ? 'Play again' : 'Try again'}</button>
           ${!passed ? '<button class="btn" data-a="warm">🎹 Staff warm-up</button>' : ''}
           <button class="btn" data-a="home">Levels</button></div>
       </div>`;
+  }
+
+  // "Name it": the note appears on the staff and you tap its letter (and a sharp or flat if it has one). No microphone.
+  function nameQuiz(levelId) {
+    closeLearnAudio();
+    view = 'name';
+    const lv = STAFF_LEVELS.find((l) => l.id === levelId);
+    const deck = staffDeck(levelId);
+    let i = 0, right = 0, acc = '', done = false;
+    const results = [];
+    const draw = (feedback = '') => {
+      const c = deck[i];
+      root.innerHTML = `
+        <div class="card pl-hud"><div class="row between"><b>Level ${lv.id}: ${lv.name} · name the note</b><button class="btn small" data-a="home">✕ Leave</button></div>
+          <div class="pl-dots">${deck.map((_, k) => `<i class="${k < results.length ? (results[k] ? 'done' : 'miss') : k === i ? 'now' : ''}"></i>`).join('')}</div>
+          <div class="pl-stats"><span>Note ${i + 1} of ${deck.length}</span><span>${right} right</span></div></div>
+        <div class="card" style="text-align:center">
+          <div class="wu-staff">${staffSvg([{ midi: c.staff[0] }], { mode: 'chord', flats: c.staffFlats, labels: false, clef: c.clef })}</div>
+          <div class="muted" style="margin:6px 0">${clefLabel(c.clef)}. Which note is it?</div>
+          ${lv.acc ? `<div class="seg" role="group" aria-label="Sharp, flat or natural">${[['', '♮ natural'], ['♯', '♯ sharp'], ['♭', '♭ flat']].map(([v, t]) => `<button type="button" data-acc="${v}" class="${acc === v ? 'on' : ''}">${t}</button>`).join('')}</div>` : ''}
+          <div class="letters">${['C', 'D', 'E', 'F', 'G', 'A', 'B'].map((L) => `<button class="btn letter" data-letter="${L}" ${feedback ? 'disabled' : ''}>${L}</button>`).join('')}</div>
+          <div class="pl-msg ${feedback.startsWith('✓') ? 'ok' : feedback ? 'bad' : ''}" style="height:auto;min-height:2.4em;margin-top:8px">${feedback}</div>
+          ${feedback ? `<div class="row" style="justify-content:center"><button class="btn" data-hear-q="${c.staff[0]}">🔊 Hear it</button><button class="btn primary" data-next-q>${i + 1 >= deck.length ? 'See my result' : 'Next ▶'}</button></div>` : ''}
+        </div>`;
+    };
+    draw();
+    const onClick = async (e) => {
+      if (view !== 'name') return;
+      const a = e.target.closest('[data-acc]');
+      if (a) { acc = a.dataset.acc; return draw(); }
+      const L = e.target.closest('[data-letter]');
+      if (L && !done) {
+        const c = deck[i];
+        const want = spell(c.staff[0], c.staffFlats, c.clef);
+        const ok = L.dataset.letter === want.letter && (lv.acc ? acc : '') === want.acc;
+        results.push(ok); if (ok) right += 1;
+        draw(ok ? `✓ Yes, ${want.name}!` : `That note is ${want.name} (${want.full}).`);
+        return;
+      }
+      if (e.target.closest('[data-hear-q]')) { try { learnAudio ||= await openAudio(); await learnAudio.ensure(); learnAudio.stop(); learnAudio.sound.pianoNote(Number(e.target.closest('[data-hear-q]').dataset.hearQ), 2.2); } catch { /* no sound */ } return; }
+      if (e.target.closest('[data-next-q]')) {
+        i += 1; acc = '';
+        if (i >= deck.length) { dropName(); finish(levelId, results.map((w) => ({ won: w, hints: 0 })), true); return; }
+        draw();
+      }
+    };
+    nameHandler = onClick;
+    root.addEventListener('click', onClick);
   }
 
   function warm() {
@@ -167,6 +217,10 @@ export function mountStaffGame(root, { access = null } = {}) {
   root.addEventListener('click', async (e) => {
     const start = e.target.closest('[data-lvl-start]');
     if (start) return play(Number(start.dataset.lvlStart));
+    const ln = e.target.closest('[data-learn]');
+    if (ln) return learn(Number(ln.dataset.learn));
+    const ns = e.target.closest('[data-name-start]');
+    if (ns) return nameQuiz(Number(ns.dataset.nameStart));
     const hear = e.target.closest('[data-hear]');
     if (hear && view === 'learn') {
       try { learnAudio ||= await openAudio(); await learnAudio.ensure(); learnAudio.stop(); learnAudio.sound.pianoNote(Number(hear.dataset.hear), 2.2); } catch { /* no sound available */ }
