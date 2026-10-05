@@ -130,8 +130,8 @@ $('#backMore').addEventListener('click', () => showTab('more'));
 const MORE_PAGES = [
   { id: 'schedule', icon: '📅', label: 'Schedule', sub: 'Practice days' },
   { id: 'occasions', icon: '🎄', label: 'Occasions', sub: 'Feasts and events' },
-  { id: 'vocals', icon: '🎤', label: 'Vocals', sub: 'Test and unlocks' },
-  { id: 'staffgame', icon: '🎼', label: 'Staff game', sub: 'Try it yourself' },
+  { id: 'vocals', icon: '🎤', label: 'Vocal trainer', sub: 'Test it, see subscribers' },
+  { id: 'staffgame', icon: '🎼', label: 'Notation trainer', sub: 'Try it yourself' },
   { id: 'board', icon: '🏆', label: 'Leaderboard', sub: 'Month and year' },
   { id: 'settings', icon: '⚙️', label: 'Settings', sub: 'Points, payment, look' },
 ];
@@ -191,7 +191,7 @@ async function loadHome() {
     ${d.gameEnabled || d.subs.active + d.subs.expired ? `
     <button class="card subs-card" id="subsCard">
       <span class="si" aria-hidden="true">🎤</span>
-      <span class="grow"><b>Vocals subscriptions</b>
+      <span class="grow"><b>Game subscriptions</b>
         <span class="muted">${d.subs.active} active${d.subs.soon ? ` · ${d.subs.soon} renew soon` : ''}${d.subs.expired ? ` · ${d.subs.expired} expired` : ''}</span></span>
       <span class="subs-n">${d.subs.active}</span><span class="muted">›</span>
     </button>` : ''}
@@ -903,10 +903,10 @@ async function loadSettings() {
         <label class="chk"><input name="countSundayAbsences" type="checkbox"${s.countSundayAbsences ? ' checked' : ''}> Missing Sunday mass also counts as a leave</label>
         <p class="muted">Feast practices, feast masses and medical absences never count as leaves. Going over the leave limit never removes a child by itself; you decide.</p>`, true)}
       ${sec('Vocals and payment', 'The singing game, its price and how parents pay', `
-        <div class="muted" style="margin-bottom:4px"><b>Games for parents.</b> Switch each game on when you are ready. They can be launched one at a time.</div>
-        <label class="chk"><input name="gameEnabled" type="checkbox"${s.gameEnabled ? ' checked' : ''}> 🎤 Vocals (singing) game is on for parents</label>
-        <label class="chk"><input name="staffEnabled" type="checkbox"${s.staffEnabled ? ' checked' : ''}> 🎼 Read the staff game is on for parents</label>
-        <div class="muted" style="margin:8px 0">Warm-up (3 free sessions) and Level 1 are free. Parents pay you directly, then you unlock their child for a year (Children → the child → Vocals game). After 365 days they pay again.</div>
+        <div class="muted" style="margin-bottom:4px"><b>Training games for parents.</b> Switch each game on when you are ready, one at a time. Everyone gets every game free for 7 days (guests 3 days); one payment then unlocks all the games.</div>
+        <label class="chk"><input name="gameEnabled" type="checkbox"${s.gameEnabled ? ' checked' : ''}> 🎤 Vocal trainer (game 1) is on for parents</label>
+        <label class="chk"><input name="staffEnabled" type="checkbox"${s.staffEnabled ? ' checked' : ''}> 🎼 Notation trainer (game 2) is on for parents</label>
+        <div class="muted" style="margin:8px 0">The first levels stay free. Parents pay you directly, then you unlock their child for a year (Children → the child → Vocals game), and that opens all the games. After 365 days they pay again.</div>
         <label class="field">Price for one year (₹)<input name="gamePrice" type="number" min="0" step="1" value="${s.gamePrice ?? 500}"></label>
         <label class="field">Mobile number to pay (UPI or phone)<input name="gamePayMobile" type="tel" maxlength="20" value="${esc(s.gamePayMobile ?? '')}"></label>
         <label class="field">UPI ID (optional, like name@bank)<input name="gameUpi" maxlength="60" value="${esc(s.gameUpi ?? '')}"></label>
@@ -1219,35 +1219,31 @@ const fmtClock = (hhmm) => {
   return `${h % 12 || 12}${m ? `:${String(m).padStart(2, '0')}` : ''} ${h < 12 ? 'am' : 'pm'}`;
 };
 
-const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
 async function loadSchedule() {
   const sc = await call('teacher/schedule');
   const usual = sc.usual;
-  const rules = usual.rules;
-  const sat = rules.find((r) => r.weekday === 6);
-  const upcoming = sc.days.filter((d) => d.date >= sc.today).slice(0, 14);
-  const changed = (d) => d.cancelled || d.special || d.time !== d.usualTime || d.label || (d.note && d.note !== usual.note);
+  // Only the exceptions are listed: cancelled, a different time, a note of their own, or a special day.
+  const exceptions = sc.days.filter((d) => d.date >= sc.today && (d.cancelled || d.special || d.time !== usual.time || d.label || (d.note && d.note !== usual.note)));
   $('#schedule').innerHTML = `
     <div class="card">
-      <h2 style="margin-top:0">Saturday practice</h2>
-      ${sat ? `<div class="row between sched-row" style="border-top:0"><span><b>Every Saturday</b> · ${esc(fmtClock(sat.time))}</span><button class="btn small" id="satTime">Change time</button></div>
-        <div class="muted" style="margin:6px 0">Saturdays are added automatically. To skip one, open it below and cancel it.</div>`
-      : `<div class="muted">Saturday practice is switched off. <button class="btn small" id="satOn">Turn it back on</button></div>`}
-      <label class="field" style="margin-top:10px">Note shown on every practice<input id="usualNote" maxlength="140" value="${esc(usual.note)}"></label>
-    </div>
-    <div class="card">
-      <div class="row between"><h2 style="margin:0">Upcoming practices</h2><button class="btn primary small" id="addSpecial">＋ Add a practice</button></div>
-      <div class="muted" style="margin:4px 0 8px">Saturdays appear here automatically. Tap Edit to change a time or note, or to cancel one. Use ＋ Add a practice for any other day.</div>
-      ${upcoming.map((d) => `
-        <div class="row between sched-row${d.cancelled ? ' off' : ''}">
-          <span><b>${esc(fmtDate(d.date))}</b> · ${d.cancelled ? '<span class="badge bad">cancelled</span>' : esc(fmtClock(d.time))}${d.label ? ` · ${esc(d.label)}` : ''}${d.special ? ' <span class="badge info">extra</span>' : ''}${d.time !== d.usualTime && !d.cancelled && !d.special ? ' <span class="badge warn">time changed</span>' : ''}
-            ${d.note && d.note !== usual.note ? `<div class="muted">${esc(d.note)}</div>` : ''}</span>
-          <button class="btn small${changed(d) ? '' : ''}" data-day="${esc(d.date)}">${d.cancelled ? 'Restore' : 'Edit'}</button></div>`).join('') || '<div class="muted">Nothing coming up. Add a regular practice or a one-off practice.</div>'}
+      <h2 style="margin-top:0">Schedule</h2>
+      <div class="row between" style="background:#f1edff;border-radius:12px;padding:10px 12px">
+        <div><b>Usual practice</b><div class="muted">Every Saturday, ${esc(fmtClock(usual.time))}</div></div>
+        <button class="btn small" id="editUsual">Edit</button></div>
+      <div class="muted" style="margin:8px 0">Saturdays are added automatically. You only change the exceptions.</div>
+      <label class="field">Note shown on every practice<input id="usualNote" maxlength="140" value="${esc(usual.note)}"></label>
+      <h3>Exceptions</h3>
+      ${exceptions.map((d) => `
+        <div class="row between" style="border-top:1px solid var(--line);padding:8px 0${d.cancelled ? ';opacity:.75' : ''}">
+          <span><b>${esc(fmtDate(d.date))}</b> · ${d.cancelled ? 'cancelled' : esc(fmtClock(d.time))}${d.label ? ` · ${esc(d.label)}` : ''}${d.note && d.note !== usual.note ? `<div class="muted">${esc(d.note)}</div>` : ''}</span>
+          <button class="btn small" data-day="${esc(d.date)}">${d.cancelled ? 'Restore' : 'Change'}</button></div>`).join('') || '<div class="muted">No exceptions. Every Saturday is on as usual.</div>'}
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="chgDay">Cancel or change a day</button>
+        <button class="btn primary" id="addSpecial">Add a special day</button></div>
     </div>`;
-  $('#satTime')?.addEventListener('click', () => openRule(usual, 6));
-  $('#satOn')?.addEventListener('click', () => run(async () => { await call('teacher/schedule', { method: 'PUT', body: { rules: [...rules, { weekday: 6, time: '19:00' }] } }); await loadSchedule(); }));
+  $('#editUsual').addEventListener('click', () => openUsual(usual));
   $('#usualNote').addEventListener('change', (e) => run(async () => { await call('teacher/schedule', { method: 'PUT', body: { note: e.target.value } }); flash('Saved', 'ok'); }));
+  $('#chgDay').addEventListener('click', () => openDay(sc, { date: sc.next?.date || sc.today }, 'change'));
   $('#addSpecial').addEventListener('click', () => openDay(sc, { date: sc.today }, 'special'));
   $('#schedule').querySelectorAll('[data-day]').forEach((b) => b.addEventListener('click', () => {
     const d = sc.days.find((x) => x.date === b.dataset.day);
@@ -1256,28 +1252,16 @@ async function loadSchedule() {
   }));
 }
 
-// Add a regular practice (weekday === null) or change / remove one.
-function openRule(usual, weekday) {
-  const rules = usual.rules;
-  const cur = weekday == null ? { weekday: 3, time: '18:00' } : rules.find((r) => r.weekday === weekday);
+function openUsual(usual) {
   $('#dlgBody').innerHTML = `
-    <div class="dlg-top"><h2 style="margin:0" class="grow">Saturday practice time</h2><button class="btn small" id="close" type="button" aria-label="Close">✕</button></div>
-    <form id="uf">
-      <input type="hidden" name="weekday" value="${cur.weekday}">
-      <div class="muted" style="margin-bottom:6px">Every ${WEEKDAYS[cur.weekday]}</div>
-      <label class="field">At<input name="time" type="time" required value="${esc(cur.time)}"></label>
-      <div class="row"><button class="btn primary">Save</button>${weekday != null ? '<button type="button" class="btn danger" id="delRule">Switch off Saturdays</button>' : ''}<span id="umsg" class="muted" aria-live="polite"></span></div>
-      ${weekday != null ? '<div class="muted" style="margin-top:8px">Switching off only stops future Saturday practices. Past attendance is kept.</div>' : ''}
-    </form>`;
+    <div class="row between"><h2 style="margin:0">Usual practice time</h2><button class="btn small" id="close" aria-label="Close">✕</button></div>
+    <form id="uf"><label class="field">Every Saturday at<input name="time" type="time" required value="${esc(usual.time)}"></label>
+      <div class="row"><button class="btn primary">Save</button><span id="umsg" class="muted" aria-live="polite"></span></div></form>`;
   if (!dlg.open) dlg.showModal();
   $('#close').addEventListener('click', () => dlg.close());
-  const save = (next) => run(async () => { await call('teacher/schedule', { method: 'PUT', body: { rules: next } }); dlg.close(); await loadSchedule(); });
-  $('#delRule')?.addEventListener('click', () => { if (confirm('Stop automatic Saturday practices? You can turn them back on.')) save(rules.filter((r) => r.weekday !== weekday)); });
   $('#uf').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const f = new FormData(e.target);
-    const entry = { weekday: Number(f.get('weekday')), time: f.get('time') };
-    try { await call('teacher/schedule', { method: 'PUT', body: { rules: [...rules.filter((r) => r.weekday !== weekday), entry] } }); dlg.close(); await loadSchedule(); }
+    try { await call('teacher/schedule', { method: 'PUT', body: { time: new FormData(e.target).get('time') } }); dlg.close(); await loadSchedule(); }
     catch (err) { $('#umsg').textContent = `⚠️ ${err.message}`; }
   });
 }
@@ -1285,16 +1269,15 @@ function openRule(usual, weekday) {
 function openDay(sc, d, mode) {
   const special = mode === 'special';
   const exists = sc.days.some((x) => x.date === d.date);
-  const usualTime = d.usualTime || sc.usual.time;
   $('#dlgBody').innerHTML = `
-    <div class="dlg-top"><h2 style="margin:0" class="grow">${special ? (exists && d.special ? 'Edit extra practice' : 'Add a practice') : 'Edit this practice'}</h2><button class="btn small" id="close" type="button" aria-label="Close">✕</button></div>
+    <div class="row between"><h2 style="margin:0">${special ? 'Special day' : 'Change a day'}</h2><button class="btn small" id="close" aria-label="Close">✕</button></div>
     <form id="df">
       <label class="field">Date<input name="date" type="date" required value="${esc(d.date)}"></label>
-      <label class="field">Time<input name="time" type="time" value="${esc(d.time || usualTime)}"></label>
-      ${special ? `<label class="field">Name (e.g. Christmas rehearsal)<input name="label" maxlength="40" value="${esc(d.label || '')}"></label>` : `
+      <label class="field">Time<input name="time" type="time" value="${esc(d.time || sc.usual.time)}"></label>
+      ${special ? `<label class="field">Name (e.g. Christmas)<input name="label" maxlength="40" value="${esc(d.label || '')}"></label>` : `
       <label class="row" style="gap:8px;margin:8px 0"><input type="checkbox" name="cancelled"${d.cancelled ? ' checked' : ''}> No practice this day</label>`}
       <label class="field">Note for this day only (optional)<input name="note" maxlength="140" placeholder="${esc(sc.usual.note)}" value="${esc(d.note && d.note !== sc.usual.note ? d.note : '')}"></label>
-      <div class="row"><button class="btn primary">Save</button>${special && exists ? '<button type="button" class="btn danger" id="rm">Remove this practice</button>' : ''}<span id="dmsg" class="muted" aria-live="polite"></span></div>
+      <div class="row"><button class="btn primary">Save</button>${special && exists ? '<button type="button" class="btn danger" id="rm">Remove this day</button>' : ''}<span id="dmsg" class="muted" aria-live="polite"></span></div>
     </form>`;
   if (!dlg.open) dlg.showModal();
   $('#close').addEventListener('click', () => dlg.close());
@@ -1302,7 +1285,7 @@ function openDay(sc, d, mode) {
   $('#df').addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
-    const body = { date: f.get('date'), time: f.get('time') === usualTime && !special ? '' : f.get('time'), note: f.get('note') };
+    const body = { date: f.get('date'), time: f.get('time') === sc.usual.time && !special ? '' : f.get('time'), note: f.get('note') };
     if (special) { body.special = true; body.label = f.get('label'); } else body.cancelled = f.get('cancelled') === 'on';
     try { await call('teacher/schedule/day', { method: 'PUT', body }); dlg.close(); await loadSchedule(); }
     catch (err) { $('#dmsg').textContent = `⚠️ ${err.message}`; }

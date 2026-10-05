@@ -11,7 +11,7 @@ import {
   compareNames, findOccasion, slug,
 } from './lib/logic.js';
 import { openStore, newCode } from './lib/store.js';
-import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, setPaid, resetWarmups, resetAllWarmups, isPaid, paidUntilOf, daysLeft, wasPaid, warmupsLeft, useWarmup, GameError, PaywallError } from './lib/game.js';
+import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, setPaid, resetWarmups, resetAllWarmups, isPaid, hasFull, trialOf, startTrial, TRIAL_DAYS, paidUntilOf, daysLeft, wasPaid, warmupsLeft, useWarmup, GameError, PaywallError } from './lib/game.js';
 import { LEVELS, DAILY_COUNT, STAGES, stageSpec, isTimed } from './public/levels.js';
 import { istNow, isDate, isTime, scheduleDays, nextPractice, shiftDate, rulesOf } from './lib/schedule.js';
 import { createTar, readTar } from './lib/tar.js';
@@ -274,6 +274,22 @@ function gameAccess(id) {
   const today = istDate();
   return { gamePaid: isPaid(kid, today), gamePaidUntil: paidUntilOf(kid), gameExpired: wasPaid(kid) && !isPaid(kid, today), warmupLeft: warmupsLeft(kid, today) ?? 3 };
 }
+// What a signed-in child (or guest) can use: the free trial, or the paid year. Opening the games starts the trial.
+function accessFor(child) {
+  const { db } = store;
+  const today = istDate();
+  const kid = (db.game.kids[child.id] ??= emptyKid());
+  const anyGame = db.settings.gameEnabled || db.settings.staffEnabled;
+  if (anyGame && startTrial(db.game, child.id, today, child.guest ? Number(process.env.CHOIR_TRIAL_GUEST_DAYS ?? TRIAL_DAYS.guest) : Number(process.env.CHOIR_TRIAL_DAYS ?? TRIAL_DAYS.member))) store.save();
+  const paid = isPaid(kid, today);
+  const left = daysLeft(kid, today);
+  return {
+    full: hasFull(kid, today), paid, paidUntil: paidUntilOf(kid), expired: wasPaid(kid) && !paid,
+    trial: trialOf(kid, today), guest: Boolean(child.guest),
+    pay: !paid || left <= 30 ? { price: db.settings.gamePrice, mobile: db.settings.gamePayMobile, upi: db.settings.gameUpi } : null,
+    games: { vocals: Boolean(db.settings.gameEnabled), notation: Boolean(db.settings.staffEnabled) },
+  };
+}
 const roundGate = new Map(); // child id -> { last, day, n } to stop floods
 function gameOn() { if (!store.db.settings.gameEnabled) throw new HttpError(403, 'The Vocals game is switched off right now'); }
 function gameThrottle(id) {
@@ -297,15 +313,18 @@ function gameState(child, q) {
   const level = Math.min(LEVELS.length, Math.max(1, Number(q.get('level')) || Math.min(LEVELS.length, maxPlayable(kid))));
   const week = weekKeyOf(today);
   const daily = db.game.daily[today]?.[child.id] ?? null;
-  const paid = isPaid(kid, today);
+  const paid = hasFull(kid, today); // paid for, or in the free trial
+  const subscribed = isPaid(kid, today);
   const left = daysLeft(kid, today);
   return {
     paid,
+    subscribed,
+    trial: trialOf(kid, today),
     warmupLeft: warmupsLeft(kid, today),
     paidUntil: paidUntilOf(kid), // empty if never unlocked; a past date means the year has ended
-    expired: wasPaid(kid) && !paid,
-    renewSoon: paid && left <= 30, // within 30 days of the end: the renew card shows
-    pay: !paid || left <= 30 ? { price: db.settings.gamePrice, mobile: db.settings.gamePayMobile, upi: db.settings.gameUpi } : null,
+    expired: wasPaid(kid) && !subscribed,
+    renewSoon: subscribed && left <= 30, // within 30 days of the end: the renew card shows
+    pay: !subscribed || left <= 30 ? { price: db.settings.gamePrice, mobile: db.settings.gamePayMobile, upi: db.settings.gameUpi } : null,
     levels: LEVELS.map(({ id, tier, name, how, tol, hold, count }) => ({ id, tier, name, how, tol, hold, count, timed: isTimed(id), stages: STAGES.map((st) => stageSpec(id, st.stage)) })),
     me: { id: child.id, name: child.name, paid, cleared: kid.cleared, stages: kid.stages ?? {}, best: kid.best, top: kid.top ?? {}, badges: kid.badges, maxPlayable: maxPlayable(kid), dailyStreak: dailyStreak(kid, today) },
     // the daily challenge and the weekly boards are part of the full game
@@ -315,7 +334,7 @@ function gameState(child, q) {
 }
 async function gameApi(req, res, q, child, action) {
   gameOn();
-  if (req.method === 'GET' && !action) return send(res, 200, gameState(child, q));
+  if (req.method === 'GET' && !action) { accessFor(child); return send(res, 200, gameState(child, q)); } // opening the game starts the free trial
   if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed');
   if (action === 'warmup') { // opening the Warm-up room: 3 free sessions, then part of the full game
     try { const w = useWarmup(store.db.game, child.id, istDate()); store.save(); return send(res, 200, w); }
@@ -1161,6 +1180,7 @@ async function api(req, res, url) {
       await savePhoto(child, body.image, body.head);
       return send(res, 200, { photo: photoUrl(child), head: headUrl(child) });
     }
+    if (req.method === 'GET' && b === 'access') return send(res, 200, accessFor(child));
     if (req.method === 'GET') return send(res, 200, childDetail(child, seasonFromQuery(q)));
     if (req.method === 'PUT') {
       const body = await readBody(req);

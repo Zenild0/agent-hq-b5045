@@ -110,7 +110,6 @@ export function mountWarmup(root, { onExit, staff = false } = {}) {
     setText('plName', `${ex.name} from ${NAMES[lastPc]}`);
     X('plKeys').innerHTML = midis.map((m, i) => `<span class="wk" data-k="${i}">${NAMES[((m % 12) + 12) % 12]}</span>`).join('');
     showStaff(midis, 'seq', 0);
-    X('player').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     cancelAnimationFrame(raf);
     followRun();
   }
@@ -157,7 +156,7 @@ export function mountWarmup(root, { onExit, staff = false } = {}) {
       lastPc = pc;
       const a = await ensureAudio();
       a.stop(); setPaused(false);
-      const ms = a.sound.chord(60 + pc, quality, 3.2);
+      const ms = a.sound.chord(60 + pc, quality, 2.4);
       playingUntil = performance.now() + ms;
       showStaff((quality === 'minor' ? [0, 3, 7] : [0, 4, 7]).map((s) => 60 + pc + s), 'chord');
       setText('chordNow', `${chordSymbol(pc, quality)} (${chordRoot(pc, quality)} ${quality}). Sing the first note, ${chordRoot(pc, quality)}. The ${quality === 'minor' ? 'minor' : 'major'} third is in the chord.`);

@@ -1,8 +1,7 @@
 // The instruments of the singing game, made from maths (no sound files, works offline, costs nothing).
 // Every function returns a Float32Array of samples for ONE note, so the notes can be tested for being in tune.
-//   piano   : a grand piano key held for a while (several strings, slightly stretched overtones, hammer thud)
+//   piano   : a mellow digital-piano key that rings and fades
 //   guitar  : a plucked steel-string guitar (Karplus-Strong string model, tuned exactly)
-//   tanpura : the drone of one tanpura string with its buzzing "jivari" shimmer
 // All rings fade out smoothly at the end, so nothing clicks.
 
 const TWO_PI = 2 * Math.PI;
@@ -34,34 +33,37 @@ function addPartial(out, freq, amp, sr, decay, startAt = 0, bloom = null) {
   }
 }
 
-export function renderPiano(freq, secs = 3, sr = 44100) {
-  const out = new Float32Array(Math.floor(sr * (secs + 0.5)));
-  const low = Math.min(1, Math.max(0, Math.log2(freq / 65) / 6)); // 0 for the bass, 1 for the top
-  const B = 0.00001 + 0.00012 * low * low;                       // stiff strings: overtones are a touch sharp
-  const strings = low < 0.25 ? 1 : low < 0.5 ? 2 : 3;            // bass notes have one string, treble three
-  const nPart = Math.max(3, Math.min(18, Math.floor((sr / 2 - 200) / freq / 1.05)));
-  const base = 5.2 - 2.4 * low;                                   // lower notes ring longer
-  for (let s = 0; s < strings; s++) {
-    const detune = strings === 1 ? 0 : (s - (strings - 1) / 2) * 0.35; // cents: the chorus of a grand's strings
-    const f0 = freq * 2 ** (detune / 1200);
-    for (let k = 1; k <= nPart; k++) {
-      const fk = f0 * k * Math.sqrt(1 + B * k * k);
-      if (fk > sr / 2 - 100) break;
-      const hammer = Math.abs(Math.sin((k * Math.PI) / 8)) + 0.15; // the hammer strikes about an eighth along the string
-      const amp = (hammer / k ** 0.85) / strings;
-      addPartial(out, fk, amp, sr, base / k ** 0.55);
+// A mellow digital piano, in the spirit of a Yamaha or Roland stage piano: round and warm, a soft attack, a few
+// gentle overtones that fade faster than the main note, and no hard hammer thud. The key rings and fades by itself
+// (no extra sustain pedal), which is easy on the ears for singing along.
+export function renderPiano(freq, secs = 2.4, sr = 44100) {
+  const out = new Float32Array(Math.floor(sr * (secs + 0.35)));
+  const low = Math.min(1, Math.max(0, Math.log2(freq / 65) / 6));  // 0 bass .. 1 treble
+  const base = 2.6 - 0.9 * low;                                     // seconds for the main tone to fall by a factor e
+  const amps = [1, 0.42, 0.2, 0.09, 0.05, 0.025];                   // gentle overtones, rolling off quickly
+  for (let s = 0; s < 2; s++) {                                     // two very slightly detuned strings: warmth, not wobble
+    const f0 = freq * 2 ** ((s === 0 ? -0.25 : 0.25) / 1200);
+    for (let k = 1; k <= amps.length; k++) {
+      const fk = f0 * k;
+      if (fk > Math.min(7000, sr / 2 - 200)) break;
+      addPartial(out, fk, amps[k - 1] * 0.5, sr, base / (1 + 0.9 * (k - 1)));
     }
   }
-  // the thud of the hammer
-  let seed = 12345;
-  const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296 - 0.5;
-  let lp = 0;
-  const thud = Math.floor(sr * 0.018);
-  for (let i = 0; i < thud; i++) { lp += 0.35 * (rnd() - lp); out[i] += lp * 0.5 * (1 - i / thud) * (0.4 + 0.6 * (1 - low)); }
-  // a key held for `secs` then released: a quick damper fall
+  // a very soft touch of the key (barely there)
+  let seed = 4242, lp = 0;
+  const thud = Math.floor(sr * 0.012);
+  for (let i = 0; i < thud; i++) { seed = (seed * 1664525 + 1013904223) >>> 0; lp += 0.12 * ((seed / 4294967296 - 0.5) - lp); out[i] += lp * 0.25 * (1 - i / thud); }
+  // soften the top: a gentle low-pass, so nothing is sharp or tiring
+  const fc = Math.min(3200, Math.max(900, freq * 6));
+  const a = 1 - Math.exp((-2 * Math.PI * fc) / sr);
+  let y = 0;
+  for (let i = 0; i < out.length; i++) { y += a * (out[i] - y); out[i] = y; }
+  // a soft attack, and the key is let go at `secs`
+  const atk = Math.floor(sr * 0.006);
+  for (let i = 0; i < atk; i++) out[i] *= i / atk;
   const rel = Math.floor(sr * secs);
-  for (let i = rel; i < out.length; i++) out[i] *= Math.exp(-(i - rel) / (sr * 0.12));
-  return peakNormalise(fade(out, sr, 0.1), 0.62);
+  for (let i = rel; i < out.length; i++) out[i] *= Math.exp(-(i - rel) / (sr * 0.1));
+  return peakNormalise(fade(out, sr, 0.15), 0.5);
 }
 
 // Karplus-Strong: a burst of noise circulating in a tuned loop, a little duller each time round.
@@ -92,35 +94,10 @@ export function renderGuitar(freq, secs = 3.5, sr = 44100) {
   return peakNormalise(fade(out, sr, 0.3), 0.6);
 }
 
-// One tanpura string: a plucked string whose upper overtones bloom a moment after the pluck (the jivari buzz).
-export function renderTanpura(freq, secs = 5, sr = 44100) {
-  const out = new Float32Array(Math.floor(sr * secs));
-  const nPart = Math.max(4, Math.min(26, Math.floor((sr / 2 - 200) / freq)));
-  for (let k = 1; k <= nPart; k++) {
-    const amp = 1 / k ** 0.62;
-    const bloomy = k >= 3 && k <= 16;
-    addPartial(out, freq * k, amp, sr, 6.5 / k ** 0.3, 0, bloomy ? { gain: 1.6 * Math.min(1, (k - 2) / 4), at: 0.45 + 0.03 * k, width: 0.35 } : null);
-  }
-  // a short soft pluck at the start
-  for (let i = 0; i < Math.floor(sr * 0.004); i++) out[i] *= i / (sr * 0.004);
-  return peakNormalise(fade(out, sr, 0.4), 0.6);
-}
-
 // Mix a note into a longer track at a time (seconds), with a gain.
 export function mixInto(track, note, at, sr, gain = 1) {
   const from = Math.floor(at * sr);
   for (let i = 0; i < note.length && from + i < track.length; i++) track[from + i] += note[i] * gain;
 }
 
-// The tanpura drone for a given root frequency: Pa (the fifth below), Sa, Sa, then the low Sa, over and over.
-export function renderTanpuraDrone(rootHz, secs = 4.5, sr = 44100) {
-  const track = new Float32Array(Math.floor(sr * secs));
-  const strings = [rootHz * 0.75, rootHz, rootHz, rootHz / 2];
-  const gap = 0.78;
-  const cache = new Map();
-  const get = (f) => cache.get(f) ?? (cache.set(f, renderTanpura(f, 3.6, sr)), cache.get(f));
-  for (let t = 0, i = 0; t < secs - 1; t += gap, i++) mixInto(track, get(strings[i % 4]), t, sr, i % 4 === 1 || i % 4 === 2 ? 0.75 : 0.55);
-  return peakNormalise(fade(track, sr, 0.5), 0.6);
-}
-
-export const RENDERERS = { piano: renderPiano, guitar: renderGuitar, tanpura: renderTanpura };
+export const RENDERERS = { piano: renderPiano, guitar: renderGuitar };

@@ -1,7 +1,7 @@
 // Sound and microphone for the singing game. Everything is made in the browser (no sound files).
 // The microphone is listened to live and thrown away: nothing is recorded, stored or sent.
 import { freqOfMidi, CHORDS } from './pitch.js';
-import { renderPiano, renderGuitar, renderTanpuraDrone } from './synth.js';
+import { renderPiano, renderGuitar } from './synth.js';
 
 // Opens the sound system. Call it from a tap (browsers require that). Add the microphone with enableMic().
 export async function openAudio() {
@@ -38,17 +38,15 @@ export function micMessage(e) {
 }
 
 // The sound the phone plays for the child to sing along with. Chosen by the player and kept on this phone.
-//  piano:   one grand-piano KEY, held (a chord is played as just its first note)
-//  tanpura: a steady drone on the note, the classic Indian reference for singers
+//  piano:   one mellow piano KEY (a chord is played as just its first note)
 //  guitar:  an acoustic guitar; a chord is strummed and left to ring
-// Scales and tunes (warm-ups, "echo" levels) are always played on the grand piano.
+// Scales and tunes (warm-ups, "echo" levels) are always played on the piano.
 export const INSTRUMENTS = [
-  { id: 'piano', label: 'Grand piano', how: 'One long, steady key to sing from.' },
-  { id: 'tanpura', label: 'Tanpura', how: 'A drone that rings on the note.' },
+  { id: 'piano', label: 'Piano', how: 'One clear key to sing from.' },
   { id: 'guitar', label: 'Acoustic guitar', how: 'A strummed chord, left to ring.' },
 ];
 export function getInstrument() {
-  try { const v = localStorage.getItem('choir-instrument'); if (INSTRUMENTS.some((i) => i.id === v)) return v; } catch { /* private mode */ }
+  try { const v = localStorage.getItem('choir-instrument'); if (INSTRUMENTS.some((i) => i.id === v)) return v; } /* an older saved choice (tanpura, harmonium…) becomes the piano */ catch { /* private mode */ }
   return 'piano';
 }
 export function setInstrument(id) { try { localStorage.setItem('choir-instrument', id); } catch { /* private mode */ } }
@@ -98,20 +96,18 @@ function makeSound(ctx) {
   const round = (m) => Math.round(m);
   const pianoBuf = (midi, secs) => bufferFor(`p${round(midi)}:${secs}`, () => renderPiano(freqOfMidi(midi), secs, sr));
   const guitarBuf = (midi, secs = 3.6) => bufferFor(`g${round(midi)}:${secs}`, () => renderGuitar(freqOfMidi(midi), secs, sr));
-  const droneBuf = (midi, secs = 4.6) => bufferFor(`t${round(midi)}:${secs}`, () => renderTanpuraDrone(freqOfMidi(midi), secs, sr));
 
   // One grand-piano key, held for `secs`.
-  const pianoNote = (midi, secs = 3.2, at = 0.05, gain = 1) => { sound(pianoBuf(midi, secs), at, gain, 1); return secs * 1000; };
+  const pianoNote = (midi, secs = 2.4, at = 0.05, gain = 1) => { sound(pianoBuf(midi, secs), at, gain, 1); return secs * 1000; };
 
   // The reference to sing from, in the chosen instrument.
   const note = (midi, secs) => {
     const inst = getInstrument();
-    if (inst === 'tanpura') { sound(droneBuf(midi), 0.05, 1, 1.2); return 4600; }
     if (inst === 'guitar') { sound(guitarBuf(midi, secs ?? 3.6), 0.05, 1, 0.8); return (secs ?? 3.6) * 1000; }
-    return pianoNote(midi, secs ?? 3.2);
+    return pianoNote(midi, secs ?? 2.4);
   };
   // A whole chord (with its real major or minor third). Guitar strums; everything else is the grand piano.
-  const chord = (root, quality, secs = 3.2) => {
+  const chord = (root, quality, secs = 2.4) => {
     const inst = getInstrument();
     const notes = [root - 12, ...CHORDS[quality].map((s) => root + s)];
     if (inst === 'guitar') {

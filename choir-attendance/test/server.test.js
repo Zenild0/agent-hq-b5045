@@ -8,6 +8,8 @@ const dir = mkdtempSync(join(tmpdir(), 'choir-'));
 process.env.CHOIR_DATA = join(dir, 'db.json');
 delete process.env.CHOIR_PIN;
 process.env.CHOIR_GAME_GAP_MS = '0';
+process.env.CHOIR_TRIAL_DAYS = '0'; // these tests are about the paywall, so no free trial here
+process.env.CHOIR_TRIAL_GUEST_DAYS = '0';
 const { server } = await import('../server.js');
 
 let base;

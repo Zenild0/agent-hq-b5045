@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderPiano, renderGuitar, renderTanpura, renderTanpuraDrone } from '../public/synth.js';
+import { renderPiano, renderGuitar } from '../public/synth.js';
 import { detectPitch } from '../public/pitch.js';
 import { buildDeck, chordSymbol, chordTitle } from '../public/levels.js';
 import { EXERCISES } from '../public/warmup.js';
@@ -13,25 +13,30 @@ const centsOff = (buf, f) => {
   return p ? 1200 * Math.log2(p.freq / f) : null;
 };
 
-test('piano, guitar and tanpura notes are in tune (within a few cents) from the bass to the treble', () => {
+test('piano and guitar notes are in tune (within a few cents) from the bass to the treble', () => {
   for (const midi of [43, 48, 55, 60, 64, 67, 72]) {
-    for (const [name, fn] of [['piano', renderPiano], ['guitar', renderGuitar], ['tanpura', renderTanpura]]) {
+    for (const [name, fn] of [['piano', renderPiano], ['guitar', renderGuitar]]) {
       const c = centsOff(fn(hz(midi), 3.5, SR), hz(midi));
       assert.ok(c !== null && Math.abs(c) < 4, `${name} ${midi}: ${c}`);
     }
   }
 });
 
-test('notes are loud enough but never clip, fade out smoothly, and the piano key really sustains for 2 seconds', () => {
+test('notes are loud enough but never clip, fade out smoothly, and the piano key rings for two seconds without an added sustain', () => {
   const p = renderPiano(hz(60), 2, SR);
   let peak = 0;
   for (const v of p) peak = Math.max(peak, Math.abs(v));
   assert.ok(peak > 0.3 && peak <= 0.7, `peak ${peak}`);
   const rms = (a, b) => { let s = 0; for (let i = a; i < b; i++) s += p[i] ** 2; return Math.sqrt(s / (b - a)); };
-  assert.ok(rms(Math.floor(SR * 1.8), Math.floor(SR * 1.9)) > rms(0, 4800) * 0.2, 'still ringing near 2 seconds');
+  const early = rms(4800, 9600), late = rms(Math.floor(SR * 1.8), Math.floor(SR * 1.9));
+  assert.ok(late > early * 0.15 && late < early * 0.8, 'still audible near 2 seconds, and fading naturally');
+  // mellow: little energy in the harsh high range
+  let hiE = 0, allE = 0;
+  for (let i = 4800; i < 4800 + 4096; i++) allE += p[i] ** 2;
+  const lpHi = (() => { let y = 0, e = 0; for (let i = 4800; i < 4800 + 4096; i++) { y += 0.5 * (p[i] - y); const h = p[i] - y; e += h * h; } return e; })();
+  hiE = lpHi;
+  assert.ok(hiE / allE < 0.05, `high-frequency share ${hiE / allE}`);
   assert.ok(Math.abs(p[p.length - 1]) < 1e-3, 'ends silent, no click');
-  const d = renderTanpuraDrone(hz(60), 4.5, SR);
-  assert.ok(d.length === Math.floor(SR * 4.5) && Math.abs(d[d.length - 1]) < 1e-3);
 });
 
 test('minor chords are named and spelled as a musician would', () => {
@@ -73,15 +78,29 @@ test('notes are written on the right line or space of the treble staff', () => {
   assert.ok(prefersFlats(3) && !prefersFlats(2) && prefersFlats(0, true) && !prefersFlats(4, true));
 });
 
-test('staff game rounds: right size, silent, and each note is sung by name in any octave', () => {
+test('notation trainer: 20 levels, each round the right size, silent, sung by name in any octave', () => {
+  assert.equal(STAFF_LEVELS.length, 20);
+  assert.deepEqual(STAFF_LEVELS.map((l) => l.id), Array.from({ length: 20 }, (_, i) => i + 1));
   for (const lv of STAFF_LEVELS) {
     const d = staffDeck(lv.id, () => 0.4);
     assert.equal(d.length, lv.count);
-    for (const c of d) {
+    d.forEach((c, i) => {
       assert.ok(c.silent && c.staff.length === 1 && lv.pool.includes(c.staff[0]));
       assert.equal(c.targets[0], c.staff[0] % 12);
-      assert.match(c.noteName, /^[A-G][♯♭]?\d$/);
-    }
-    assert.equal(new Set(d.map((c) => c.staff[0])).size, d.length, 'no repeated note in one round');
+      assert.match(c.noteName, /^[A-G][♯♭]?-?\d$/);
+      assert.ok(['treble', 'bass'].includes(c.clef));
+      if (i) assert.notEqual(c.staff[0], d[i - 1].staff[0], 'never the same note twice in a row');
+    });
+    if (lv.clef !== 'grand') assert.ok(d.every((c) => c.clef === lv.clef));
+    if (lv.pool.length >= lv.count) assert.equal(new Set(d.map((c) => c.staff[0])).size, d.length, `level ${lv.id}: no repeats when the pool is big enough`);
   }
+  assert.ok(staffDeck(10, () => 0.9).every((c) => !c.noteName.includes('♯')), 'the flats level spells with flats');
+  assert.ok(staffDeck(9, () => 0.1).every((c) => !c.noteName.includes('♭')), 'the sharps level spells with sharps');
+});
+
+test('bass clef notes sit on the right lines (G B D F A) and spaces (A C E G)', () => {
+  const pos = (m) => spell(m, false, 'bass').pos;
+  assert.deepEqual([43, 47, 50, 53, 57].map(pos), [0, 2, 4, 6, 8]);
+  assert.deepEqual([45, 48, 52, 55].map(pos), [1, 3, 5, 7]);
+  assert.equal(pos(60), 10); // middle C: a ledger line above the bass staff
 });

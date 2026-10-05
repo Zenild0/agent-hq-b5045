@@ -72,7 +72,7 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
     setText('ringLab', phase === 'listening' ? 'You are singing' : phase === 'playing' ? 'Listen' : 'Ready');
     const c = phase === 'done' || phase === 'reveal' ? null : cur;
     const shown = c ? (c.blind && c.kind !== 'echo' ? '🙈 Hidden chord' : c.title) : phase === 'done' ? 'Well done!' : ' ';
-    if (c?.staff) { const h = staffSvg(c.staff.map((m) => ({ midi: m })), { mode: 'chord', flats: Boolean(c.staffFlats), labels: false }); if (cache.get('staffHtml') !== h) { cache.set('staffHtml', h); cache.delete('target'); X('target').innerHTML = h; X('target').classList.add('staff'); } }
+    if (c?.staff) { const h = staffSvg(c.staff.map((m) => ({ midi: m })), { mode: 'chord', flats: Boolean(c.staffFlats), labels: false, clef: c.clef || 'treble' }); if (cache.get('staffHtml') !== h) { cache.set('staffHtml', h); cache.delete('target'); X('target').innerHTML = h; X('target').classList.add('staff'); } }
     else if (!(c?.hideAfterPlay && phase === 'listening')) { if (cache.get('staffHtml')) { cache.delete('staffHtml'); cache.delete('target'); X('target').classList.remove('staff'); } setText('target', shown); }
     setText('how', c ? c.how : ' ');
     setText('ringSub', c && c.targets.length > 1 ? slots(c.targets.length, stepDone) : ' ');

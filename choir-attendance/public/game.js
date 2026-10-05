@@ -167,7 +167,7 @@ export function mountGame(root, { code = '', preview = false, teacher = false } 
       <div class="card" id="sound">
         <h3 style="margin:0 0 6px">Sound to sing with</h3>
         <div class="seg" role="group" aria-label="Instrument">${INSTRUMENTS.map((i) => `<button type="button" data-inst="${i.id}" class="${getInstrument() === i.id ? 'on' : ''}" aria-pressed="${getInstrument() === i.id}">${i.label}</button>`).join('')}</div>
-        <div class="muted" style="margin-top:6px">${INSTRUMENTS.find((i) => i.id === getInstrument()).how} Scales and tunes are always played on the grand piano. <button class="btn small" data-a="hear">▶ Hear it</button></div>
+        <div class="muted" style="margin-top:6px">${INSTRUMENTS.find((i) => i.id === getInstrument()).how} Scales and tunes are always played on the piano. <button class="btn small" data-a="hear">▶ Hear it</button></div>
       </div>
       ${state.pay ? `<div id="unlock">${unlockHtml()}</div>` : ''}
       ${d ? `<div class="card">
