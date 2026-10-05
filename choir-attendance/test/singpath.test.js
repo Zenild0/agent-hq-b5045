@@ -5,9 +5,9 @@ import { UNITS, pathDeck, FREE_UNITS } from '../public/singpath.js';
 const seeded = (seed) => () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
 const pc = (m) => ((m % 12) + 12) % 12;
 
-test('the course has 12 units, each with a lesson, a goal and a drill', () => {
-  assert.equal(UNITS.length, 12);
-  assert.deepEqual(UNITS.map((u) => u.id), Array.from({ length: 12 }, (_, i) => i + 1));
+test('the course has 28 units in a steady order, each with a lesson, a goal and a drill', () => {
+  assert.equal(UNITS.length, 28);
+  assert.deepEqual(UNITS.map((u) => u.id), Array.from({ length: 28 }, (_, i) => i + 1));
   assert.equal(FREE_UNITS, 2);
   for (const u of UNITS) {
     assert.ok(u.name && u.goal && u.lessons.length >= 2, `unit ${u.id}`);
@@ -16,6 +16,11 @@ test('the course has 12 units, each with a lesson, a goal and a drill', () => {
       if (l.demo) assert.ok(l.demo.notes.length >= 1 && l.demo.notes.every((m) => m >= 48 && m <= 84) && l.demo.label);
     }
   }
+  // growth: intervals are introduced one at a time before they are mixed, and reading comes last
+  const idOf = (name) => UNITS.find((u) => u.name === name).id;
+  assert.ok(idOf('Steps: whole steps') < idOf('Skips: thirds') && idOf('Skips: thirds') < idOf('Fourths') && idOf('Fourths') < idOf('Fifths') && idOf('Fifths') < idOf('Mix it up'));
+  assert.ok(idOf('Mix it up') < idOf('Sixths') && idOf('Octaves') < idOf('The whole scale') && idOf('Minor feeling') < idOf('Echo tunes'));
+  assert.ok(UNITS.filter((u) => u.reading).every((u) => u.id > 20), 'reading the staff comes after the singing skills');
 });
 
 test('every unit builds a quiz and a free practice with sensible challenges', () => {
@@ -34,21 +39,29 @@ test('every unit builds a quiz and a free practice with sensible challenges', ()
   }
 });
 
-test('interval units ask for exactly the interval they teach (4ths are 5 semitones, and so on)', () => {
-  const semis = { 3: [2], 5: [5], 6: [7] };
-  for (const [id, allowed] of Object.entries(semis)) {
-    for (const c of pathDeck(Number(id), { rng: seeded(7), count: 30 }).filter((x) => !x.review)) {
-      assert.ok(allowed.includes(c.semis), `unit ${id}: ${c.semis}`);
-      assert.equal(c.targets[0], pc(c.start + c.semis));
-      assert.equal(c.play.midi, c.start);
+test('each unit drills exactly what its lesson teaches', () => {
+  for (const u of UNITS) {
+    const fresh = pathDeck(u.id, { rng: seeded(u.id * 13), count: 40 }).filter((c) => !c.review);
+    assert.ok(fresh.length > 0);
+    for (const c of fresh) {
+      if (u.reading) { assert.ok(c.silent && c.staff.length === 1, `unit ${u.id} reads the staff`); assert.equal(c.targets[0], pc(c.staff[0])); continue; }
+      if (u.echo) { assert.ok(c.play.type === 'melody' && c.targets.length === u.echo && c.play.notes.length === u.echo, `unit ${u.id} echo`); c.play.notes.forEach((m, i) => assert.equal(c.targets[i], pc(m))); continue; }
+      if (u.semis) {
+        assert.ok(u.semis.includes(Math.abs(c.semis)), `unit ${u.id}: ${c.semis} is not one of ${u.semis}`);
+        assert.equal(c.targets[0], pc(c.start + c.semis), `unit ${u.id}: target`);
+        if (u.anyDir) { assert.match(c.how, /above|below/); }
+        else if (u.dir === -1) { assert.ok(c.semis < 0, `unit ${u.id} goes down`); assert.match(c.how, /below/); }
+        else if (!u.chord && u.id !== 14 && u.id !== 15) { assert.ok(c.semis > 0); assert.match(c.how, /above/); }
+        if (u.chord) { assert.equal(c.play.type, 'chord'); assert.equal(c.play.quality, u.chord); }
+        continue;
+      }
+      assert.equal(c.play.type, 'note', `unit ${u.id}: match a note`);
+      assert.equal(c.targets[0], pc(c.play.midi));
     }
   }
-  for (const c of pathDeck(4, { rng: seeded(3), count: 30 }).filter((x) => !x.review)) { assert.ok([3, 4].includes(c.semis)); assert.equal(c.targets[0], pc(c.start + c.semis)); }
-  for (const c of pathDeck(8, { rng: seeded(5), count: 30 }).filter((x) => !x.review)) { assert.ok(c.semis < 0, 'going down'); assert.equal(c.targets[0], pc(c.start + c.semis)); assert.match(c.how, /below/); }
-  for (const c of pathDeck(9, { rng: seeded(9), count: 30 }).filter((x) => !x.review)) { assert.ok([2, 4, 5, 7, 9, 11, 12].includes(c.semis)); assert.equal(c.targets[0], pc(c.start + c.semis)); assert.match(c.how, /Re|Mi|Fa|Sol|La|Ti|Do/); }
-  for (const c of pathDeck(10, { rng: seeded(2), count: 30 }).filter((x) => !x.review)) { assert.ok([0, 4, 7].includes(c.semis)); assert.equal(c.play.type, 'chord'); assert.equal(c.play.quality, 'major'); }
-  for (const c of pathDeck(11, { rng: seeded(4), count: 30 }).filter((x) => !x.review)) { assert.ok([0, 3, 7].includes(c.semis)); assert.equal(c.play.quality, 'minor'); }
-  for (const c of pathDeck(12, { rng: seeded(6), count: 20 }).filter((x) => !x.review)) { assert.ok(c.targets.length >= 3 && c.targets.length === c.play.notes.length); c.play.notes.forEach((m, i) => assert.equal(c.targets[i], pc(m))); }
+  // 4ths are 5 semitones, 5ths 7 (the numbers children are taught)
+  assert.deepEqual(UNITS.find((u) => u.name === 'Fourths').semis, [5]);
+  assert.deepEqual(UNITS.find((u) => u.name === 'Fifths').semis, [7]);
 });
 
 test('every quiz revises earlier units (about a third) and always starts with the new skill; unit 1 has nothing to revise', () => {
@@ -62,7 +75,7 @@ test('every quiz revises earlier units (about a third) and always starts with th
   }
   // the most recent units are revised more often than the oldest
   let recent = 0, oldest = 0;
-  for (let k = 0; k < 40; k++) for (const c of pathDeck(9, { rng: seeded(k + 100), count: 12 }).filter((x) => x.review)) { if (c.from >= 7) recent += 1; if (c.from <= 2) oldest += 1; }
+  for (let k = 0; k < 40; k++) for (const c of pathDeck(15, { rng: seeded(k + 100), count: 12 }).filter((x) => x.review)) { if (c.from >= 13) recent += 1; if (c.from <= 4) oldest += 1; }
   assert.ok(recent > oldest, `recent ${recent} vs oldest ${oldest}`);
   assert.ok(UNITS.every((u) => typeof u.fact === 'string' && u.fact.length > 20), 'each unit teaches a fact');
 });
