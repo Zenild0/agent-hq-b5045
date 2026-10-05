@@ -55,3 +55,33 @@ test('warm-up exercises start on the chosen key, stay in a singable range and ho
   }
   assert.ok(EXERCISES.some((e) => e.steps.includes(3) && e.steps.includes(8)), 'a minor scale is there');
 });
+
+import { spell, prefersFlats } from '../public/staff.js';
+import { staffDeck, STAFF_LEVELS } from '../public/staffgame.js';
+
+test('notes are written on the right line or space of the treble staff', () => {
+  const pos = (m, f = false) => spell(m, f).pos;
+  assert.equal(pos(64), 0);   // E4: bottom line
+  assert.equal(pos(67), 2);   // G4: second line
+  assert.equal(pos(71), 4);   // B4: middle line
+  assert.equal(pos(77), 8);   // F5: top line
+  assert.equal(pos(60), -2);  // middle C: a ledger line below
+  assert.equal(pos(81), 10);  // A5: a ledger line above
+  assert.equal(spell(61, false).full, 'C♯4');
+  assert.equal(spell(61, true).full, 'D♭4');
+  assert.equal(spell(70, true).full, 'B♭4');
+  assert.ok(prefersFlats(3) && !prefersFlats(2) && prefersFlats(0, true) && !prefersFlats(4, true));
+});
+
+test('staff game rounds: right size, silent, and each note is sung by name in any octave', () => {
+  for (const lv of STAFF_LEVELS) {
+    const d = staffDeck(lv.id, () => 0.4);
+    assert.equal(d.length, lv.count);
+    for (const c of d) {
+      assert.ok(c.silent && c.staff.length === 1 && lv.pool.includes(c.staff[0]));
+      assert.equal(c.targets[0], c.staff[0] % 12);
+      assert.match(c.noteName, /^[A-G][♯♭]?\d$/);
+    }
+    assert.equal(new Set(d.map((c) => c.staff[0])).size, d.length, 'no repeated note in one round');
+  }
+});

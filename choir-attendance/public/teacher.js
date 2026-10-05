@@ -36,6 +36,7 @@ app.innerHTML = `
     <section id="children" hidden></section>
     <section id="hymns" hidden></section>
     <section id="vocals" hidden></section>
+    <section id="staffgame" hidden></section>
     <section id="board" hidden></section>
     <section id="settings" hidden></section>
   </main>
@@ -71,8 +72,8 @@ function lockOut(message) {
   app.querySelector('main').innerHTML = `<div class="card"><h2 style="margin-top:0">🔒 Teacher area</h2><p>${esc(message)}</p><p class="muted">Open <b>http://localhost:3000/teacher</b> on the computer running the app. Parents use the main link and their child's code.</p><a class="btn" href="/">Go to the parent page</a></div>`;
 }
 
-const tabs = ['home', 'more', 'attendance', 'schedule', 'occasions', 'children', 'hymns', 'vocals', 'board', 'settings'];
-const loaders = { home: loadHome, more: loadMore, attendance: loadAttendance, schedule: loadSchedule, occasions: loadOccasions, children: loadChildren, hymns: loadHymns, vocals: loadVocals, board: loadBoard, settings: loadSettings };
+const tabs = ['home', 'more', 'staffgame', 'attendance', 'schedule', 'occasions', 'children', 'hymns', 'vocals', 'board', 'settings'];
+const loaders = { staffgame: loadStaffGame, home: loadHome, more: loadMore, attendance: loadAttendance, schedule: loadSchedule, occasions: loadOccasions, children: loadChildren, hymns: loadHymns, vocals: loadVocals, board: loadBoard, settings: loadSettings };
 // The teacher's own copy of Vocals: every level and the paid features are open, and progress stays on this device.
 let vocals = null;
 function subsPanelHtml(subs) {
@@ -90,6 +91,14 @@ function subsPanelHtml(subs) {
     </div>`;
 }
 
+let staffTest = null;
+function loadStaffGame() {
+  staffTest?.destroy?.(); staffTest = null;
+  const box = $('#staffgame');
+  box.innerHTML = '<div class="empty">Loading…</div>';
+  return import('./staffgame.js').then((m) => { staffTest = m.mountStaffGame(box); }).catch(() => { box.innerHTML = '<div class="alert bad">The game could not load. Please try again.</div>'; });
+}
+
 function loadVocals() {
   vocals?.destroy?.(); vocals = null;
   const box = $('#vocals');
@@ -103,6 +112,7 @@ let currentTab = 'home';
 function showTab(name, fromBack = false) {
   if (!fromBack) noteVisit(name);
   currentTab = name;
+  if (name !== 'staffgame' && staffTest) { staffTest.destroy?.(); staffTest = null; $('#staffgame').innerHTML = ''; }
   if (name !== 'vocals' && vocals) { vocals.destroy?.(); vocals = null; $('#vocals').innerHTML = ''; } // stops the microphone
   tabs.forEach((t) => { $(`#${t}`).hidden = t !== name; });
   const underMore = MORE_PAGES.some((p) => p.id === name);
@@ -121,6 +131,7 @@ const MORE_PAGES = [
   { id: 'schedule', icon: '📅', label: 'Schedule', sub: 'Practice days' },
   { id: 'occasions', icon: '🎄', label: 'Occasions', sub: 'Feasts and events' },
   { id: 'vocals', icon: '🎤', label: 'Vocals', sub: 'Test and unlocks' },
+  { id: 'staffgame', icon: '🎼', label: 'Staff game', sub: 'Try it yourself' },
   { id: 'board', icon: '🏆', label: 'Leaderboard', sub: 'Month and year' },
   { id: 'settings', icon: '⚙️', label: 'Settings', sub: 'Points, payment, look' },
 ];
@@ -870,39 +881,45 @@ async function loadSettings() {
   const { settings: s, firstSeason } = await call('teacher/children');
   // step="any": values like 0.25 (the remark bonus) must be allowed, or the browser silently refuses to save the form
   const num = (name, label, val, extra = '') => `<label class="field">${label}<input name="${name}" type="number" ${extra.includes('step') ? '' : 'step="any"'} min="0" value="${val}" ${extra}></label>`;
+  const sec = (title, sub, body, open = false) => `<details class="card set-sec"${open ? ' open' : ''}><summary><span class="grow"><b>${title}</b><span class="muted">${sub}</span></span><span class="chev" aria-hidden="true">▾</span></summary><div class="set-body">${body}</div></details>`;
   $('#settings').innerHTML = `
-    ${lookCardHtml()}
-    <form class="card" id="setForm">
-      ${num('satPoints', 'Saturday practice points', s.satPoints)}
-      ${num('sunPoints', 'Sunday mass points', s.sunPoints)}
-      ${num('practicePoints', 'Points per feast practice (Christmas, Easter…)', s.practicePoints)}
-      ${num('feastPoints', 'Points for the feast mass itself', s.feastPoints)}
-      ${num('maxLeaves', 'Leaves allowed per year (April–April)', s.maxLeaves, 'step="1"')}
-      ${num('remarkPenalty', 'Points taken off a session with any negative remark (charged once, however many)', s.remarkPenalty)}
-      ${num('remarkBonus', 'Points added for each positive remark (well behaved, helped others)', s.remarkBonus)}
-      ${num('latePointsFactor', 'Share of points when late (1 = full points; the remark penalty applies on top)', s.latePointsFactor, 'step="0.1" max="1"')}
-      <div class="muted" style="margin-top:10px"><b>Full Vocals game: how parents pay.</b> Warm-up and Level 1 are free. Parents pay you directly, then you unlock their child for a year (Children → the child → Vocals game). After 365 days they need to pay again.</div>
-      <label class="field">Price for one year (₹)<input name="gamePrice" type="number" min="0" step="1" value="${s.gamePrice ?? 500}"></label>
-      <label class="field">Mobile number to pay (UPI or phone)<input name="gamePayMobile" type="tel" maxlength="20" value="${esc(s.gamePayMobile ?? '')}"></label>
-      <label class="field">UPI ID (optional, like name@bank)<input name="gameUpi" maxlength="60" value="${esc(s.gameUpi ?? '')}"></label>
-      <div class="muted"><a href="/voice-test.html" target="_blank" rel="noopener">🎤 Open the test version of Vocals</a> (every level open, nothing saved on the server, parents never see it)</div>
-      <div class="row" style="margin:6px 0"><button type="button" class="btn small" id="warmResetAll">🔥 Give everyone 3 free Warm-up sessions again</button><span class="muted" id="warmResetMsg" aria-live="polite"></span></div>
-      <label class="chk"><input name="gameEnabled" type="checkbox"${s.gameEnabled ? ' checked' : ''}> 🎤 Vocals game is on for parents</label>
-      <label class="chk"><input name="countSundayAbsences" type="checkbox"${s.countSundayAbsences ? ' checked' : ''}> Missing Sunday mass also counts as a leave</label>
-      <label class="field">Website address to share with parents<input name="publicUrl" type="url" placeholder="https://your-choir-app.example.com" value="${esc(s.publicUrl || '')}"></label>
-      <label class="field">First year (starts April of)<input name="firstSeason" type="number" placeholder="${firstSeason}" value="${s.firstSeason ?? ''}"></label>
-      <p class="muted">Your private prize race ends at Easter in the first year and at the end of December every year after. Leave blank to start from your first recorded session. Feast practices, feast masses and medical absences never count as leaves. Going over the leave limit never removes a child by itself; you decide.</p>
-      <button class="btn primary">Save settings</button>
-    </form>`;
+    <form id="setForm">
+      ${sec('Points and leaves', 'How children score and how many leaves they get', `
+        ${num('satPoints', 'Saturday practice points', s.satPoints)}
+        ${num('sunPoints', 'Sunday mass points', s.sunPoints)}
+        ${num('practicePoints', 'Points per feast practice (Christmas, Easter…)', s.practicePoints)}
+        ${num('feastPoints', 'Points for the feast mass itself', s.feastPoints)}
+        ${num('remarkPenalty', 'Points taken off a session with any negative remark (charged once, however many)', s.remarkPenalty)}
+        ${num('remarkBonus', 'Points added for each positive remark (well behaved, helped others)', s.remarkBonus)}
+        ${num('latePointsFactor', 'Share of points when late (1 = full points; the remark penalty applies on top)', s.latePointsFactor, 'step="0.1" max="1"')}
+        ${num('maxLeaves', 'Leaves allowed per year (April–April)', s.maxLeaves, 'step="1"')}
+        <label class="chk"><input name="countSundayAbsences" type="checkbox"${s.countSundayAbsences ? ' checked' : ''}> Missing Sunday mass also counts as a leave</label>
+        <p class="muted">Feast practices, feast masses and medical absences never count as leaves. Going over the leave limit never removes a child by itself; you decide.</p>`, true)}
+      ${sec('Vocals and payment', 'The singing game, its price and how parents pay', `
+        <div class="muted" style="margin-bottom:4px"><b>Games for parents.</b> Switch each game on when you are ready. They can be launched one at a time.</div>
+        <label class="chk"><input name="gameEnabled" type="checkbox"${s.gameEnabled ? ' checked' : ''}> 🎤 Vocals (singing) game is on for parents</label>
+        <label class="chk"><input name="staffEnabled" type="checkbox"${s.staffEnabled ? ' checked' : ''}> 🎼 Read the staff game is on for parents</label>
+        <div class="muted" style="margin:8px 0">Warm-up (3 free sessions) and Level 1 are free. Parents pay you directly, then you unlock their child for a year (Children → the child → Vocals game). After 365 days they pay again.</div>
+        <label class="field">Price for one year (₹)<input name="gamePrice" type="number" min="0" step="1" value="${s.gamePrice ?? 500}"></label>
+        <label class="field">Mobile number to pay (UPI or phone)<input name="gamePayMobile" type="tel" maxlength="20" value="${esc(s.gamePayMobile ?? '')}"></label>
+        <label class="field">UPI ID (optional, like name@bank)<input name="gameUpi" maxlength="60" value="${esc(s.gameUpi ?? '')}"></label>
+        <div class="muted"><a href="/voice-test.html" target="_blank" rel="noopener">🎤 Open the test version of Vocals</a> (every level open, nothing saved on the server, parents never see it)</div>
+        <div class="row" style="margin:6px 0"><button type="button" class="btn small" id="warmResetAll">🔥 Give everyone 3 free Warm-up sessions again</button><span class="muted" id="warmResetMsg" aria-live="polite"></span></div>`)}
+      ${sec('Website and choir year', 'The link you share and when the year starts', `
+        <label class="field">Website address to share with parents<input name="publicUrl" type="url" placeholder="https://your-choir-app.example.com" value="${esc(s.publicUrl || '')}"></label>
+        <label class="field">First year (starts April of)<input name="firstSeason" type="number" placeholder="${firstSeason}" value="${s.firstSeason ?? ''}"></label>
+        <p class="muted">Your private prize race ends at Easter in the first year and at the end of December every year after. Leave blank to start from your first recorded session.</p>`)}
+      <div class="savebar"><button class="btn primary">Save settings</button></div>
+    </form>
+    <details class="card set-sec" open><summary><span class="grow"><b>Look of the app</b><span class="muted">Light, Bright or Dark</span></span><span class="chev" aria-hidden="true">▾</span></summary><div class="set-body">${lookCardHtml().replace('<div class="card look" id="lookCard">', '<div id="lookCard">').replace('<h3>Look of the app</h3>', '')}</div></details>`;
   $('#settings').insertAdjacentHTML('beforeend', `
-    <div class="card" id="backupBox">
-      <h3>Backup &amp; restore</h3>
+    <details class="card set-sec" id="backupBox" open><summary><span class="grow"><b>Backup &amp; restore</b><span class="muted">Keep your data safe</span></span><span class="chev" aria-hidden="true">▾</span></summary><div class="set-body">
       <div class="muted">One file with all children, attendance, occasions, hymns, photos and recordings. Download one regularly and keep it safe (for example in your D drive or Google Drive). Use <b>Restore</b> to move everything onto a new computer or the online server. Restoring replaces what is there now.</div>
       <div class="row" style="margin-top:10px"><button class="btn primary" id="dlBackup">⬇ Download backup</button>
         <label class="btn" style="display:inline-block">⬆ Restore from backup<input type="file" accept=".tar,application/x-tar" id="rsBackup" hidden></label>
         <span id="bkMsg" class="muted" aria-live="polite"></span></div>
       ${pin ? '<div class="row" style="margin-top:12px"><button class="btn small" id="forgetPin">Forget my PIN on this device</button></div>' : ''}
-    </div>`);
+    </div></details>`);
   $('#dlBackup').addEventListener('click', () => run(async () => {
     $('#bkMsg').textContent = 'Preparing…';
     const res = await fetch('/api/teacher/backup', { headers: pin ? { 'x-pin': pin } : {} });
@@ -941,6 +958,7 @@ async function loadSettings() {
       const body = Object.fromEntries(['satPoints', 'sunPoints', 'practicePoints', 'feastPoints', 'maxLeaves', 'latePointsFactor', 'remarkPenalty', 'remarkBonus'].map((k) => [k, f.get(k)]));
       body.countSundayAbsences = f.get('countSundayAbsences') === 'on';
       body.gameEnabled = f.get('gameEnabled') === 'on';
+      body.staffEnabled = f.get('staffEnabled') === 'on';
       body.gamePrice = f.get('gamePrice');
       body.gamePayMobile = f.get('gamePayMobile') || '';
       body.gameUpi = f.get('gameUpi') || '';
@@ -1200,30 +1218,28 @@ async function loadSchedule() {
   const sc = await call('teacher/schedule');
   const usual = sc.usual;
   const rules = usual.rules;
+  const sat = rules.find((r) => r.weekday === 6);
   const upcoming = sc.days.filter((d) => d.date >= sc.today).slice(0, 14);
   const changed = (d) => d.cancelled || d.special || d.time !== d.usualTime || d.label || (d.note && d.note !== usual.note);
   $('#schedule').innerHTML = `
     <div class="card">
-      <h2 style="margin-top:0">Regular practices</h2>
-      <div class="muted" style="margin-bottom:8px">These repeat every week and are added to the calendar automatically. Saturday 7 pm is the usual one; change it, or add more days.</div>
-      ${rules.map((r) => `
-        <div class="row between sched-row">
-          <span><b>Every ${WEEKDAYS[r.weekday]}</b> · ${esc(fmtClock(r.time))}</span>
-          <span class="row" style="gap:6px"><button class="btn small" data-rule="${r.weekday}">Edit</button></span></div>`).join('') || '<div class="muted">No regular practice. Add one below, or add one-off practices.</div>'}
-      <div class="row" style="margin-top:10px"><button class="btn primary small" id="addRule">＋ Add a regular practice</button></div>
-      <label class="field" style="margin-top:12px">Note shown on every practice<input id="usualNote" maxlength="140" value="${esc(usual.note)}"></label>
+      <h2 style="margin-top:0">Saturday practice</h2>
+      ${sat ? `<div class="row between sched-row" style="border-top:0"><span><b>Every Saturday</b> · ${esc(fmtClock(sat.time))}</span><button class="btn small" id="satTime">Change time</button></div>
+        <div class="muted" style="margin:6px 0">Saturdays are added automatically. To skip one, open it below and cancel it.</div>`
+      : `<div class="muted">Saturday practice is switched off. <button class="btn small" id="satOn">Turn it back on</button></div>`}
+      <label class="field" style="margin-top:10px">Note shown on every practice<input id="usualNote" maxlength="140" value="${esc(usual.note)}"></label>
     </div>
     <div class="card">
       <div class="row between"><h2 style="margin:0">Upcoming practices</h2><button class="btn primary small" id="addSpecial">＋ Add a practice</button></div>
-      <div class="muted" style="margin:4px 0 8px">Tap Edit to change the time, name or note, or to cancel one day.</div>
+      <div class="muted" style="margin:4px 0 8px">Saturdays appear here automatically. Tap Edit to change a time or note, or to cancel one. Use ＋ Add a practice for any other day.</div>
       ${upcoming.map((d) => `
         <div class="row between sched-row${d.cancelled ? ' off' : ''}">
           <span><b>${esc(fmtDate(d.date))}</b> · ${d.cancelled ? '<span class="badge bad">cancelled</span>' : esc(fmtClock(d.time))}${d.label ? ` · ${esc(d.label)}` : ''}${d.special ? ' <span class="badge info">extra</span>' : ''}${d.time !== d.usualTime && !d.cancelled && !d.special ? ' <span class="badge warn">time changed</span>' : ''}
             ${d.note && d.note !== usual.note ? `<div class="muted">${esc(d.note)}</div>` : ''}</span>
           <button class="btn small${changed(d) ? '' : ''}" data-day="${esc(d.date)}">${d.cancelled ? 'Restore' : 'Edit'}</button></div>`).join('') || '<div class="muted">Nothing coming up. Add a regular practice or a one-off practice.</div>'}
     </div>`;
-  $('#addRule').addEventListener('click', () => openRule(usual, null));
-  $('#schedule').querySelectorAll('[data-rule]').forEach((b) => b.addEventListener('click', () => openRule(usual, Number(b.dataset.rule))));
+  $('#satTime')?.addEventListener('click', () => openRule(usual, 6));
+  $('#satOn')?.addEventListener('click', () => run(async () => { await call('teacher/schedule', { method: 'PUT', body: { rules: [...rules, { weekday: 6, time: '19:00' }] } }); await loadSchedule(); }));
   $('#usualNote').addEventListener('change', (e) => run(async () => { await call('teacher/schedule', { method: 'PUT', body: { note: e.target.value } }); flash('Saved', 'ok'); }));
   $('#addSpecial').addEventListener('click', () => openDay(sc, { date: sc.today }, 'special'));
   $('#schedule').querySelectorAll('[data-day]').forEach((b) => b.addEventListener('click', () => {
@@ -1237,19 +1253,19 @@ async function loadSchedule() {
 function openRule(usual, weekday) {
   const rules = usual.rules;
   const cur = weekday == null ? { weekday: 3, time: '18:00' } : rules.find((r) => r.weekday === weekday);
-  const free = [1, 2, 3, 4, 5, 6, 0].filter((w) => w === cur.weekday || !rules.some((r) => r.weekday === w));
   $('#dlgBody').innerHTML = `
-    <div class="dlg-top"><h2 style="margin:0" class="grow">${weekday == null ? 'Add a regular practice' : 'Edit regular practice'}</h2><button class="btn small" id="close" type="button" aria-label="Close">✕</button></div>
+    <div class="dlg-top"><h2 style="margin:0" class="grow">Saturday practice time</h2><button class="btn small" id="close" type="button" aria-label="Close">✕</button></div>
     <form id="uf">
-      <label class="field">Every<select name="weekday">${free.map((w) => `<option value="${w}"${w === cur.weekday ? ' selected' : ''}>${WEEKDAYS[w]}</option>`).join('')}</select></label>
+      <input type="hidden" name="weekday" value="${cur.weekday}">
+      <div class="muted" style="margin-bottom:6px">Every ${WEEKDAYS[cur.weekday]}</div>
       <label class="field">At<input name="time" type="time" required value="${esc(cur.time)}"></label>
-      <div class="row"><button class="btn primary">Save</button>${weekday != null ? '<button type="button" class="btn danger" id="delRule">Remove</button>' : ''}<span id="umsg" class="muted" aria-live="polite"></span></div>
-      ${weekday != null ? '<div class="muted" style="margin-top:8px">Removing only stops future practices on this day. Past attendance is kept.</div>' : ''}
+      <div class="row"><button class="btn primary">Save</button>${weekday != null ? '<button type="button" class="btn danger" id="delRule">Switch off Saturdays</button>' : ''}<span id="umsg" class="muted" aria-live="polite"></span></div>
+      ${weekday != null ? '<div class="muted" style="margin-top:8px">Switching off only stops future Saturday practices. Past attendance is kept.</div>' : ''}
     </form>`;
   if (!dlg.open) dlg.showModal();
   $('#close').addEventListener('click', () => dlg.close());
   const save = (next) => run(async () => { await call('teacher/schedule', { method: 'PUT', body: { rules: next } }); dlg.close(); await loadSchedule(); });
-  $('#delRule')?.addEventListener('click', () => { if (confirm(`Stop the regular ${WEEKDAYS[weekday]} practice?`)) save(rules.filter((r) => r.weekday !== weekday)); });
+  $('#delRule')?.addEventListener('click', () => { if (confirm('Stop automatic Saturday practices? You can turn them back on.')) save(rules.filter((r) => r.weekday !== weekday)); });
   $('#uf').addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);

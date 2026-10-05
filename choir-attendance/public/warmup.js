@@ -3,6 +3,7 @@
 import { detectPitch, rms, noteFromFreq, freqOfMidi } from './pitch.js';
 import { NAMES, chordSymbol, chordRoot } from './levels.js';
 import { openAudio, micMessage } from './audio.js';
+import { staffSvg, spell, prefersFlats } from './staff.js';
 
 const HOLD = 2; // seconds each piano key is held
 // Offsets in semitones from the starting key.
@@ -17,18 +18,25 @@ export const EXERCISES = [
   { id: 'leap', name: 'Octave and fifth leaps', how: 'Jump up and come back. Aim before you sing.', steps: [0, 7, 0, 12, 0] },
 ];
 
-export function mountWarmup(root, { onExit } = {}) {
+// With { staff: true } this is the warm-up of the staff-reading game: everything played is also shown on the staff.
+export function mountWarmup(root, { onExit, staff = false } = {}) {
   let quality = 'major', audio = null, raf = 0, playingUntil = 0, dead = false, micOn = false, lastPc = 0, run = null, paused = false;
   const box = document.createElement('div'); // its own container, so its listeners go away with it
   root.replaceChildren(box);
   box.innerHTML = `
     <div class="card">
-      <div class="row between"><h2 style="margin:0">Warm-up</h2><button class="btn small" data-x="exit">‹ Back</button></div>
-      <p class="muted" style="margin:6px 0">Vocal exercises on a grand piano. Nothing is scored. Breathe low, sing "Ahh", take your time.</p>
+      <div class="row between"><h2 style="margin:0">${staff ? 'Staff warm-up' : 'Warm-up'}</h2><button class="btn small" data-x="exit">‹ Back</button></div>
+      <p class="muted" style="margin:6px 0">${staff ? 'Hear each note and see where it sits on the staff. Nothing is scored. Sing along on "Ahh".' : 'Vocal exercises on a grand piano. Nothing is scored. Breathe low, sing "Ahh", take your time.'}</p>
       <h3 style="margin:10px 0 6px">1. Choose your starting key</h3>
       <div class="wu-grid" data-x="pads"></div>
       <div class="muted">Starting key: <b data-x="start">C</b></div>
     </div>
+    ${staff ? `<div class="card" data-x="staffCard">
+      <h3 style="margin:0 0 6px">Where the note lives</h3>
+      <div class="wu-staff" data-x="staffBox"><div class="muted">Tap a key, a chord or an exercise to see its notes on the staff.</div></div>
+      <div class="wu-meet" data-x="meet"></div>
+      <div class="muted" data-x="staffTip">Lines from the bottom: E G B D F (Every Good Boy Does Fine). Spaces: F A C E (FACE).</div>
+    </div>` : ''}
     <div class="card" id="wuEx">
       <h3 style="margin:0 0 6px">2. Pick an exercise</h3>
       <div class="wu-ex" data-x="list"></div>
@@ -71,9 +79,16 @@ export function mountWarmup(root, { onExit } = {}) {
     setText('start', NAMES[lastPc]);
   };
   X('list').innerHTML = EXERCISES.map((e) => `<button class="wu-card" data-ex="${e.id}"><b>${e.name}</b><span class="muted">${e.how}</span><span class="wu-len">${e.steps.length} keys · ${e.steps.length * HOLD} s</span></button>`).join('');
+  if (staff) X('meet').innerHTML = [60, 62, 64, 65, 67, 69, 71, 72].map((m) => `<button class="btn" data-meet="${m}">${spell(m).name}</button>`).join('');
   paintPads();
 
-  const ensureAudio = async () => { if (!audio) audio = await openAudio(); return audio; };
+  const showStaff = (midis, mode = 'seq', cur = -1) => {
+    if (!staff) return;
+    const flats = prefersFlats(lastPc, run?.ex?.id === 'minor' || run?.ex?.id === 'marp' || quality === 'minor');
+    X('staffBox').innerHTML = staffSvg(midis.map((m) => ({ midi: m })), { mode, flats, current: cur });
+  };
+
+  const ensureAudio = async () => { if (!audio) audio = await openAudio(); await audio.ensure(); return audio; };
   const setPaused = (p) => {
     paused = p;
     if (!audio) return;
@@ -94,6 +109,7 @@ export function mountWarmup(root, { onExit } = {}) {
     X('player').hidden = false;
     setText('plName', `${ex.name} from ${NAMES[lastPc]}`);
     X('plKeys').innerHTML = midis.map((m, i) => `<span class="wk" data-k="${i}">${NAMES[((m % 12) + 12) % 12]}</span>`).join('');
+    showStaff(midis, 'seq', 0);
     X('player').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     cancelAnimationFrame(raf);
     followRun();
@@ -104,6 +120,7 @@ export function mountWarmup(root, { onExit } = {}) {
     const el = run.a.ctx.currentTime - run.t0;
     const i = Math.min(run.midis.length - 1, Math.max(0, Math.floor(el / HOLD)));
     box.querySelectorAll('.wk').forEach((k, n) => { k.classList.toggle('now', n === i && el >= 0 && el < run.total); k.classList.toggle('done', n < i || el >= run.total); });
+    if (staff) box.querySelectorAll('.sn').forEach((n, k) => n.classList.toggle('on', k === i && el >= 0 && el < run.total));
     setText('plProg', el >= 0 && el < run.total ? `${Math.min(run.midis.length, i + 1)} of ${run.midis.length}` : '');
     setText('now', el < run.total ? `Sing ${NAMES[((run.midis[i] % 12) + 12) % 12]} along with the piano` : 'Finished. Well done! Press Again, or choose another exercise.');
     if (el >= run.total + 0.2) { cancelAnimationFrame(raf); }
@@ -120,6 +137,18 @@ export function mountWarmup(root, { onExit } = {}) {
     if (q) { quality = q.dataset.q; box.querySelectorAll('[data-q]').forEach((b) => b.classList.toggle('primary', b === q)); paintPads(); return; }
     const pad = e.target.closest('[data-pc]');
     if (pad) { lastPc = Number(pad.dataset.pc); paintPads(); return; }
+    const meet = e.target.closest('[data-meet]');
+    if (meet) {
+      const m = Number(meet.dataset.meet);
+      const a = await ensureAudio();
+      a.stop(); setPaused(false);
+      const ms = a.sound.pianoNote(m, 2.2);
+      playingUntil = performance.now() + ms;
+      lastPc = ((m % 12) + 12) % 12;
+      showStaff([m], 'chord');
+      setText('now', `That is ${spell(m).full}. Sing it along with the piano.`);
+      return;
+    }
     const ex = e.target.closest('[data-ex]');
     if (ex) return start(EXERCISES.find((x) => x.id === ex.dataset.ex));
     const ch = e.target.closest('[data-chord]');
@@ -130,7 +159,8 @@ export function mountWarmup(root, { onExit } = {}) {
       a.stop(); setPaused(false);
       const ms = a.sound.chord(60 + pc, quality, 3.2);
       playingUntil = performance.now() + ms;
-      setText('chordNow', `${chordSymbol(pc, quality)} (${chordRoot(pc, quality)} ${quality}). Sing the first note, ${NAMES[pc]}. The ${quality === 'minor' ? 'minor' : 'major'} third is in the chord.`);
+      showStaff((quality === 'minor' ? [0, 3, 7] : [0, 4, 7]).map((s) => 60 + pc + s), 'chord');
+      setText('chordNow', `${chordSymbol(pc, quality)} (${chordRoot(pc, quality)} ${quality}). Sing the first note, ${chordRoot(pc, quality)}. The ${quality === 'minor' ? 'minor' : 'major'} third is in the chord.`);
       return;
     }
     if (e.target.closest('[data-x="pause"]')) { if (audio && run) setPaused(!paused); return; }

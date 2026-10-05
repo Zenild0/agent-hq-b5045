@@ -60,6 +60,7 @@ const TABS = [
   ['home', 'Home', 'M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z'],
   ['board', 'Rank', 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3'],
   ['game', 'Vocals', 'M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zM6 11a6 6 0 0 0 12 0M12 17v4'],
+  ['staff', 'Staff', 'M3 9h18M3 12h18M3 15h18M3 18h18M3 6h18M9 4v12M9 16a2 2 0 1 0 0.01 0'],
   ['hymns', 'Hymns', 'M9 18V5l11-2v13M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3zM20 16a3 3 0 1 1-3-3 3 3 0 0 1 3 3z'],
   ['child', 'Me', 'M20 21a8 8 0 0 0-16 0M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z'],
 ];
@@ -69,15 +70,16 @@ function shell() {
     ${headerHtml("Children's Choir ZD", "Our Lady of Lourdes, Kalyan West")}
     <main>
       <div class="net" id="net" role="status"></div>
-      <section id="home"><div id="homeCards"><div class="empty">Loading…</div></div><div id="homeCode"></div></section>
+      <section id="home"><div id="homeCode"></div><div id="homeCards"><div class="empty">Loading…</div></div></section>
       <section id="board" hidden></section>
       <section id="ach" hidden></section>
       <section id="hymns" hidden></section>
       <section id="game" hidden></section>
+      <section id="staff" hidden></section>
       <section id="child" hidden></section>
     </main>
     ${footerHtml()}
-    <nav class="tabbar" aria-label="Main">${TABS.map(([id, label, d]) => `<button data-tab="${id}"${id === 'game' ? ' id="gameTab" hidden' : ''}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>${label}</button>`).join('')}</nav>`;
+    <nav class="tabbar" aria-label="Main">${TABS.map(([id, label, d]) => `<button data-tab="${id}"${id === 'game' ? ' id="gameTab" hidden' : id === 'staff' ? ' id="staffTab" hidden' : ''}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>${label}</button>`).join('')}</nav>`;
   app.querySelectorAll('nav.tabbar button').forEach((b) => b.addEventListener('click', () => { show(b.dataset.tab); scrollTo(0, 0); }));
 }
 
@@ -109,6 +111,13 @@ function drawHome() {
 }
 
 let gameCtl = null;
+let staffCtl = null;
+function openStaff() {
+  const box = $('#staff');
+  staffCtl?.destroy?.(); staffCtl = null;
+  box.innerHTML = '<div class="empty">Loading…</div>';
+  import('./staffgame.js').then((m) => { staffCtl = m.mountStaffGame(box); }).catch(() => { box.innerHTML = '<div class="alert bad">The game could not load. Please try again.</div>'; });
+}
 function openGame() {
   const box = $('#game');
   gameCtl?.destroy?.(); gameCtl = null;
@@ -121,11 +130,13 @@ function openGame() {
 function show(t, fromBack = false) {
   if (!fromBack) noteVisit(t);
   if (tab === 'game' && t !== 'game') { gameCtl?.destroy?.(); gameCtl = null; $('#game').innerHTML = ''; }
+  if (tab === 'staff' && t !== 'staff') { staffCtl?.destroy?.(); staffCtl = null; $('#staff').innerHTML = ''; }
   tab = t;
   app.querySelectorAll('nav.tabbar button').forEach((b) => b.classList.toggle('on', b.dataset.tab === t));
   const showing = t === 'board' ? ['board', 'ach'] : [t];
-  ['home', 'board', 'ach', 'hymns', 'game', 'child'].forEach((id) => { $(`#${id}`).hidden = !showing.includes(id); });
+  ['home', 'board', 'ach', 'hymns', 'game', 'staff', 'child'].forEach((id) => { $(`#${id}`).hidden = !showing.includes(id); });
   if (t === 'game') openGame();
+  if (t === 'staff') openStaff();
 }
 
 // ---------- leaderboard ----------
@@ -136,6 +147,26 @@ function drawBoard() {
   renderBoard($('#lb'), rows, { meId: me?.id });
   const note = $('#lbNote');
   if (note) note.textContent = range === 'month' ? `Points scored in ${o.monthLabel} only` : 'Points for the whole choir year';
+}
+
+// Not signed in: a friendly card at the top of Home to enter the child's code right there.
+function paintHomeCode(error = '') {
+  const box = $('#homeCode');
+  if (!box) return;
+  if (code) { box.innerHTML = ''; return; }
+  box.innerHTML = `
+    <form class="card welcome" id="homeCodeForm">
+      <h2 style="margin:0">Welcome 👋</h2>
+      <p class="muted" style="margin:4px 0 10px">Type your child's code to see their points, attendance and remarks. Your choir teacher gave you the code. Only you can see your child's page.</p>
+      ${error ? `<div class="alert bad">${esc(error)}</div>` : ''}
+      <div class="row" style="flex-wrap:nowrap"><input name="code" class="grow" placeholder="Child's code, e.g. 1001" autocomplete="off" autocapitalize="characters" required maxlength="20" aria-label="Child code"><button class="btn primary">Open</button></div>
+    </form>`;
+  $('#homeCodeForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    code = new FormData(e.target).get('code').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    store.set('choir-code', '');
+    loadMe().then(() => { if (!me) paintHomeCode('That code was not found. Please check it and try again.'); });
+  });
 }
 
 function boardTab() {
@@ -159,8 +190,7 @@ function boardTab() {
     </div>`;
   drawHome();
   drawBoard();
-  $('#homeCode').innerHTML = code ? '' : `<div class="card row between"><span><b>Parent?</b> See your child's attendance and contact details.</span><button class="btn primary small" id="goChild">Enter your child's code</button></div>`;
-  $('#goChild')?.addEventListener('click', () => show('child'));
+  paintHomeCode();
   $('#board').querySelectorAll('[data-range]').forEach((b) => b.addEventListener('click', () => {
     range = b.dataset.range;
     $('#board').querySelectorAll('[data-range]').forEach((x) => x.classList.toggle('on', x === b));
@@ -366,12 +396,13 @@ applyLook();
 shell();
 paintNet();
 initBack({ home: 'home', go: (t) => show(t, true), current: () => tab });
-onBackFirst(() => (tab === 'game' && gameCtl?.back?.()) || false); // inside Vocals, Back steps out of the level or round first
+onBackFirst(() => (tab === 'game' && gameCtl?.back?.()) || (tab === 'staff' && staffCtl?.back?.()) || false); // inside Vocals, Back steps out of the level or round first
 show(tab);
 cachedApi('public')
   .then((o) => {
     overview = o;
     $('#gameTab').hidden = !o.settings?.gameEnabled;
+    $('#staffTab').hidden = !o.settings?.staffEnabled;
     boardTab();
     achTab();
     hymnsTab();

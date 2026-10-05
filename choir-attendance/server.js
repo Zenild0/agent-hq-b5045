@@ -346,7 +346,7 @@ function publicOverview(q) {
   const strip = (rows) => rows.map(({ id, name, photo, head, points, rank }) => ({ id, name, photo, head, points, rank }));
   return {
     season, seasonLabel: seasonLabel(season), seasons: seasonsWithData(db, today()),
-    settings: { satPoints: db.settings.satPoints, sunPoints: db.settings.sunPoints, feastPoints: db.settings.feastPoints, practicePoints: db.settings.practicePoints, remarkPenalty: db.settings.remarkPenalty, remarkBonus: db.settings.remarkBonus, gameEnabled: Boolean(db.settings.gameEnabled) },
+    settings: { satPoints: db.settings.satPoints, sunPoints: db.settings.sunPoints, feastPoints: db.settings.feastPoints, practicePoints: db.settings.practicePoints, remarkPenalty: db.settings.remarkPenalty, remarkBonus: db.settings.remarkBonus, gameEnabled: Boolean(db.settings.gameEnabled), staffEnabled: Boolean(db.settings.staffEnabled) },
     schedule: scheduleView(),
     month, monthLabel: monthLabel(month),
     monthBoard: strip(scoreboard(db, season, mr.start, mr.end, { hideOut: true })),
@@ -490,6 +490,7 @@ function updateSettings(body) {
   if ('remarkPenalty' in body) s.remarkPenalty = num(body.remarkPenalty, 0, 5);
   if ('remarkBonus' in body) s.remarkBonus = num(body.remarkBonus, 0, 5);
   if ('gameEnabled' in body) s.gameEnabled = Boolean(body.gameEnabled);
+  if ('staffEnabled' in body) s.staffEnabled = Boolean(body.staffEnabled);
   if ('gamePrice' in body) s.gamePrice = Math.round(num(body.gamePrice, 0, 100000));
   if ('gamePayMobile' in body) s.gamePayMobile = phone(body.gamePayMobile ?? '', 'Payment number');
   if ('gameUpi' in body) {

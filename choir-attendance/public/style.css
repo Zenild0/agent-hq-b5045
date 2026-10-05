@@ -319,7 +319,7 @@ details[open] > summary .chev { transform: rotate(180deg); }
 .remark .rd { font-weight: 800; font-size: .9rem; }
 
 /* ---------- singing game ---------- */
-#game { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+#game, #staff, #staffgame { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 .pl-hud { display: grid; gap: 8px; }
 .pl-dots { display: flex; gap: 5px; height: 14px; }
 .pl-dots i { flex: 1; height: 10px; border-radius: 99px; background: var(--line); cursor: pointer; box-shadow: 0 0 0 4px transparent; }
@@ -642,3 +642,27 @@ html[data-theme=dark] .wu-len { color: #C8FF3D; }
 .wk.now { background: var(--brand); border-color: var(--brand); color: #fff; transform: translateY(-2px); }
 html[data-theme=dark] .wk.now { background: #C8FF3D; border-color: #C8FF3D; color: #0E0B1F; }
 .wk.done { border-color: var(--ok); color: var(--ok); }
+
+/* settings sections */
+.set-sec { padding: 0; margin: 12px 0; }
+.set-sec > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 14px 16px; min-height: 56px; }
+.set-sec > summary::-webkit-details-marker { display: none; }
+.set-sec > summary .grow { display: grid; }
+.set-sec[open] > summary { border-bottom: 1px solid var(--line); }
+.set-body { padding: 4px 16px 14px; }
+.savebar { position: sticky; bottom: 92px; z-index: 5; display: flex; justify-content: flex-end; padding: 8px 0; }
+.savebar .btn { box-shadow: 0 8px 22px rgba(30, 20, 90, .35); min-width: 160px; }
+
+/* the staff */
+.staff { display: block; max-width: 100%; height: auto; margin: 0 auto; color: var(--ink); }
+.staff .sl { stroke: currentColor; stroke-width: 1.4; }
+.staff .head { fill: currentColor; }
+.staff .sn.on .head { fill: var(--brand); }
+html[data-theme=dark] .staff .sn.on .head { fill: #C8FF3D; }
+.staff .acc, .staff .clef { fill: currentColor; font-family: 'Noto Music', 'Bravura Text', 'Segoe UI Symbol', serif; }
+.staff .clef-path { stroke: currentColor; }
+.staff .sn-label { fill: var(--muted); font-weight: 800; }
+.wu-staff { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 8px; min-height: 90px; display: grid; place-items: center; overflow-x: auto; }
+.wu-meet { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.pl-target.staff { height: auto; white-space: normal; padding: 4px 0; }
+.pl-arena:has(.pl-target.staff) { height: 460px; }

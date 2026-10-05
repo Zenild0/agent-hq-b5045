@@ -9,6 +9,8 @@ export async function openAudio() {
   await ctx.resume();
   const a = { ctx, stream: null, analyser: null, buf: null, sound: makeSound(ctx) };
   // Pause and play the sound (the clock of everything that waits for a sound is the audio clock, so it stops too).
+  // Some phones leave the audio switched off after the microphone permission appears; make sure it is running before any sound.
+  a.ensure = async () => { if (ctx.state !== 'running') { try { await ctx.resume(); } catch { /* try again on the next tap */ } } };
   a.pause = () => ctx.suspend().catch(() => {});
   a.resume = () => ctx.resume().catch(() => {});
   a.stop = () => a.sound.stop();
@@ -128,7 +130,7 @@ function makeSound(ctx) {
   const keys = (midis, secs = 2.4) => { midis.forEach((m, i) => pianoNote(m, secs, 0.05 + i * 0.012, 0.65)); return secs * 1000; };
   const stop = () => { for (const s of [...live]) { try { s.stop(); } catch { /* already ended */ } } live.clear(); };
   // What the phone plays for a game challenge. Returns how many milliseconds it lasts.
-  const play = (ch) => (ch.play.type === 'chord' ? note(ch.play.root) : ch.play.type === 'note' ? note(ch.play.midi) : melody(ch.play.notes, 0.85, 0.85));
+  const play = (ch) => (ch.play.type === 'piano' ? pianoNote(ch.play.midi, 2.4) : ch.play.type === 'chord' ? note(ch.play.root) : ch.play.type === 'note' ? note(ch.play.midi) : melody(ch.play.notes, 0.85, 0.85));
   // For chord challenges: the full chord, so a minor chord is heard as minor.
   const hearChord = (ch) => (ch.play.type === 'chord' ? chord(ch.play.root, ch.play.quality) : play(ch));
   // The hint: a synthetic "ah" singer shows the notes to sing (about 3 seconds in total).

@@ -5,6 +5,7 @@
 import { detectPitch, rms } from './pitch.js';
 import { NAMES, makeTracker, UNTIMED_CAP_MS } from './levels.js';
 import { micMessage } from './audio.js';
+import { staffSvg } from './staff.js';
 
 const GAP_MS = 400;
 
@@ -57,7 +58,7 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
 
   function render(stepDone = 0) {
     const n = notes[idx];
-    const label = phase === 'done' ? '✔ Finish' : untimed ? (n?.won ? '✓ Done' : '▶ Play') : phase === 'reveal' ? '➡ Next' : '▶ Play';
+    const label = phase === 'done' ? '✔ Finish' : cur?.silent && untimed ? (n?.won ? '✓ Done' : phase === 'listening' ? '🔊 Hear the note' : '🎤 Start') : untimed ? (n?.won ? '✓ Done' : '▶ Play') : phase === 'reveal' ? '➡ Next' : '▶ Play';
     if (X('go').textContent !== label) X('go').textContent = label;
     X('go').disabled = phase === 'playing' || (untimed && n?.won && phase !== 'done');
     X('hint').disabled = phase !== 'listening';
@@ -71,14 +72,15 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
     setText('ringLab', phase === 'listening' ? 'You are singing' : phase === 'playing' ? 'Listen' : 'Ready');
     const c = phase === 'done' || phase === 'reveal' ? null : cur;
     const shown = c ? (c.blind && c.kind !== 'echo' ? '🙈 Hidden chord' : c.title) : phase === 'done' ? 'Well done!' : ' ';
-    if (!(c?.hideAfterPlay && phase === 'listening')) setText('target', shown);
+    if (c?.staff) { const h = staffSvg(c.staff.map((m) => ({ midi: m })), { mode: 'chord', flats: Boolean(c.staffFlats), labels: false }); if (cache.get('staffHtml') !== h) { cache.set('staffHtml', h); cache.delete('target'); X('target').innerHTML = h; X('target').classList.add('staff'); } }
+    else if (!(c?.hideAfterPlay && phase === 'listening')) { if (cache.get('staffHtml')) { cache.delete('staffHtml'); cache.delete('target'); X('target').classList.remove('staff'); } setText('target', shown); }
     setText('how', c ? c.how : ' ');
     setText('ringSub', c && c.targets.length > 1 ? slots(c.targets.length, stepDone) : ' ');
   }
 
   const noteStatus = () => {
     const n = notes[idx];
-    setMsg(n.won ? `✓ Done in ${(n.ms / 1000).toFixed(1)} s` : n.tried ? `Try again. ${(n.ms / 1000).toFixed(1)} s so far` : 'Ready? Press Play.', n.won ? 'ok' : '');
+    setMsg(n.won ? `✓ Done in ${(n.ms / 1000).toFixed(1)} s` : n.tried ? `Try again. ${(n.ms / 1000).toFixed(1)} s so far` : (cur?.silent ? 'Look at the note, then press Start and sing it.' : 'Ready? Press Play.'), n.won ? 'ok' : '');
   };
 
   async function go() {
@@ -93,11 +95,13 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
       try { await audio.enableMic(); micReady = true; loop(); } catch (e) { setMsg(micMessage(e)); return; } finally { starting = false; }
     }
     if (dead || phase !== 'ready') return;
+    await audio.ensure();
+    if (dead || phase !== 'ready') return;
     phase = 'playing'; recent = []; lastMidi = null; errSum = errN = 0; stepErrs = []; cur = deck[idx];
     setMsg('🎹 Listen carefully…');
     setPaused(false);
     audio.stop();
-    const ms = audio.sound.play(cur);
+    const ms = cur.silent ? 0 : audio.sound.play(cur); // reading games stay silent: the child reads the note and sings it
     render();
     timer?.();
     timer = audio.after(ms, () => {
@@ -114,8 +118,10 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
     if (phase !== 'listening') return;
     if (kind !== 'again') notes[idx].hints += 1; // pressing Play again is free; the singer hint and the full chord count as help
     setPaused(false);
+    audio.ensure();
     audio.stop();
     const ms = kind === 'hint' ? audio.sound.singer(cur) : kind === 'chord' ? audio.sound.hearChord(cur) : audio.sound.play(cur);
+    if (cur.silent && kind === 'again') notes[idx].hints += 1; // hearing the answer counts as help in a reading game
     muteUntil = audio.ctx.currentTime + (ms + GAP_MS) / 1000; recent = [];
     setMsg(kind === 'hint' ? '🎶 Listen to the singer…' : kind === 'chord' ? '🎹 Listen to the chord…' : '🎹 Listen again…');
   }
@@ -150,7 +156,7 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
     tracker = null;
     if (untimed) {
       phase = allWon() ? 'done' : 'ready';
-      setMsg(won ? `🎉 Got it! ${(n.ms / 1000).toFixed(1)} s${phase === 'ready' ? ' Use Next ▶ for the next note' : ''}` : 'Skipped', won ? 'ok' : '');
+      setMsg(won ? `🎉 ${cur.noteName ? `That was ${cur.noteName}. ` : ''}Got it! ${(n.ms / 1000).toFixed(1)} s${phase === 'ready' ? ' Use Next ▶ for the next note' : ''}` : 'Skipped', won ? 'ok' : '');
       if (phase === 'done') X('fine').textContent = `All ${deck.length} matched · ${(totalMs(now) / 1000).toFixed(1)} s`;
     } else {
       const name = cur.targets.map((t) => NAMES[t]).join(' ');
@@ -228,6 +234,6 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
     if (p) setMsg('⏸ Sound paused');
   }
   function destroy() { dead = true; cancelAnimationFrame(raf); timer?.(); audio.stop(); audio.stopMic(); }
-  dots(); render(); setMsg('Ready? Press Play.');
+  dots(); render(); setMsg(deck[0]?.silent ? 'Look at the note, then press Start and sing it.' : 'Ready? Press Play.');
   return { destroy };
 }

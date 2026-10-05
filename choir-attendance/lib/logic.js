@@ -45,6 +45,7 @@ export const DEFAULT_SETTINGS = {
   gamePayMobile: '',
   gameUpi: '',
   gameEnabled: false, // the singing game: the teacher switches it on when ready
+  staffEnabled: false, // the staff-reading game: switched on separately, so games can be launched one at a time
   countSundayAbsences: false, // by default only Saturday practice absences are leaves
   firstSeason: null, // season (start year) whose private prize date is Easter; null = auto
   publicUrl: '', // address shared with parents (e.g. https://choir.example.com)
