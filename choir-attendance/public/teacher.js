@@ -601,9 +601,28 @@ const codeText = (code) => code;
 const mask = (code) => '•'.repeat(code.length);
 
 async function loadChildren() {
-  const { children, pending } = await call('teacher/children');
+  const [{ children, pending }, gv] = await Promise.all([call('teacher/children'), call('teacher/guests')]);
   const main = children.filter((c) => !c.guest);
   const guests = children.filter((c) => c.guest);
+  const guestRow = (g, ev) => `
+    <div class="card row kid-card" data-open="${esc(g.id)}" data-name="${esc(g.name.toLowerCase())}">
+      ${avatarHtml(g)}
+      <div class="grow"><button class="link">${esc(g.name)}</button>
+        <div class="muted">${g.standard ? `Std ${esc(g.standard)} · ` : ''}code <b>${esc(g.code)}</b></div>
+        <div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap">
+          <button class="btn small" data-gcopy="${esc(g.id)}">Copy code</button>
+          <button class="btn small" data-gnew="${esc(g.id)}" title="Make a new private code. The old one stops working.">↻ New code</button>
+          <button class="btn small" data-gevent="${esc(g.id)}">＋ Another event</button>
+          <button class="btn small" data-promote="${esc(g.id)}">⬆ Move to main group</button>
+          <button class="btn small" data-garchive="${esc(g.id)}">Archive</button></div></div>
+      ${g.active ? '' : '<span class="badge">archived</span>'}
+    </div>`;
+  const guestBlock = () => {
+    const evs = gv.events.filter((e) => e.guests.length);
+    const parts = evs.map((e) => `<h4 style="margin:12px 0 4px">${esc(e.name)} <span class="muted">· ${e.guests.length} ${e.guests.length === 1 ? 'guest' : 'guests'}</span></h4>${e.guests.filter((g) => g.active).map(guestRow).join('')}${e.guests.filter((g) => !g.active).length ? `<details><summary class="muted">${e.guests.filter((g) => !g.active).length} archived</summary>${e.guests.filter((g) => !g.active).map(guestRow).join('')}</details>` : ''}`);
+    if (gv.others.length) parts.push(`<h4 style="margin:12px 0 4px">Not in an event this year</h4>${gv.others.map(guestRow).join('')}`);
+    return parts.length ? `<h3 style="margin:18px 0 4px">Guests <span class="muted">(only in special occasions)</span></h3>${parts.join('')}` : '';
+  };
   const row = (c) => `
     <div class="card row kid-card" data-open="${esc(c.id)}" data-name="${esc(c.name.toLowerCase())}">
       ${avatarHtml(c)}
@@ -619,17 +638,41 @@ async function loadChildren() {
       <div class="row between"><div><h2 style="margin:0">${main.filter((c) => c.active).length} children</h2><div class="muted">Tap a child to see details, points and attendance.</div></div>
         <button class="btn primary" id="addChild">＋ Add child</button></div>
       <div class="row" style="margin-top:10px"><button class="btn small" id="addMany">＋ Add many</button>
+        <button class="btn small" id="addGuest">＋ Add guest</button>
         <button class="btn small" id="parentLinks">🔑 Parent access</button></div>
       <label class="field" style="margin-bottom:0"><span class="sr">Find a child</span><input id="cq" type="search" placeholder="Find a child…" autocomplete="off"></label>
     </div>
     ${main.map(row).join('') || '<div class="empty">No children yet — tap “Add child”.</div>'}
-    ${guests.length ? `<h3 style="margin:18px 0 4px">Guests <span class="muted">(only in special occasions)</span></h3>${guests.map(row).join('')}` : ''}`;
+    ${guestBlock()}`;
   $('#cq').addEventListener('input', (e) => {
     const q = e.target.value.trim().toLowerCase();
     $('#children').querySelectorAll('.kid-card').forEach((c) => { c.hidden = Boolean(q) && !c.dataset.name.includes(q); });
   });
   $('#addChild').addEventListener('click', () => run(() => openChild(null)));
   $('#addMany').addEventListener('click', openBulk);
+  $('#addGuest').addEventListener('click', () => openAddGuest(gv));
+  const gById = (id) => guests.find((x) => x.id === id);
+  const onG = (attr, fn) => $('#children').querySelectorAll(`[${attr}]`).forEach((b) => b.addEventListener('click', (ev) => { ev.stopPropagation(); run(() => fn(gById(b.getAttribute(attr)), b)); }));
+  onG('data-gcopy', async (g, b) => { try { await navigator.clipboard.writeText(g.code); b.textContent = 'Copied ✓'; } catch { prompt('Copy this code:', g.code); } });
+  onG('data-gnew', async (g) => {
+    if (!confirm(`Make a new code for ${g.name}? The old one stops working.`)) return;
+    await call(`teacher/children/${g.id}/newcode`, { method: 'POST', body: {} });
+    await loadChildren();
+  });
+  onG('data-gevent', async (g) => {
+    const open = gv.allEvents.filter((e) => !gv.events.find((x) => x.id === e.id)?.guests.some((x) => x.id === g.id));
+    if (!open.length) { alert(`${g.name} is already in every event. Add a new event with “＋ Add guest” first.`); return; }
+    const pick = prompt(`Add ${g.name} to which event? Type the number:\n${open.map((e, i) => `${i + 1}. ${e.name}`).join('\n')}`);
+    const e = open[Number(pick) - 1];
+    if (!e) return;
+    await call(`teacher/guests/${g.id}/event`, { method: 'POST', body: { eventId: e.id } });
+    await loadChildren();
+  });
+  onG('data-garchive', async (g) => {
+    if (!confirm(`Archive ${g.name}? They stay in past records but will not show in new events.`)) return;
+    await call(`teacher/children/${g.id}`, { method: 'PATCH', body: { active: false } });
+    await loadChildren();
+  });
   $('#parentLinks').addEventListener('click', () => run(openLinks));
   $('#children').querySelectorAll('[data-promote]').forEach((b) => b.addEventListener('click', (ev) => { ev.stopPropagation(); run(async () => {
     const c = guests.find((x) => x.id === b.dataset.promote);
@@ -683,6 +726,42 @@ function openBulk() {
       $('#done').addEventListener('click', () => { dlg.close(); refreshVisible(); });
       $('#toLinks').addEventListener('click', () => run(openLinks));
     } catch (err) { $('#bulkMsg').textContent = `⚠️ ${err.message}`; }
+  });
+}
+
+// ---- add guests: the event is a required choice ----
+
+function openAddGuest(gv) {
+  const events = gv.allEvents;
+  $('#dlgBody').innerHTML = `
+    <div class="row between"><h2 style="margin:0">Add guests</h2><button class="btn small" id="close" aria-label="Close">✕</button></div>
+    <p class="muted">Guests are only in the event you choose. They get their own private code, like the choir members.</p>
+    <form id="guestForm">
+      <label class="field">Which event? <select name="eventId" id="gEvent" required>
+        <option value="">Choose an event…</option>
+        ${events.map((e) => `<option value="${esc(e.id)}">${esc(e.name)}</option>`).join('')}
+        <option value="__new">＋ New event…</option></select></label>
+      <label class="field" id="gNewBox" hidden>New event name<input name="newEvent" id="gNew" maxlength="60" placeholder="e.g. Feast of St Anthony"></label>
+      <label class="field">Guest names, one per line<textarea name="text" rows="6" required placeholder="Asha Rao&#10;Ben Mehta, 5th"></textarea></label>
+      <label class="field">Standard for everyone (optional)<input name="standard" maxlength="20"></label>
+      <div class="row"><button class="btn primary">Add guests</button><span id="gMsg" class="muted" aria-live="polite"></span></div>
+    </form><div id="gResult"></div>`;
+  if (!dlg.open) dlg.showModal();
+  $('#close').addEventListener('click', () => { dlg.close(); refreshVisible(); });
+  $('#gEvent').addEventListener('change', (e) => { const isNew = e.target.value === '__new'; $('#gNewBox').hidden = !isNew; $('#gNew').required = isNew; });
+  $('#guestForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(e.target));
+    if (body.eventId === '__new') delete body.eventId; else delete body.newEvent;
+    try {
+      const r = await call('teacher/guests', { method: 'POST', body });
+      $('#gResult').innerHTML = `
+        ${r.added.length ? `<div class="alert ok"><b>Added ${r.added.length} ${r.added.length === 1 ? 'guest' : 'guests'} to ${esc(r.event.name)}.</b>${r.added.map((g) => `<div>${esc(g.name)} · code <b>${esc(g.code)}</b></div>`).join('')}</div>` : ''}
+        ${r.skipped.length ? `<div class="alert warn"><b>Skipped ${r.skipped.length}:</b>${r.skipped.map((x) => `<div>${esc(x.line)} — ${esc(x.reason)}</div>`).join('')}</div>` : ''}
+        <div class="row"><button class="btn primary" id="gDone">Done</button></div>`;
+      $('#guestForm').hidden = true;
+      $('#gDone').addEventListener('click', () => { dlg.close(); refreshVisible(); });
+    } catch (err) { $('#gMsg').textContent = `⚠️ ${err.message}`; }
   });
 }
 

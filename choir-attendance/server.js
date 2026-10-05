@@ -683,6 +683,64 @@ function createOccasion(body) {
   return { id: occ.id, guestsAdded: guests.added.length, skipped: guests.skipped };
 }
 
+// ---- guests added straight from the Children page: the event is a required choice ----
+
+function guestEvent(body) {
+  const { db } = store;
+  if (body.newEvent && String(body.newEvent).trim()) {
+    const season = seasonOf(today());
+    const name = occasionName(body.newEvent);
+    return findOccasion(db, season, name) ?? (db.occasions.push({ id: randomUUID().slice(0, 8), season, name, members: [] }), db.occasions.at(-1));
+  }
+  const occ = db.occasions.find((o) => o.id === body.eventId);
+  if (!occ) throw new HttpError(400, 'Pick an event for the guest, or add a new one');
+  return occ;
+}
+
+function addGuests(body) {
+  if (!String(body.text ?? '').trim()) throw new HttpError(400, 'Type at least one guest name');
+  const { db } = store;
+  const before = db.occasions.length;
+  const occ = guestEvent(body);
+  const { added, skipped } = createChildren(body.text, { standard: body.standard, guest: true });
+  occ.members = [...occ.members, ...added.map((c) => c.id)];
+  if (!added.length && db.occasions.length > before) db.occasions.pop(); // nothing saved, so no empty event is left behind
+  store.save();
+  const key = (n) => n.toLowerCase();
+  return {
+    event: { id: occ.id, name: occ.name },
+    added: added.map(childOut),
+    skipped: skipped.map((x) => {
+      const same = db.children.find((c) => key(c.name) === key(x.line.split(/[,\t;]/)[0].replace(/^(?:\d+[.)]|[-*•])\s*/, '').trim()));
+      if (!same) return x;
+      return { line: x.line, reason: same.guest ? 'is already a guest. Use “Add to another event” on their card' : 'is already in the choir, so they are not a guest' };
+    }),
+  };
+}
+
+function guestsView() {
+  const { db } = store;
+  const season = seasonOf(today());
+  const events = db.occasions.filter((o) => o.season === season).map((o) => ({
+    id: o.id, name: o.name,
+    guests: o.members.map((id) => db.children.find((c) => c.id === id)).filter((c) => c?.guest).map(childOut),
+  }));
+  const placed = new Set(events.flatMap((e) => e.guests.map((g) => g.id)));
+  const others = db.children.filter((c) => c.guest && !placed.has(c.id)).map(childOut); // guests from earlier years
+  return { events, others, allEvents: events.map((e) => ({ id: e.id, name: e.name })) };
+}
+
+function guestToEvent(guestId, eventId) {
+  const guest = store.db.children.find((c) => c.id === guestId && c.guest);
+  const occ = store.db.occasions.find((o) => o.id === eventId);
+  if (!guest) throw new HttpError(404, 'Guest not found');
+  if (!occ) throw new HttpError(400, 'Pick an event');
+  if (occ.members.includes(guest.id)) throw new HttpError(400, `${guest.name} is already in ${occ.name}`);
+  occ.members.push(guest.id);
+  store.save();
+  return { ok: true };
+}
+
 function updateOccasion(occ, body) {
   const keep = pickMembers(body.members, occ.members);
   for (const id of occ.members) {
@@ -1138,6 +1196,7 @@ async function teacherApi(req, res, q, parts) {
         main: store.db.children.filter((c) => c.active && !c.guest).sort(compareNames).map((c) => ({ id: c.id, name: c.name, photo: photoUrl(c) })),
       });
     }
+    if (b === 'guests') return send(res, 200, guestsView());
     if (b === 'lyrics') return send(res, 200, await searchLyrics(q.get('q')));
     throw new HttpError(404, 'Not found');
   }
@@ -1155,6 +1214,8 @@ async function teacherApi(req, res, q, parts) {
   if (req.method === 'PUT' && b === 'mark') { mark(body); return send(res, 200, { ok: true }); }
   if (req.method === 'POST' && b === 'mark-all-present') { markAllPresent(body); return send(res, 200, { ok: true }); }
   if (req.method === 'POST' && b === 'bulk-children') return send(res, 201, bulkAdd(body));
+  if (req.method === 'POST' && b === 'guests' && !id) return send(res, 201, addGuests(body));
+  if (req.method === 'POST' && b === 'guests' && id && action === 'event') return send(res, 200, guestToEvent(id, body.eventId));
   if (b === 'occasions') {
     const occ = id ? store.db.occasions.find((o) => o.id === id) : null;
     if (id && !occ) throw new HttpError(404, 'Occasion not found');
