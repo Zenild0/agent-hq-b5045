@@ -5,6 +5,7 @@ import { api, esc } from './common.js';
 import { openAudio, micMessage, INSTRUMENTS, getInstrument, setInstrument } from './audio.js';
 import { createPlayer } from './player.js';
 import { mountWarmup } from './warmup.js';
+import { mountSingPath, pathProgress, UNITS } from './singpath.js';
 import { LEVELS, STAGES, stageSpec, buildDeck, dailyDeck, titleFor, PIANO_KEYS, starsFor, praiseFor } from './levels.js';
 import { BADGES } from './badges.js';
 
@@ -20,8 +21,10 @@ const WHITE = [{ lv: 1, x: 0 }, { lv: 3, x: 1 }, { lv: 5, x: 2 }, { lv: 6, x: 3 
 const BLACK = [{ lv: 2, x: 0.68 }, { lv: 4, x: 1.68 }, { lv: 7, x: 3.68 }, { lv: 9, x: 4.68 }, { lv: 11, x: 5.68 }];
 
 // `preview` = the hidden test version: every level is open and progress stays on this phone only.
-export function mountGame(root, { code = '', preview = false, teacher = false } = {}) {
-  let state = null, offline = false, view = 'home', selected = 1, current = null, audio = null;
+export function mountGame(host, { code = '', preview = false, teacher = false } = {}) {
+  const root = document.createElement('div'); // its own container, so listeners from an earlier visit never pile up
+  host.replaceChildren(root);
+  let state = null, offline = false, view = 'home', selected = 1, current = null, audio = null, pathCtl = null;
   const maxPlayableOf = (cleared) => Math.min(LEVELS.length, Math.max(0, ...cleared) + 1);
 
   // ---------- data: the server, or this phone in preview mode ----------
@@ -155,8 +158,13 @@ export function mountGame(root, { code = '', preview = false, teacher = false } 
     const d = state.daily;
     root.innerHTML = `
       ${preview ? `<div class="alert warn">${teacher ? 'Your own copy of Vocals: everything is free for you.' : 'Test version:'} Your progress stays on this device only. You are viewing the <b>${paid() ? 'paid' : 'free'}</b> game. <button class="btn small" data-a="togglePaid">Show the ${paid() ? 'free' : 'paid'} game</button></div>` : ''}
+      <div class="card path-card">
+        <h2 class="gm-title" style="margin:0">Learn to sing</h2>
+        <div class="muted">A step-by-step course, like a language app: a short lesson, free practice, then a quiz for each skill. ${pathProgress().done} of ${UNITS.length} units done.</div>
+        <button class="btn primary gm-cta" data-a="path">▶ ${pathProgress().done ? 'Continue the course' : 'Start the course'}${pathProgress().next ? `: ${esc(pathProgress().next.name)}` : ''}</button>
+      </div>
       <div class="card gm-hero">
-        <div class="muted">Your journey</div>
+        <div class="muted">Challenge levels · your journey</div>
         <h2 class="gm-title">${esc(titleFor(top))}</h2>
         <div class="muted">${me.cleared.length} of ${LEVELS.length} levels cleared${!preview && state.paid && state.paidUntil ? ` · full game until ${fmtDay(state.paidUntil)}` : ''}${!preview && me.dailyStreak > 1 ? ` · 🔥 ${me.dailyStreak} days in a row` : ''}${offline ? ' · offline' : ''}</div>
         ${pianoHtml()}
@@ -333,6 +341,7 @@ export function mountGame(root, { code = '', preview = false, teacher = false } 
     if (a === 'togglePaid') { write('choir-preview-paid', !paid()); return load().then(home); }
     if (a === 'toLevel') return openLevel(Number(b.dataset.lvl) || selected);
     if (a === 'warm') return openWarm();
+    if (a === 'path') { pathCtl = mountSingPath(root, { full: paid(), onExit: () => { pathCtl?.destroy(); pathCtl = null; home(); } }); return; }
     if (a === 'hear') { // a short sample of the chosen sound (no microphone)
       return openAudio().then((au) => { const ms = au.sound.note(60); setTimeout(() => au.close(), ms + 600); }).catch(() => {});
     }
@@ -345,9 +354,10 @@ export function mountGame(root, { code = '', preview = false, teacher = false } 
   })();
 
   return {
-    destroy() { current?.destroy?.(); audio?.close(); },
+    destroy() { pathCtl?.destroy?.(); current?.destroy?.(); audio?.close(); },
     // The phone's Back button: leave a round or a sub-screen first. Returns true when it did something.
     back() {
+      if (pathCtl) { if (pathCtl.back?.()) return true; pathCtl.destroy?.(); pathCtl = null; home(); return true; }
       if (current) { current.destroy?.(); current = null; audio?.close(); audio = null; return home(), true; }
       if (view !== 'home') { home(); return true; }
       return false;

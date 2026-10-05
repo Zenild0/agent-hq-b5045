@@ -8,7 +8,9 @@ import { RANGES, getRange, setRange } from './audio.js';
 const CACHE = 'choir-cache:games-access';
 const fmtDay = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
-export function mountGames(root, { code }) {
+export function mountGames(host, { code }) {
+  const root = document.createElement('div'); // its own container, so listeners from an earlier visit never pile up
+  host.replaceChildren(root);
   let view = 'hub', ctl = null, access = null;
 
   async function loadAccess() {

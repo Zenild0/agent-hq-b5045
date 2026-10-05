@@ -662,7 +662,8 @@ html[data-theme=dark] .staff .sn.on .head { fill: #C8FF3D; }
 .staff .acc, .staff .clef { fill: currentColor; font-family: 'Noto Music', 'Bravura Text', 'Segoe UI Symbol', serif; }
 .staff .clef-path { stroke: currentColor; }
 .staff .sn-label { fill: var(--muted); font-weight: 800; }
-.wu-staff { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 8px; min-height: 90px; display: grid; place-items: center; overflow-x: auto; }
+.wu-staff { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 8px; min-height: 90px; display: flex; align-items: center; overflow-x: auto; }
+.wu-staff > * { margin: 0 auto; flex: none; }
 .wu-meet { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
 .pl-target.staff { height: auto; white-space: normal; padding: 4px 0; }
 .pl-arena:has(.pl-target.staff) { height: 460px; }
@@ -716,3 +717,22 @@ html[data-theme=dark] .breath-orb { background: radial-gradient(circle at 35% 30
 
 .letters { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 8px; }
 .btn.letter { padding: 12px 0; font: 800 1.15rem var(--font-head); }
+.wu-staff > .staff { max-width: none; } /* a long staff keeps its size and scrolls sideways instead of shrinking */
+
+/* the Learn to sing course */
+.path-steps { display: grid; gap: 8px; margin-top: 8px; }
+.path-step { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 12px 14px; border-radius: 16px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; font: inherit; min-height: 60px; }
+.path-step .grow { display: grid; }
+.path-step.now { border-color: var(--brand); }
+html[data-theme=dark] .path-step.now { border-color: #C8FF3D; }
+.path-step.done { border-color: var(--ok); }
+.path-step.lock { opacity: .55; }
+.ps-n { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--brand); color: #fff; font: 800 .95rem var(--font-head); flex: none; }
+html[data-theme=dark] .ps-n { background: #C8FF3D; color: #0E0B1F; }
+.path-dots { display: flex; gap: 6px; margin-top: 8px; }
+.path-dots i { width: 28px; height: 6px; border-radius: 99px; background: var(--line); }
+.path-dots i.now { background: var(--brand); } .path-dots i.done { background: var(--ok); }
+html[data-theme=dark] .path-dots i.now { background: #C8FF3D; }
+.path-card { display: grid; gap: 8px; border-color: var(--brand); }
+.staff .sn.new .head { fill: var(--brand); }
+html[data-theme=dark] .staff .sn.new .head { fill: #C8FF3D; }

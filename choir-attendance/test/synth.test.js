@@ -62,7 +62,7 @@ test('warm-up exercises start on the chosen key, stay in a singable range and ho
 });
 
 import { spell, prefersFlats } from '../public/staff.js';
-import { staffDeck, STAFF_LEVELS } from '../public/staffgame.js';
+import { staffDeck, STAFF_LEVELS, newNotesOf } from '../public/staffgame.js';
 
 test('notes are written on the right line or space of the treble staff', () => {
   const pos = (m, f = false) => spell(m, f).pos;
@@ -85,14 +85,13 @@ test('notation trainer: 20 levels, each round the right size, silent, sung by na
     const d = staffDeck(lv.id, () => 0.4);
     assert.equal(d.length, lv.count);
     d.forEach((c, i) => {
-      assert.ok(c.silent && c.staff.length === 1 && lv.pool.includes(c.staff[0]));
+      assert.ok(c.silent && c.staff.length === 1 && (lv.pool.includes(c.staff[0]) || c.review), 'a level asks its own notes, or revision from earlier levels');
       assert.equal(c.targets[0], c.staff[0] % 12);
       assert.match(c.noteName, /^[A-G][♯♭]?-?\d$/);
       assert.ok(['treble', 'bass'].includes(c.clef));
       if (i) assert.notEqual(c.staff[0], d[i - 1].staff[0], 'never the same note twice in a row');
     });
     if (lv.clef !== 'grand') assert.ok(d.every((c) => c.clef === lv.clef));
-    if (lv.pool.length >= lv.count) assert.equal(new Set(d.map((c) => c.staff[0])).size, d.length, `level ${lv.id}: no repeats when the pool is big enough`);
   }
   assert.ok(staffDeck(10, () => 0.9).every((c) => !c.noteName.includes('♯')), 'the flats level spells with flats');
   assert.ok(staffDeck(9, () => 0.1).every((c) => !c.noteName.includes('♭')), 'the sharps level spells with sharps');
@@ -103,4 +102,17 @@ test('bass clef notes sit on the right lines (G B D F A) and spaces (A C E G)', 
   assert.deepEqual([43, 47, 50, 53, 57].map(pos), [0, 2, 4, 6, 8]);
   assert.deepEqual([45, 48, 52, 55].map(pos), [1, 3, 5, 7]);
   assert.equal(pos(60), 10); // middle C: a ledger line above the bass staff
+});
+
+test('notation levels introduce a few new notes and revise older ones', () => {
+  assert.deepEqual(newNotesOf(STAFF_LEVELS[0]), [60, 62, 64], 'level 1: everything is new');
+  assert.deepEqual(newNotesOf(STAFF_LEVELS[1]), [65, 67], 'level 2 adds F and G');
+  assert.ok(newNotesOf(STAFF_LEVELS[11]).length > 0, 'bass clef starts fresh');
+  for (const lv of STAFF_LEVELS.filter((l) => l.id > 1)) {
+    const older = new Set(STAFF_LEVELS.filter((l) => l.id < lv.id && (lv.clef === 'grand' || l.clef === lv.clef)).flatMap((l) => l.pool));
+    const d = staffDeck(lv.id, () => 0.37);
+    const rev = d.filter((c) => c.review);
+    if (older.size) { assert.ok(rev.length >= 1 && rev.length <= Math.ceil(lv.count * 0.4), `level ${lv.id}: revision share`); assert.ok(rev.every((c) => older.has(c.staff[0]) && /^Review/.test(c.how))); }
+    assert.equal(d.length, lv.count);
+  }
 });

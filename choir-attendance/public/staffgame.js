@@ -36,26 +36,51 @@ export const STAFF_LEVELS = [
 ];
 
 const pcOf = (m) => ((m % 12) + 12) % 12;
+// Levels of the same kind that come before this one (treble builds on treble, bass on bass, both clefs on everything).
+const earlierLevels = (lv) => STAFF_LEVELS.filter((l) => l.id < lv.id && (lv.clef === 'grand' || l.clef === lv.clef));
+// The notes this level introduces: in its pool but in none of the earlier levels.
+export const newNotesOf = (lv) => { const seen = new Set(earlierLevels(lv).flatMap((l) => l.pool)); return [...new Set(lv.pool)].filter((m) => !seen.has(m)).sort((a, b) => a - b); };
 const isBlack = (m) => [1, 3, 6, 8, 10].includes(pcOf(m));
 
 // The challenges of one round: a list the player understands. Silent: the child reads, then sings.
 export function staffDeck(levelId, rng = Math.random) {
   const lv = STAFF_LEVELS.find((l) => l.id === levelId);
   if (!lv) throw new Error('unknown staff level');
+  // Mostly this level's notes (the new ones come first and most often), with about a third revising earlier levels.
+  const before = earlierLevels(lv).flatMap((l) => l.pool);
+  const fresh = newNotesOf(lv);
+  const reviewN = before.length ? Math.round(lv.count * 0.3) : 0;
   let picks = [];
-  while (picks.length < lv.count) {
+  while (picks.length < lv.count - reviewN) {
     const pass = shuffle(lv.pool, rng);
     if (picks.length && pass[0] === picks.at(-1)) pass.push(pass.shift()); // never the same note twice in a row
     picks = picks.concat(pass);
   }
-  picks = picks.slice(0, lv.count);
-  return picks.map((midi) => {
+  picks = picks.slice(0, lv.count - reviewN);
+  const olderPool = [...new Set(before)];
+  const fromOlder = shuffle(olderPool.filter((m) => !picks.includes(m)), rng); // revision notes that are not already in this round
+  const rev = [...fromOlder, ...shuffle(olderPool.filter((m) => picks.includes(m)), rng)].slice(0, reviewN);
+  const tagged = [...picks.map((m) => ({ m, review: false })), ...rev.map((m) => ({ m, review: true }))];
+  // order them: something new first, then never the same note twice in a row where it can be avoided
+  const pool = shuffle(tagged, rng);
+  const order = [];
+  const firstK = pool.findIndex((x) => fresh.includes(x.m));
+  order.push(...pool.splice(firstK > 0 ? firstK : 0, 1));
+  while (pool.length) {
+    const counts = new Map();
+    for (const x of pool) counts.set(x.m, (counts.get(x.m) ?? 0) + 1);
+    let k = -1, best = 0;
+    pool.forEach((x, i) => { if (x.m !== order.at(-1).m && counts.get(x.m) > best) { best = counts.get(x.m); k = i; } }); // the note with most left to place keeps the end free of repeats
+    if (k < 0) k = 0;
+    order.push(...pool.splice(k, 1));
+  }
+  return order.map(({ m: midi, review }) => {
     const flats = isBlack(midi) && (lv.acc === 'flats' ? true : lv.acc === 'sharps' ? false : rng() < 0.5);
     const clef = lv.clef === 'grand' ? (midi < 60 ? 'bass' : midi > 60 ? 'treble' : rng() < 0.5 ? 'bass' : 'treble') : lv.clef;
     const s = spell(midi, flats, clef);
     return {
       kind: 'staff', level: lv.id, timed: false, blind: false, silent: true, tol: lv.tol, hold: 500, limit: 20,
-      title: 'Read the note', how: 'Sing this note', staff: [midi], staffFlats: flats, clef,
+      title: 'Read the note', how: review ? 'Review · sing this note' : 'Sing this note', review, staff: [midi], staffFlats: flats, clef,
       noteName: s.full, play: { type: 'piano', midi }, targets: [pcOf(midi)],
     };
   });
@@ -68,7 +93,9 @@ const stars = (n) => '⭐'.repeat(n) + '☆'.repeat(3 - n);
 const clefLabel = (c) => (c === 'treble' ? 'Treble clef' : c === 'bass' ? 'Bass clef' : 'Both clefs');
 
 // access: { full: bool } from the server (omit for the teacher's own copy: everything open).
-export function mountStaffGame(root, { access = null } = {}) {
+export function mountStaffGame(host, { access = null } = {}) {
+  const root = document.createElement('div'); // its own container, so listeners from an earlier visit never pile up
+  host.replaceChildren(root);
   let current = null, audio = null, view = 'home', learnAudio = null, nameHandler = null;
   const dropName = () => { if (nameHandler) { root.removeEventListener('click', nameHandler); nameHandler = null; } };
   const full = () => (access ? Boolean(access.full) : true);
@@ -86,7 +113,7 @@ export function mountStaffGame(root, { access = null } = {}) {
         <h2 class="gm-title">Notation trainer</h2>
         <div class="muted">Learn to read music. Each level starts with a short lesson, then you read a note on the staff and sing it.</div>
         <div class="wu-staff">${staffSvg([{ midi: 60 }, { midi: 64 }, { midi: 67 }, { midi: 72 }], { mode: 'seq' })}</div>
-        <button class="btn primary gm-cta" data-a="warm">🎹 Warm-up: hear it and see it on the staff</button>
+        <div class="row" style="justify-content:center"><button class="btn primary gm-cta" data-a="warm">🎹 Warm-up</button><button class="btn gm-cta" data-a="chart">📖 All the notes</button></div>
       </div>
       ${groups.map(([clef, title]) => `
         <div class="card">
@@ -101,6 +128,26 @@ export function mountStaffGame(root, { access = null } = {}) {
       <div class="muted" style="text-align:center">Not sure of a note? Press <b>Hear the note</b> while you sing. It counts as help.</div>`;
   }
 
+  // Every note on the staff, in both clefs, to look at and to hear. Black keys can be shown as sharps or as flats.
+  let chartMode = 'natural';
+  function chart() {
+    closeLearnAudio();
+    view = 'chart';
+    const range = (a, b) => { const out = []; for (let m = a; m <= b; m++) out.push(m); return out; };
+    const sel = (list) => (chartMode === 'natural' ? list.filter((m) => !isBlack(m)) : list);
+    const part = (title, sub, midis, clef, flats) => `<div class="card"><h3 style="margin:0">${title}</h3><div class="muted" style="margin-bottom:6px">${sub}</div>
+      <div class="wu-staff">${staffSvg(sel(midis).map((m) => ({ midi: m })), { mode: 'seq', flats, clef, labels: true })}</div>
+      <div class="wu-meet">${sel(midis).map((m) => `<button class="btn" data-hear="${m}">${spell(m, flats, clef).full}</button>`).join('')}</div></div>`;
+    const flats = chartMode === 'flats';
+    root.innerHTML = `
+      <div class="card"><div class="row between"><h2 style="margin:0">All the notes</h2><button class="btn small" data-a="home">‹ Levels</button></div>
+        <div class="muted" style="margin:4px 0 8px">Every note on the staff, low to high. Tap a name to hear it on the piano. Swipe sideways to see more.</div>
+        <div class="seg" role="group" aria-label="Which notes">${[['natural', 'White keys'], ['sharps', 'With sharps ♯'], ['flats', 'With flats ♭']].map(([v, t]) => `<button type="button" data-chart="${v}" class="${chartMode === v ? 'on' : ''}">${t}</button>`).join('')}</div>
+        <div class="gm-note" style="margin-top:8px">💡 Treble lines: E G B D F (Every Good Boy Does Fine). Spaces: F A C E. Bass lines: G B D F A (Good Boys Do Fine Always). Spaces: A C E G (All Cows Eat Grass). Middle C sits between the two staves.</div></div>
+      ${part('Treble clef', 'From the G below middle C, up to the C two octaves above it.', range(55, 84), 'treble', flats)}
+      ${part('Bass clef', 'From the C two octaves below middle C, up to middle C.', range(36, 60), 'bass', flats)}`;
+  }
+
   // The lesson before a level.
   function learn(id) {
     const lv = STAFF_LEVELS.find((l) => l.id === id);
@@ -109,17 +156,19 @@ export function mountStaffGame(root, { access = null } = {}) {
     const treble = notes.filter((m) => lv.clef === 'treble' || (lv.clef === 'grand' && m >= 60));
     const bass = notes.filter((m) => lv.clef === 'bass' || (lv.clef === 'grand' && m < 60));
     const flats = lv.acc === 'flats';
-    const show = (list, clef) => (list.length ? `<div class="wu-staff">${staffSvg(list.map((m) => ({ midi: m })), { mode: 'seq', flats, clef, labels: true })}</div>
+    const fresh = new Set(newNotesOf(lv));
+    const show = (list, clef) => (list.length ? `<div class="wu-staff">${staffSvg(list.map((m) => ({ midi: m })), { mode: 'seq', flats, clef, labels: true, marks: new Set(list.map((m, i) => (fresh.has(m) ? i : -1)).filter((i) => i >= 0)) })}</div>
       <div class="wu-meet">${list.map((m) => `<button class="btn" data-hear="${m}" data-clef="${clef}">${spell(m, flats, clef).full}</button>`).join('')}</div>` : '');
     root.innerHTML = `
       <div class="card">
         <div class="row between"><div><div class="muted">${clefLabel(lv.clef)} · Level ${lv.id}</div><h2 style="margin:0">${lv.name}</h2></div><button class="btn small" data-a="home">‹ Levels</button></div>
         <p style="margin:8px 0"><b>${lv.how}</b></p>
+        ${fresh.size && fresh.size < new Set(lv.pool).size ? `<div class="muted"><b>New in this level:</b> ${[...fresh].map((m) => spell(m, lv.acc === 'flats', lv.clef === 'bass' ? 'bass' : 'treble').name).join(', ')} (shown in colour). The rest is revision from earlier levels.</div>` : ''}
         ${show(treble, 'treble')}${show(bass, 'bass')}
         <div class="gm-note" style="margin-top:8px">💡 ${lv.tip}</div>
         <div class="muted" style="margin-top:6px">Tap a note name to hear it on the piano.</div>
         <div class="row" style="margin-top:10px"><button class="btn primary" data-lvl-start="${lv.id}">🎤 Sing the notes</button><button class="btn primary" data-name-start="${lv.id}">🔤 Name the notes</button></div>
-        <div class="muted" style="margin-top:6px">Two ways to practise the same level: sing each note, or tap its letter name.</div>
+        <div class="muted" style="margin-top:6px">Two ways to practise the same level: sing each note, or tap its letter name. About a third of each quiz revises earlier levels. <button class="btn small" data-a="chart">📖 See all the notes</button></div>
       </div>`;
   }
 
@@ -221,8 +270,10 @@ export function mountStaffGame(root, { access = null } = {}) {
     if (ln) return learn(Number(ln.dataset.learn));
     const ns = e.target.closest('[data-name-start]');
     if (ns) return nameQuiz(Number(ns.dataset.nameStart));
+    const cm = e.target.closest('[data-chart]');
+    if (cm && view === 'chart') { chartMode = cm.dataset.chart; return chart(); }
     const hear = e.target.closest('[data-hear]');
-    if (hear && view === 'learn') {
+    if (hear && (view === 'learn' || view === 'chart')) {
       try { learnAudio ||= await openAudio(); await learnAudio.ensure(); learnAudio.stop(); learnAudio.sound.pianoNote(Number(hear.dataset.hear), 2.2); } catch { /* no sound available */ }
       return;
     }
@@ -236,6 +287,7 @@ export function mountStaffGame(root, { access = null } = {}) {
     }
     const a = e.target.closest('[data-a]')?.dataset.a;
     if (a === 'warm') return warm();
+    if (a === 'chart') return chart();
     if (a === 'home') return home();
   });
   home();

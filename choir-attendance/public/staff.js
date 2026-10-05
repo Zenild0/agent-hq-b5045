@@ -28,7 +28,7 @@ const BOTTOM = 92;        // y of the bottom line (E4)
 const yOf = (pos) => BOTTOM - pos * GAP;
 
 // notes: [{ midi }] ; options: { mode: 'chord' | 'seq', flats, current (index to highlight), labels (show letter names) }
-export function staffSvg(notes, { mode = 'seq', flats = false, current = -1, labels = true, clef: clefName = 'treble' } = {}) {
+export function staffSvg(notes, { mode = 'seq', flats = false, current = -1, labels = true, clef: clefName = 'treble', marks = null } = {}) {
   const bass = clefName === 'bass';
   const sp = notes.map((n) => spell(n.midi, flats, clefName));
   const clefW = 46, step = mode === 'chord' ? 0 : Math.max(20, Math.min(34, Math.floor((330 - clefW) / Math.max(1, notes.length))));
@@ -53,7 +53,7 @@ export function staffSvg(notes, { mode = 'seq', flats = false, current = -1, lab
     const led = ledgers.map((p) => `<line x1="${x - 11}" x2="${x + 11}" y1="${yOf(p)}" y2="${yOf(p)}" class="sl"/>`).join('');
     const acc = s.acc ? `<text x="${x - 20}" y="${y + 6}" class="acc" font-size="19">${s.acc}</text>` : '';
     const lab = labels ? `<text x="${x}" y="${yBot - 4}" class="sn-label" text-anchor="middle" font-size="12">${s.name}</text>` : '';
-    const on = i === current ? ' on' : '';
+    const on = (i === current ? ' on' : '') + (marks?.has?.(i) ? ' new' : '');
     return `<g class="sn${on}" data-i="${i}">${led}${acc}<ellipse cx="${x}" cy="${y}" rx="7.2" ry="5.2" transform="rotate(-18 ${x} ${y})" class="head"/>${lab}</g>`;
   }).join('');
   return `<svg class="staff" viewBox="0 ${yTop} ${width} ${yBot - yTop + 4}" width="${width}" role="img" aria-label="Notes on the staff: ${sp.map((s) => s.full).join(', ')}">${lines}${clef}${body}</svg>`;
