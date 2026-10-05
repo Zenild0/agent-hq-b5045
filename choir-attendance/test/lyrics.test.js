@@ -148,3 +148,16 @@ test('home shows Vocals subscriptions: active, renew soon, expired', async () =>
   assert.equal(row.state, 'active');
   assert.ok(row.daysLeft >= 364 && /^\d{4}-\d{2}-\d{2}$/.test(row.until));
 });
+
+test('teacher can set several regular practices through the schedule route', async () => {
+  const put = (body) => fetch(`${base}/api/teacher/schedule`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const r = await put({ rules: [{ weekday: 6, time: '19:00' }, { weekday: 3, time: '18:15' }] });
+  assert.equal(r.status, 200);
+  const v = await r.json();
+  assert.deepEqual(v.usual.rules, [{ weekday: 3, time: '18:15' }, { weekday: 6, time: '19:00' }]);
+  assert.ok(v.days.some((d) => new Date(`${d.date}T00:00:00Z`).getUTCDay() === 3 && d.time === '18:15'));
+  assert.equal((await put({ rules: [{ weekday: 6, time: '19:00' }, { weekday: 6, time: '20:00' }] })).status, 400);
+  assert.equal((await put({ rules: [{ weekday: 9, time: '19:00' }] })).status, 400);
+  assert.equal((await put({ rules: [{ weekday: 6, time: '7pm' }] })).status, 400);
+  assert.equal((await put({ rules: [{ weekday: 6, time: '19:00' }] })).status, 200);
+});

@@ -34,3 +34,15 @@ test('Indian time and input checks', () => {
   assert.ok(isTime('19:30') && !isTime('7pm') && !isTime('25:00'));
   assert.ok(isDate('2026-10-10') && !isDate('2026-02-30') && !isDate('x'));
 });
+
+test('regular practices can be changed, added or removed; each day keeps its own time', () => {
+  const s = sc();
+  s.rules = [{ weekday: 3, time: '18:00' }, { weekday: 6, time: '19:30' }];
+  const d = scheduleDays(s, '2026-10-05', '2026-10-11');
+  assert.deepEqual(d.map((x) => [x.date, x.time]), [['2026-10-07', '18:00'], ['2026-10-10', '19:30']]);
+  s.days['2026-10-07'] = { time: '17:00' };
+  const e = scheduleDays(s, '2026-10-05', '2026-10-11')[0];
+  assert.deepEqual([e.time, e.usualTime], ['17:00', '18:00']); // a change for one day only
+  s.rules = [];
+  assert.equal(scheduleDays(s, '2026-10-05', '2026-10-31').length, 0);
+});

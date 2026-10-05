@@ -230,12 +230,13 @@ export function mountGame(root, { code = '', preview = false, teacher = false } 
     const heading = kind === 'daily' ? "Today's Legend challenge" : `${esc(l.name)} · Stage ${stage}`;
     current = createPlayer(root, {
       audio, deck, heading,
-      onExit: () => { audio?.close(); audio = null; back(); },
-      onDone: (results) => { current?.destroy(); audio?.close(); audio = null; finishRound(kind, lvId, stage, results); },
+      onExit: () => { current = null; audio?.close(); audio = null; back(); },
+      onDone: (results) => { current?.destroy(); current = null; audio?.close(); audio = null; finishRound(kind, lvId, stage, results); },
     });
   }
 
   async function finishRound(kind, lvId, stage, results) {
+    view = 'result';
     root.innerHTML = '<div class="card"><div class="muted">Saving your score…</div></div>';
     let out = null, queued = false;
     try { out = await submit(kind, lvId, stage, results); }
@@ -300,7 +301,7 @@ export function mountGame(root, { code = '', preview = false, teacher = false } 
       root.insertAdjacentHTML('afterbegin', '<div class="alert warn">Your free Warm-up sessions are used up. The Warm-up is part of the full game.</div>');
       return document.getElementById('unlock')?.scrollIntoView({ behavior: 'smooth' });
     }
-    const w = mountWarmup(root, { onExit: () => { w.destroy(); load().then(home); } });
+    const w = mountWarmup(root, { onExit: () => { w.destroy(); current = null; load().then(home); } });
     current = w;
   }
   async function openLevel(id) {
@@ -343,5 +344,13 @@ export function mountGame(root, { code = '', preview = false, teacher = false } 
     catch (e) { root.innerHTML = `<div class="card"><div class="alert bad">${esc(e.message)}</div></div>`; }
   })();
 
-  return { destroy() { current?.destroy?.(); audio?.close(); } };
+  return {
+    destroy() { current?.destroy?.(); audio?.close(); },
+    // The phone's Back button: leave a round or a sub-screen first. Returns true when it did something.
+    back() {
+      if (current) { current.destroy?.(); current = null; audio?.close(); audio = null; return home(), true; }
+      if (view !== 'home') { home(); return true; }
+      return false;
+    },
+  };
 }

@@ -36,6 +36,7 @@ function migrate(db) {
   }
   if (!db.game || typeof db.game !== 'object') { db.game = emptyGame(); changed = true; }
   if (!db.schedule || typeof db.schedule !== 'object') { db.schedule = defaultSchedule(istNow().date); changed = true; }
+  if (!Array.isArray(db.schedule.rules)) { db.schedule.rules = [{ weekday: db.schedule.weekday ?? 6, time: db.schedule.time || '19:00' }]; changed = true; }
   for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) {
     if (!(k in db.settings)) { db.settings[k] = v; changed = true; }
   }

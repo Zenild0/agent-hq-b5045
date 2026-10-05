@@ -610,3 +610,6 @@ html[data-theme=dark] .subs-n { color: #C8FF3D; }
 
 .subs-h { font-weight: 800; margin: 10px 0 6px; }
 .attn .dot.n { background: var(--line); }
+
+.sched-row { border-top: 1px solid var(--line); padding: 10px 0; }
+.sched-row.off { opacity: .75; }

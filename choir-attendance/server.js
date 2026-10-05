@@ -13,7 +13,7 @@ import {
 import { openStore, newCode } from './lib/store.js';
 import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, setPaid, resetWarmups, resetAllWarmups, isPaid, paidUntilOf, daysLeft, wasPaid, warmupsLeft, useWarmup, GameError, PaywallError } from './lib/game.js';
 import { LEVELS, DAILY_COUNT, STAGES, stageSpec, isTimed } from './public/levels.js';
-import { istNow, isDate, isTime, scheduleDays, nextPractice, shiftDate } from './lib/schedule.js';
+import { istNow, isDate, isTime, scheduleDays, nextPractice, shiftDate, rulesOf } from './lib/schedule.js';
 import { createTar, readTar } from './lib/tar.js';
 import { fetchPageText, PageError } from './lib/webpage.js';
 
@@ -214,12 +214,32 @@ function scheduleView() {
   const resolve = (d) => ({ ...d, note: d.note || schedule.note || '' });
   const days = scheduleDays(schedule, shiftDate(now.date, -150), shiftDate(now.date, 200)).map(resolve);
   const next = nextPractice(schedule, now);
-  return { today: now.date, next: next ? resolve(next) : null, days, usual: { weekday: schedule.weekday, time: schedule.time, note: schedule.note, from: schedule.from } };
+  return { today: now.date, next: next ? resolve(next) : null, days, usual: { rules: rulesOf(schedule), weekday: schedule.weekday, time: schedule.time, note: schedule.note, from: schedule.from } };
 }
 
 function updateSchedule(body) {
   const sc = store.db.schedule;
-  if ('time' in body) { if (!isTime(body.time)) throw new HttpError(400, 'Time must look like 19:00'); sc.time = body.time; }
+  if ('time' in body) { // older single-time form: changes the first regular practice
+    if (!isTime(body.time)) throw new HttpError(400, 'Time must look like 19:00');
+    sc.time = body.time;
+    const rules = rulesOf(sc);
+    if (rules.length) rules[0] = { ...rules[0], time: body.time };
+    sc.rules = rules;
+  }
+  if ('rules' in body) {
+    const list = Array.isArray(body.rules) ? body.rules : null;
+    if (!list || list.length > 7) throw new HttpError(400, 'Please send up to 7 regular practices');
+    const seen = new Set();
+    const rules = list.map((r) => {
+      if (!Number.isInteger(r?.weekday) || r.weekday < 0 || r.weekday > 6) throw new HttpError(400, 'Pick a day of the week');
+      if (!isTime(r.time)) throw new HttpError(400, 'Time must look like 19:00');
+      if (seen.has(r.weekday)) throw new HttpError(400, 'Each day of the week can appear once');
+      seen.add(r.weekday);
+      return { weekday: r.weekday, time: r.time };
+    }).sort((a, b) => ((a.weekday + 6) % 7) - ((b.weekday + 6) % 7)); // Monday first
+    sc.rules = rules;
+    if (rules.length) { sc.weekday = rules[0].weekday; sc.time = rules[0].time; }
+  }
   if ('note' in body) sc.note = text(body.note ?? '', 140, 'Note');
   store.save();
 }

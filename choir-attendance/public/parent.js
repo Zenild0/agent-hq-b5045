@@ -5,6 +5,7 @@ import {
 import { nextCardHtml, daysFoldHtml, remarksFoldHtml } from './home.js';
 import { pickPhotos } from './photo.js';
 import { applyLook, lookCardHtml, wireLook, configure } from './theme.js';
+import { initBack, noteVisit, onBackFirst } from './nav.js';
 import { trioHtml } from './home.js';
 
 const store = {
@@ -117,7 +118,8 @@ function openGame() {
   import('./game.js').then((m) => { gameCtl = m.mountGame(box, { code }); }).catch(() => { box.innerHTML = '<div class="alert bad">The game could not load. Please try again.</div>'; });
 }
 
-function show(t) {
+function show(t, fromBack = false) {
+  if (!fromBack) noteVisit(t);
   if (tab === 'game' && t !== 'game') { gameCtl?.destroy?.(); gameCtl = null; $('#game').innerHTML = ''; }
   tab = t;
   app.querySelectorAll('nav.tabbar button').forEach((b) => b.classList.toggle('on', b.dataset.tab === t));
@@ -363,6 +365,8 @@ configure({ key: 'choir-theme', lens: true });
 applyLook();
 shell();
 paintNet();
+initBack({ home: 'home', go: (t) => show(t, true), current: () => tab });
+onBackFirst(() => (tab === 'game' && gameCtl?.back?.()) || false); // inside Vocals, Back steps out of the level or round first
 show(tab);
 cachedApi('public')
   .then((o) => {
