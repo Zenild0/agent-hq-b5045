@@ -41,6 +41,12 @@ export function mountWarmup(root, { onExit, staff = false } = {}) {
       <h3 style="margin:0 0 6px">2. Pick an exercise</h3>
       <div class="wu-ex" data-x="list"></div>
     </div>
+    ${staff ? '' : `<div class="card" data-x="breathCard">
+      <h3 style="margin:0 0 6px">Breathe first</h3>
+      <div class="muted">In through the nose for 4, rest for 2, then a long, soft "sss" for 8. Shoulders down, tummy soft.</div>
+      <div class="breath"><div class="breath-orb" data-x="orb"></div><div class="breath-say" data-x="breathSay">Ready when you are</div></div>
+      <button class="btn small" data-x="breathBtn">▶ Start breathing</button>
+    </div>`}
     <div class="card wu-player" data-x="player" hidden>
       <div class="wu-pl-top"><b data-x="plName">Exercise</b><span class="muted" data-x="plProg"></span></div>
       <div class="wu-keys" data-x="plKeys" aria-live="polite"></div>
@@ -88,7 +94,7 @@ export function mountWarmup(root, { onExit, staff = false } = {}) {
     X('staffBox').innerHTML = staffSvg(midis.map((m) => ({ midi: m })), { mode, flats, current: cur });
   };
 
-  const ensureAudio = async () => { if (!audio) audio = await openAudio(); await audio.ensure(); return audio; };
+  const ensureAudio = async () => { if (!audio) { audio = await openAudio(); if (staff) audio.sound.state.shift = 0; } await audio.ensure(); return audio; };
   const setPaused = (p) => {
     paused = p;
     if (!audio) return;
@@ -162,6 +168,7 @@ export function mountWarmup(root, { onExit, staff = false } = {}) {
       setText('chordNow', `${chordSymbol(pc, quality)} (${chordRoot(pc, quality)} ${quality}). Sing the first note, ${chordRoot(pc, quality)}. The ${quality === 'minor' ? 'minor' : 'major'} third is in the chord.`);
       return;
     }
+    if (e.target.closest('[data-x="breathBtn"]')) { toggleBreath(); return; }
     if (e.target.closest('[data-x="pause"]')) { if (audio && run) setPaused(!paused); return; }
     if (e.target.closest('[data-x="stop"]')) { stopRun(); return; }
     if (e.target.closest('[data-x="again"]')) { if (run) start(run.ex); return; }
@@ -191,6 +198,27 @@ export function mountWarmup(root, { onExit, staff = false } = {}) {
     if (e.target.closest('[data-x="exit"]')) { destroy(); onExit?.(); }
   });
 
+  // Guided breathing: in 4, rest 2, out 8, four rounds. Timers only (no sound, no microphone).
+  let breathT = 0, breathOn = false;
+  function toggleBreath() {
+    const orb = X('orb'), say = X('breathSay'), btn = X('breathBtn');
+    if (breathOn) { breathOn = false; clearTimeout(breathT); orb.style.transform = 'scale(.5)'; say.textContent = 'Stopped. Well done.'; btn.textContent = '▶ Start breathing'; return; }
+    breathOn = true; btn.textContent = '⏹ Stop';
+    const steps = [['Breathe in…', 4, 1], ['Rest', 2, 1], ['Breathe out softly: ssss', 8, 0.5]];
+    let round = 0, s = 0;
+    const next = () => {
+      if (dead || !breathOn) return;
+      if (round >= 4) { breathOn = false; say.textContent = 'Lovely. Now you are ready to sing.'; btn.textContent = '▶ Again'; orb.style.transform = 'scale(.5)'; return; }
+      const [label, secs, scale] = steps[s];
+      say.textContent = `${label} (${round + 1} of 4)`;
+      orb.style.transition = `transform ${secs}s ease-in-out`;
+      orb.style.transform = `scale(${scale})`;
+      breathT = setTimeout(() => { s += 1; if (s >= steps.length) { s = 0; round += 1; } next(); }, secs * 1000);
+    };
+    orb.style.transform = 'scale(.5)';
+    setTimeout(next, 50);
+  }
+
   let recent = [], shownAt = 0, shown = '–', micRaf = 0;
   function loop(now = performance.now()) {
     if (dead || !micOn) return;
@@ -211,6 +239,6 @@ export function mountWarmup(root, { onExit, staff = false } = {}) {
     setText('note', now - shownAt < 350 ? shown : '–');
     if (now - shownAt >= 350) setText('cents', ' ');
   }
-  function destroy() { dead = true; cancelAnimationFrame(raf); cancelAnimationFrame(micRaf); audio?.stop(); audio?.close(); }
+  function destroy() { dead = true; clearTimeout(breathT); cancelAnimationFrame(raf); cancelAnimationFrame(micRaf); audio?.stop(); audio?.close(); }
   return { destroy };
 }

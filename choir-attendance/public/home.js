@@ -123,3 +123,32 @@ export function trioHtml(me, sc) {
       <div class="tile t3"><small>Present</small><b>${present}/${done.length}</b><div class="dots">${last.map(([, v]) => `<i class="${v === 'present' ? 'g' : 'r'}"></i>`).join('')}</div></div>
     </section>`;
 }
+
+// ---------- guests: their own event ----------
+
+const ST = { present: ['g', 'Present'], absent: ['r', 'Absent'], excused: ['m', 'Medical leave'] };
+
+// One event's leaderboard (only that event) with the guest's own row marked.
+export function eventBoardHtml(ev, meId) {
+  return `
+    <div class="card ev-card">
+      <div class="row between"><h2 style="margin:0">${esc(ev.name)}</h2>${ev.me ? `<span class="badge info">Rank ${ev.me.rank} of ${ev.total}</span>` : ''}</div>
+      <div class="muted">${ev.sessions ? `${ev.sessions} practice${ev.sessions === 1 ? '' : 's'} so far` : 'No practices recorded yet'}. Only this event counts here.</div>
+      ${ev.board.length && ev.sessions ? `<div class="ev-board">${ev.board.map((r) => `
+        <div class="ev-row${r.id === meId ? ' me' : ''}"><span class="ev-rank">${r.rank}</span>${avatarHtml(r, 'sm')}<span class="grow">${esc(r.name)}${r.id === meId ? ' (you)' : ''}</span><b>${fmtPts(r.points)}</b></div>`).join('')}</div>` : ''}
+      <h3 style="margin:12px 0 6px">Your attendance</h3>
+      ${ev.attendance.length ? `<div class="chips">${ev.attendance.map((a) => `<span class="chip ${ST[a.status]?.[0] ?? ''}">${esc(fmtDate(a.date).replace(/ \d{4}$/, ''))} · ${ST[a.status]?.[1] ?? esc(a.status)}</span>`).join('')}</div>` : '<div class="muted">Nothing marked yet.</div>'}
+    </div>`;
+}
+
+// A guest's Home: welcome, their event(s), and the switch that shows the main choir's practice times.
+export function guestHomeHtml(me) {
+  return `
+    <section class="card welcome">
+      <div class="row"><div class="grow"><div class="muted">Guest</div><h2 style="margin:0">Hello, ${esc(me.name.split(' ')[0])}</h2></div></div>
+      <p class="muted" style="margin:6px 0 0">Welcome! You are part of ${me.events?.length === 1 ? esc(me.events[0].name) : 'our special events'}. Hymns are free to browse, and the training games are free to try for a few days.</p>
+    </section>
+    ${(me.events || []).map((ev) => eventBoardHtml(ev, me.id)).join('') || '<div class="card muted">Your event will appear here once your teacher adds you.</div>'}
+    <label class="card row between sched-opt"><span class="grow"><b>Main choir practice times</b><div class="muted">Show the regular practice days here</div></span>
+      <input type="checkbox" id="schedOpt" class="switch"${me.showSchedule ? ' checked' : ''} aria-label="Show the main choir practice times"></label>`;
+}

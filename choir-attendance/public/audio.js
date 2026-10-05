@@ -49,10 +49,21 @@ export function getInstrument() {
   try { const v = localStorage.getItem('choir-instrument'); if (INSTRUMENTS.some((i) => i.id === v)) return v; } /* an older saved choice (tanpura, harmonium…) becomes the piano */ catch { /* private mode */ }
   return 'piano';
 }
+// "My voice": younger children and changing or deeper voices are comfortable in different places. The sounds played for
+// singing along move up or down by an octave to suit (written notes in the reading game never move).
+export const RANGES = [{ id: 'low', label: 'Lower', shift: -12 }, { id: 'mid', label: 'Middle', shift: 0 }, { id: 'high', label: 'Higher', shift: 12 }];
+export function getRange() {
+  try { const v = localStorage.getItem('choir-range'); if (RANGES.some((r) => r.id === v)) return v; } catch { /* private mode */ }
+  return 'mid';
+}
+export function setRange(id) { try { localStorage.setItem('choir-range', id); } catch { /* private mode */ } }
+const rangeShift = () => RANGES.find((r) => r.id === getRange()).shift;
+
 export function setInstrument(id) { try { localStorage.setItem('choir-instrument', id); } catch { /* private mode */ } }
 
 function makeSound(ctx) {
   const sr = ctx.sampleRate;
+  const state = { shift: rangeShift() }; // octaves moved for 'My voice'; the staff warm-up sets it to 0
   const master = ctx.createGain();
   master.gain.value = 0.9;
   master.connect(ctx.destination);
@@ -101,14 +112,16 @@ function makeSound(ctx) {
   const pianoNote = (midi, secs = 2.4, at = 0.05, gain = 1) => { sound(pianoBuf(midi, secs), at, gain, 1); return secs * 1000; };
 
   // The reference to sing from, in the chosen instrument.
-  const note = (midi, secs) => {
+  const note = (midi0, secs) => {
+    const midi = midi0 + state.shift;
     const inst = getInstrument();
     if (inst === 'guitar') { sound(guitarBuf(midi, secs ?? 3.6), 0.05, 1, 0.8); return (secs ?? 3.6) * 1000; }
     return pianoNote(midi, secs ?? 2.4);
   };
   // A whole chord (with its real major or minor third). Guitar strums; everything else is the grand piano.
-  const chord = (root, quality, secs = 2.4) => {
+  const chord = (root0, quality, secs = 2.4) => {
     const inst = getInstrument();
+    const root = root0 + state.shift;
     const notes = [root - 12, ...CHORDS[quality].map((s) => root + s)];
     if (inst === 'guitar') {
       notes.forEach((m, i) => sound(guitarBuf(m + (i === 0 ? 0 : 0), Math.max(secs, 3)), 0.05 + i * 0.045, i === 0 ? 0.8 : 0.7, 0.8));
@@ -119,7 +132,7 @@ function makeSound(ctx) {
   };
   // Tunes and scales are always grand piano. `each` is the time between keys, `hold` how long each key is held.
   const melody = (midis, each = 0.8, hold = each) => {
-    midis.forEach((m, i) => pianoNote(m, Math.max(hold, 0.3), 0.05 + i * each, 0.9));
+    midis.forEach((m, i) => pianoNote(m + state.shift, Math.max(hold, 0.3), 0.05 + i * each, 0.9));
     return (midis.length - 1) * each * 1000 + Math.max(hold, 0.3) * 1000;
   };
   // Many keys together (an arpeggio held, or a chord of any shape), all grand piano.
@@ -158,5 +171,5 @@ function makeSound(ctx) {
     });
     if (ok) navigator.vibrate?.(60);
   };
-  return { chord, note, melody, keys, pianoNote, play, hearChord, singer, chime, stop };
+  return { chord, note, melody, keys, pianoNote, play, hearChord, singer, chime, stop, state };
 }

@@ -50,3 +50,35 @@ test('a bad code is refused and the games switch hides the games list', async ()
   assert.deepEqual(a.games, { vocals: false, notation: false });
   assert.equal(a.trial.started, false, 'the trial only starts once a game is switched on and opened');
 });
+
+test('a guest sees only their own event: event board, event attendance, a schedule switch; a new code replaces the old one', async () => {
+  const put = (path, body, code) => j(path, { method: 'PUT', body, code });
+  await j('/api/teacher/occasions', { method: 'POST', body: { name: 'Carol Night', members: [], guests: 'Guest One\nGuest Two' } });
+  const kids = (await j('/api/teacher/children')).data.children;
+  const g1 = kids.find((c) => c.name === 'Guest One'), g2 = kids.find((c) => c.name === 'Guest Two');
+  const d = '2026-05-10';
+  const mark = (id, status, remarks = []) => j('/api/teacher/mark', { method: 'PUT', body: { date: d, type: 'practice', event: 'Carol Night', childId: id, status, remarks } });
+  assert.equal((await mark(g1.id, 'present')).status, 200);
+  assert.equal((await mark(g2.id, 'absent')).status, 200);
+  const me = (await j('/api/me', { code: g1.code })).data;
+  assert.equal(me.guest, true);
+  assert.equal(me.showSchedule, false, 'main-choir practice times are off until the guest taps to see them');
+  assert.equal(me.events.length, 1);
+  const ev = me.events[0];
+  assert.equal(ev.name, 'Carol Night');
+  assert.equal(ev.me.rank, 1);
+  assert.equal(ev.board.length, 2);
+  assert.deepEqual(ev.attendance.map((a) => a.status), ['present']);
+  assert.ok(!('contact' in ev.board[0]) && !('address' in ev.board[0]), 'no private details on the event board');
+  // the main choir leaderboard never includes guests
+  const pub = (await j('/api/public')).data;
+  assert.ok(![...pub.yearBoard, ...pub.monthBoard].some((r) => r.name.startsWith('Guest ')));
+  // the guest opts in to the schedule
+  assert.equal((await put('/api/me/schedule', { show: true }, g1.code)).status, 200);
+  assert.equal((await j('/api/me', { code: g1.code })).data.showSchedule, true);
+  // a new private code: the old one stops working
+  const fresh = (await j(`/api/teacher/children/${g1.id}/newcode`, { method: 'POST', body: {} })).data.code;
+  assert.notEqual(fresh, g1.code);
+  assert.equal((await j('/api/me', { code: g1.code })).status, 401);
+  assert.equal((await j('/api/me', { code: fresh })).status, 200);
+});

@@ -3,6 +3,7 @@
 // Everyone gets the full version of every game free for a few days (7 for choir members, 3 for guests),
 // and one payment unlocks all the games. The server keeps the days; this screen only shows them.
 import { api, esc } from './common.js';
+import { RANGES, getRange, setRange } from './audio.js';
 
 const CACHE = 'choir-cache:games-access';
 const fmtDay = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
@@ -43,6 +44,9 @@ export function mountGames(root, { code }) {
         <div class="muted">Short, fun practice that makes you a better singer and music reader.</div>
         <div class="gm-note" style="margin-top:8px">🎧 Use headphones for the best results, so the phone's sound does not mix with your voice.</div></div>
       ${banner()}
+      <div class="card"><h3 style="margin:0 0 6px">My voice</h3>
+        <div class="seg" role="group" aria-label="My voice range">${RANGES.map((r) => `<button type="button" data-range="${r.id}" class="${getRange() === r.id ? 'on' : ''}" aria-pressed="${getRange() === r.id}">${r.label}</button>`).join('')}</div>
+        <div class="muted" style="margin-top:6px">Pick the range that is comfortable. Lower suits deeper or changing voices, Higher suits very young voices. The piano plays an octave lower or higher to match.</div></div>
       <div class="tg-list">
         ${g.vocals ? `<button class="tg-card" data-game="vocals"><span class="tg-n">1</span><span class="grow"><b>Vocal trainer</b><span class="muted">Hear a note, then sing it. Levels from beginner to legend, a daily challenge and badges.</span></span><span>›</span></button>` : ''}
         ${g.notation ? `<button class="tg-card" data-game="notation"><span class="tg-n">2</span><span class="grow"><b>Notation trainer</b><span class="muted">Learn to read music. See a note on the staff and sing it. 20 levels, treble and bass clef.</span></span><span>›</span></button>` : ''}
@@ -64,6 +68,8 @@ export function mountGames(root, { code }) {
   }
 
   root.addEventListener('click', (e) => {
+    const r = e.target.closest('[data-range]');
+    if (r) { setRange(r.dataset.range); return hub(); }
     const g = e.target.closest('[data-game]');
     if (g) return open(g.dataset.game);
     if (e.target.closest('[data-g="hub"]')) return hub();

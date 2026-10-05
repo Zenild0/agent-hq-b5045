@@ -664,7 +664,7 @@ function openBulk() {
 async function openLinks() {
   const { children, settings, lockedOut } = await call('teacher/children');
   const base = settings.publicUrl || location.origin;
-  const list = children.filter((c) => c.active && !c.guest);
+  const list = children.filter((c) => c.active).sort((a, b) => Number(Boolean(a.guest)) - Number(Boolean(b.guest)) || a.name.localeCompare(b.name)); // members first, then guests
   const hello = `Hi parents! Open ${base} , tap "My child" and enter the code I give you for your child.`;
   const msg = (c) => `Hi! Open ${base} , tap "My child" and enter this code for ${c.name}: ${codeText(c.code)}`;
   let revealed = false;
@@ -678,13 +678,13 @@ async function openLinks() {
     <div class="alert ${lockedOut ? 'warn' : 'ok'}" id="lockBox" style="margin-top:14px">
       ${lockedOut ? `<b>🔒 ${lockedOut === 1 ? 'A device is' : 'Some devices are'} locked out</b> after too many wrong codes.` : '<b>No one is locked out.</b> After 5 wrong codes a device waits half an hour.'}
       <div class="row" style="margin-top:6px"><button class="btn small" id="unlock">🔓 Unlock everyone now</button><span class="muted" id="unlockMsg" aria-live="polite"></span></div></div>
-    <h3 style="margin:16px 0 4px">2. A private code for each child</h3>
+    <h3 style="margin:16px 0 4px">2. A private code for each child and guest</h3>
     <div class="muted">Like a roll number. Parents open the link above, tap <b>My child</b> and type the code. A code opens only that child. Only you can see this list, so give each parent only their own code.</div>
     <div class="row" style="margin:8px 0"><button class="btn small" id="toggleAll">Show codes</button><button class="btn small" id="copyAll">Copy all (name + code)</button></div>
     <div class="links-list">${list.map((c) => `
       <div class="row between">
-        <span class="row">${avatarHtml(c, 'sm')}<span><b>${esc(c.name)}</b><div class="code-mask" data-code="${esc(c.id)}">${mask(c.code)}</div></span></span>
-        <span class="row"><button class="btn small" data-copy="${esc(c.id)}">Copy code</button>
+        <span class="row">${avatarHtml(c, 'sm')}<span><b>${esc(c.name)}</b>${c.guest ? ' <span class="badge info">Guest</span>' : ''}<div class="code-mask" data-code="${esc(c.id)}">${mask(c.code)}</div></span></span>
+        <span class="row"><button class="btn small" data-copy="${esc(c.id)}">Copy code</button><button class="btn small" data-newcode="${esc(c.id)}" title="Make a new private code. The old one stops working.">↻ New</button>
           <a class="btn small" target="_blank" rel="noopener" href="${waLink(c.contact, msg(c))}" title="${c.contact ? `Opens WhatsApp chat with ${esc(c.contact)}` : 'No number saved: pick a contact in WhatsApp'}">WhatsApp</a></span>
       </div>`).join('') || '<div class="empty">No children yet.</div>'}</div>`;
   if (!dlg.open) dlg.showModal();
@@ -705,6 +705,15 @@ async function openLinks() {
     e.target.textContent = revealed ? 'Hide codes' : 'Show codes';
   });
   $('#dlgBody').querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', () => copy(codeText(list.find((c) => c.id === b.dataset.copy).code), b, 'Copied ✓')));
+  $('#dlgBody').querySelectorAll('[data-newcode]').forEach((b) => b.addEventListener('click', () => run(async () => {
+    const c = list.find((x) => x.id === b.dataset.newcode);
+    if (!confirm(`Make a new private code for ${c.name}? Their old code stops working at once, so give them the new one.`)) return;
+    const r = await call(`teacher/children/${c.id}/newcode`, { method: 'POST', body: {} });
+    c.code = r.code;
+    const el = $('#dlgBody').querySelector(`[data-code="${c.id}"]`);
+    if (el) el.textContent = codeText(c.code);
+    b.textContent = 'New ✓';
+  })));
 }
 
 function decisionPanel(d) {

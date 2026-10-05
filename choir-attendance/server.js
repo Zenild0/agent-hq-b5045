@@ -175,6 +175,32 @@ function remarkLogFor(child) {
     });
 }
 
+// A special event's own leaderboard and attendance (for guests): only that event's sessions count, and it never
+// touches the main choir leaderboard.
+function eventViewsFor(child) {
+  const { db } = store;
+  const out = [];
+  for (const occ of db.occasions) {
+    if (!occ.members.includes(child.id)) continue;
+    const range = seasonRange(occ.season);
+    const sessions = Object.values(db.sessions).filter((s) => OCCASION_TYPES.includes(s.type) && slug(s.event) === slug(occ.name) && s.date >= range.start && s.date <= range.end);
+    const rows = occ.members.map((id) => db.children.find((c) => c.id === id)).filter(Boolean).map((c) => {
+      let points = 0, present = 0;
+      for (const sess of sessions) { const e = sess.entries[c.id]; if (e?.status === 'present') present += 1; points += pointsFor(e, sess.type, db.settings); }
+      return { id: c.id, name: c.name, photo: photoUrl(c), head: headUrl(c), points, present };
+    }).sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
+    let rank = 0;
+    rows.forEach((r, i) => { if (!(i && rows[i - 1].points === r.points)) rank += 1; r.rank = rank; });
+    const mine = rows.find((r) => r.id === child.id);
+    out.push({
+      id: occ.id, name: occ.name, season: occ.season, sessions: sessions.filter((x) => Object.values(x.entries).some((e) => e.status)).length,
+      board: rows.slice(0, 10), total: rows.length, me: mine ? { rank: mine.rank, points: mine.points, present: mine.present } : null,
+      attendance: sessions.filter((x) => x.entries[child.id]?.status).sort((a, b) => b.date.localeCompare(a.date)).map((x) => ({ date: x.date, type: x.type, status: x.entries[child.id].status })),
+    });
+  }
+  return out;
+}
+
 function childDetail(child, season, { teacher = false } = {}) {
   const { db } = store;
   const range = seasonRange(season);
@@ -195,7 +221,8 @@ function childDetail(child, season, { teacher = false } = {}) {
   const monthBoard = scoreboard(db, season, mr.start, mr.end, { hideOut: true });
   return {
     ...profileOf(child), season, seasonLabel: seasonLabel(season), settings: db.settings,
-    stats: childStats(db, child.id, season), history,
+    stats: childStats(db, child.id, season), history, guest: Boolean(child.guest), showSchedule: Boolean(child.showSchedule),
+    ...(child.guest ? { events: eventViewsFor(child) } : {}),
     ...(teacher ? { remarkLog: remarkLogFor(child), ...gameAccess(child.id) } : {}),
     yearRank: yearBoard.find((r) => r.id === child.id)?.rank ?? null, yearRanked: yearBoard.length,
     monthPoints: monthBoard.find((r) => r.id === child.id)?.points ?? 0, // so a screen can show "this month" next to "this year"
@@ -1137,6 +1164,11 @@ async function teacherApi(req, res, q, parts) {
       store.save();
       return send(res, 200, childOut(child));
     }
+    if (req.method === 'POST' && id && action === 'newcode') { // a fresh private code (the old one stops working at once)
+      child.code = newCode(store.db);
+      store.save();
+      return send(res, 200, { code: child.code });
+    }
     if (req.method === 'POST' && id && action === 'photo') {
       await savePhoto(child, body.image, body.head);
       return send(res, 200, { photo: photoUrl(child), head: headUrl(child) });
@@ -1181,6 +1213,12 @@ async function api(req, res, url) {
       return send(res, 200, { photo: photoUrl(child), head: headUrl(child) });
     }
     if (req.method === 'GET' && b === 'access') return send(res, 200, accessFor(child));
+    if (req.method === 'PUT' && b === 'schedule') { // a guest chooses whether to see the main choir's practice times
+      const body = await readBody(req);
+      child.showSchedule = Boolean(body.show);
+      store.save();
+      return send(res, 200, { showSchedule: child.showSchedule });
+    }
     if (req.method === 'GET') return send(res, 200, childDetail(child, seasonFromQuery(q)));
     if (req.method === 'PUT') {
       const body = await readBody(req);

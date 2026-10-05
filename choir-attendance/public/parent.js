@@ -2,7 +2,7 @@ import {
   $, api, esc, fmtPts, headerHtml, footerHtml, renderBoard, achieversHtml, avatarHtml,
   statsHtml, historyHtml, leaveAlertHtml, openHymnViewer,
 } from './common.js';
-import { nextCardHtml, daysFoldHtml, remarksFoldHtml } from './home.js';
+import { nextCardHtml, daysFoldHtml, remarksFoldHtml, guestHomeHtml, eventBoardHtml } from './home.js';
 import { pickPhotos } from './photo.js';
 import { applyLook, lookCardHtml, wireLook, configure } from './theme.js';
 import { initBack, noteVisit, onBackFirst } from './nav.js';
@@ -102,6 +102,17 @@ function drawHome() {
   const open = (id) => box.querySelector(`#${id}`)?.open || false;
   const days = open('daysFold');
   const rem = open('remarksFold');
+  if (me?.guest) { // a guest: their own event first; the main choir's practice times only if they opt in
+    box.innerHTML = guestHomeHtml(me)
+      + (me.showSchedule ? nextCardHtml(overview.schedule) + daysFoldHtml(overview.schedule, me.history || [], days) : '')
+      + remarksFoldHtml(me, rem);
+    $('#schedOpt')?.addEventListener('change', async (e) => {
+      const show = e.target.checked;
+      try { await api('me/schedule', { method: 'PUT', code, body: { show } }); me.showSchedule = show; drawHome(); }
+      catch { e.target.checked = !show; }
+    });
+    return;
+  }
   box.innerHTML = nextCardHtml(overview.schedule)
     + (me ? trioHtml(me, overview.schedule) : '')
     + daysFoldHtml(overview.schedule, me ? me.history || [] : null, days)
@@ -123,7 +134,7 @@ function show(t, fromBack = false) {
   if (tab === 'games' && t !== 'games') { gameCtl?.destroy?.(); gameCtl = null; $('#games').innerHTML = ''; }
   tab = t;
   app.querySelectorAll('nav.tabbar button').forEach((b) => b.classList.toggle('on', b.dataset.tab === t));
-  const showing = t === 'board' ? ['board', 'ach'] : [t];
+  const showing = t === 'board' ? (me?.guest ? ['board'] : ['board', 'ach']) : [t];
   ['home', 'board', 'ach', 'hymns', 'games', 'child'].forEach((id) => { $(`#${id}`).hidden = !showing.includes(id); });
   if (t === 'games') openGame();
 }
@@ -132,6 +143,11 @@ function show(t, fromBack = false) {
 
 function drawBoard() {
   const o = overview;
+  if (me?.guest) { // a guest sees their event's board, never the main choir's
+    $('#board').innerHTML = (me.events || []).map((ev) => eventBoardHtml(ev, me.id)).join('') || '<div class="card muted">Your event board will appear here.</div>';
+    return;
+  }
+  if (!$('#lb')) { boardTab(); }
   const rows = range === 'month' ? o.monthBoard : o.yearBoard;
   renderBoard($('#lb'), rows, { meId: me?.id });
   const note = $('#lbNote');
@@ -333,8 +349,8 @@ function childView(msg = '') {
       </div>
     </div>
     ${lookCardHtml()}
-    ${leaveAlertHtml(d)}
-    ${statsHtml(d)}
+    ${d.guest ? '' : leaveAlertHtml(d)}
+    ${d.guest ? '' : statsHtml(d)}
     <form class="card" id="editForm">
       <h3>Contact details</h3>
       <p class="muted" style="margin-top:0">Please keep these up to date. Only you and the choir teacher can see them.</p>
