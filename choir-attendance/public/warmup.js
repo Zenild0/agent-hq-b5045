@@ -20,7 +20,7 @@ export const EXERCISES = [
 
 // With { staff: true } this is the warm-up of the staff-reading game: everything played is also shown on the staff.
 export function mountWarmup(root, { onExit, staff = false } = {}) {
-  let quality = 'major', audio = null, raf = 0, playingUntil = 0, dead = false, micOn = false, lastPc = 0, run = null, paused = false;
+  let clef = 'treble', accMode = 'natural', quality = 'major', audio = null, raf = 0, playingUntil = 0, dead = false, micOn = false, lastPc = 0, run = null, paused = false;
   const box = document.createElement('div'); // its own container, so its listeners go away with it
   root.replaceChildren(box);
   box.innerHTML = `
@@ -31,10 +31,23 @@ export function mountWarmup(root, { onExit, staff = false } = {}) {
       <div class="wu-grid" data-x="pads"></div>
       <div class="muted">Starting key: <b data-x="start">C</b></div>
     </div>
+    <div class="card wu-player" data-x="player" hidden>
+      <div class="wu-pl-top"><b data-x="plName">Exercise</b><span class="muted" data-x="plProg"></span></div>
+      <div class="wu-keys" data-x="plKeys" aria-live="polite"></div>
+      <div class="wu-now" data-x="now">&nbsp;</div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn primary" data-x="pause">⏸ Pause</button>
+        <button class="btn" data-x="stop">⏹ Stop</button>
+        <button class="btn" data-x="again">🔁 Again</button>
+      </div>
+    </div>
     ${staff ? `<div class="card" data-x="staffCard">
       <h3 style="margin:0 0 6px">Where the note lives</h3>
       <div class="wu-staff" data-x="staffBox"><div class="muted">Tap a key, a chord or an exercise to see its notes on the staff.</div></div>
-      <div class="wu-meet" data-x="meet"></div>
+      <div class="seg" role="group" aria-label="Clef" data-x="clefSeg"></div>
+      <div class="seg" role="group" aria-label="Which notes" data-x="accSeg" style="margin-top:6px"></div>
+      <div class="muted" style="margin-top:6px">Every note, low to high. Tap one to hear it and see where it sits. Swipe sideways for more.</div>
+      <div class="wu-meet wu-scroll" data-x="meet"></div>
       <div class="muted" data-x="staffTip">Lines from the bottom: E G B D F (Every Good Boy Does Fine). Spaces: F A C E (FACE).</div>
     </div>` : ''}
     <div class="card" id="wuEx">
@@ -47,16 +60,6 @@ export function mountWarmup(root, { onExit, staff = false } = {}) {
       <div class="breath"><div class="breath-orb" data-x="orb"></div><div class="breath-say" data-x="breathSay">Ready when you are</div></div>
       <button class="btn small" data-x="breathBtn">▶ Start breathing</button>
     </div>`}
-    <div class="card wu-player" data-x="player" hidden>
-      <div class="wu-pl-top"><b data-x="plName">Exercise</b><span class="muted" data-x="plProg"></span></div>
-      <div class="wu-keys" data-x="plKeys" aria-live="polite"></div>
-      <div class="wu-now" data-x="now">&nbsp;</div>
-      <div class="row" style="margin-top:8px">
-        <button class="btn primary" data-x="pause">⏸ Pause</button>
-        <button class="btn" data-x="stop">⏹ Stop</button>
-        <button class="btn" data-x="again">🔁 Again</button>
-      </div>
-    </div>
     <div class="card">
       <h3 style="margin:0 0 6px">3. Chords</h3>
       <div class="row" role="group" aria-label="Chord type">
@@ -85,15 +88,25 @@ export function mountWarmup(root, { onExit, staff = false } = {}) {
     setText('start', NAMES[lastPc]);
   };
   X('list').innerHTML = EXERCISES.map((e) => `<button class="wu-card" data-ex="${e.id}"><b>${e.name}</b><span class="muted">${e.how}</span><span class="wu-len">${e.steps.length} keys · ${e.steps.length * HOLD} s</span></button>`).join('');
-  if (staff) X('meet').innerHTML = [60, 62, 64, 65, 67, 69, 71, 72].map((m) => `<button class="btn" data-meet="${m}">${spell(m).name}</button>`).join('');
+  const NOTE_RANGE = { treble: [55, 84], bass: [36, 60] }; // G3 to C6 on the treble staff; C2 to middle C on the bass staff
+  function paintNotes() {
+    if (!staff) return;
+    X('clefSeg').innerHTML = [['treble', 'Treble clef'], ['bass', 'Bass clef']].map(([v, t]) => `<button type="button" data-clef="${v}" class="${clef === v ? 'on' : ''}" aria-pressed="${clef === v}">${t}</button>`).join('');
+    X('accSeg').innerHTML = [['natural', 'White keys'], ['sharps', 'With sharps ♯'], ['flats', 'With flats ♭']].map(([v, t]) => `<button type="button" data-acc="${v}" class="${accMode === v ? 'on' : ''}" aria-pressed="${accMode === v}">${t}</button>`).join('');
+    const [lo, hi] = NOTE_RANGE[clef];
+    const list = []; for (let m = lo; m <= hi; m++) if (accMode !== 'natural' || ![1, 3, 6, 8, 10].includes(((m % 12) + 12) % 12)) list.push(m);
+    X('meet').innerHTML = list.map((m) => `<button class="btn" data-meet="${m}">${spell(m, accMode === 'flats', clef).full}</button>`).join('');
+  }
+  paintNotes();
   paintPads();
 
   const showStaff = (midis, mode = 'seq', cur = -1) => {
     if (!staff) return;
-    const flats = prefersFlats(lastPc, run?.ex?.id === 'minor' || run?.ex?.id === 'marp' || quality === 'minor');
-    X('staffBox').innerHTML = staffSvg(midis.map((m) => ({ midi: m })), { mode, flats, current: cur });
+    const flats = accMode === 'flats' ? true : accMode === 'sharps' ? false : prefersFlats(lastPc, run?.ex?.id === 'minor' || run?.ex?.id === 'marp' || quality === 'minor');
+    X('staffBox').innerHTML = staffSvg(midis.map((m) => ({ midi: m })), { mode, flats, current: cur, clef });
   };
 
+  const baseNote = () => (staff && clef === 'bass' ? 48 : 60); // the bass clef starts an octave lower, so what you hear is what you see
   const ensureAudio = async () => { if (!audio) { audio = await openAudio(); if (staff) audio.sound.state.shift = 0; } await audio.ensure(); return audio; };
   const setPaused = (p) => {
     paused = p;
@@ -106,7 +119,7 @@ export function mountWarmup(root, { onExit, staff = false } = {}) {
   async function start(ex) {
     const a = await ensureAudio();
     a.stop(); setPaused(false);
-    const root0 = 60 + lastPc;
+    const root0 = baseNote() + lastPc;
     const midis = ex.steps.map((s) => root0 + s);
     const t0 = a.ctx.currentTime + 0.05;
     const ms = a.sound.melody(midis, HOLD, HOLD + 0.1);
@@ -142,6 +155,10 @@ export function mountWarmup(root, { onExit, staff = false } = {}) {
     if (q) { quality = q.dataset.q; box.querySelectorAll('[data-q]').forEach((b) => b.classList.toggle('primary', b === q)); paintPads(); return; }
     const pad = e.target.closest('[data-pc]');
     if (pad) { lastPc = Number(pad.dataset.pc); paintPads(); return; }
+    const cl = e.target.closest('[data-clef]');
+    if (cl) { clef = cl.dataset.clef; paintNotes(); X('staffBox').innerHTML = '<div class="muted">Tap a key, a chord or an exercise to see its notes on the staff.</div>'; return; }
+    const ac = e.target.closest('[data-acc]');
+    if (ac) { accMode = ac.dataset.acc; paintNotes(); return; }
     const meet = e.target.closest('[data-meet]');
     if (meet) {
       const m = Number(meet.dataset.meet);
@@ -151,7 +168,7 @@ export function mountWarmup(root, { onExit, staff = false } = {}) {
       playingUntil = performance.now() + ms;
       lastPc = ((m % 12) + 12) % 12;
       showStaff([m], 'chord');
-      setText('now', `That is ${spell(m).full}. Sing it along with the piano.`);
+      setText('now', `That is ${spell(m, accMode === 'flats', clef).full}. Sing it along with the piano.`);
       return;
     }
     const ex = e.target.closest('[data-ex]');
@@ -162,9 +179,9 @@ export function mountWarmup(root, { onExit, staff = false } = {}) {
       lastPc = pc;
       const a = await ensureAudio();
       a.stop(); setPaused(false);
-      const ms = a.sound.chord(60 + pc, quality, 2.4);
+      const ms = a.sound.chord(baseNote() + pc, quality, 2.4);
       playingUntil = performance.now() + ms;
-      showStaff((quality === 'minor' ? [0, 3, 7] : [0, 4, 7]).map((s) => 60 + pc + s), 'chord');
+      showStaff((quality === 'minor' ? [0, 3, 7] : [0, 4, 7]).map((s) => baseNote() + pc + s), 'chord');
       setText('chordNow', `${chordSymbol(pc, quality)} (${chordRoot(pc, quality)} ${quality}). Sing the first note, ${chordRoot(pc, quality)}. The ${quality === 'minor' ? 'minor' : 'major'} third is in the chord.`);
       return;
     }
@@ -176,7 +193,7 @@ export function mountWarmup(root, { onExit, staff = false } = {}) {
     if (sc) {
       const a = await ensureAudio();
       a.stop(); setPaused(false);
-      const root0 = 60 + lastPc;
+      const root0 = baseNote() + lastPc;
       const o = a.ctx.createOscillator(), g = a.ctx.createGain(), t0 = a.ctx.currentTime + 0.05;
       o.type = 'sine';
       o.frequency.setValueAtTime(freqOfMidi(root0), t0);

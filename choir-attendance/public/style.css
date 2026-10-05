@@ -749,3 +749,6 @@ html[data-theme=dark] .xp-chip.title { background: #C8FF3D; border-color: #C8FF3
 .xp-ring { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; flex: none; background: conic-gradient(var(--ok) calc(var(--p) * 1turn), var(--line) 0); position: relative; font-weight: 800; font-size: .8rem; }
 .xp-ring::before { content: ''; position: absolute; inset: 7px; border-radius: 50%; background: var(--card); }
 .xp-ring span { position: relative; }
+
+.wu-scroll { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; }
+.wu-scroll .btn { flex: none; }
