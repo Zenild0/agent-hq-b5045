@@ -258,8 +258,7 @@ export function openHymnViewer(h, categoryLabel = '') {
     </div>
     <div class="hv-body" style="--hv-size:${readSize()}rem">
       ${categoryLabel ? `<div class="muted">${esc(categoryLabel)}</div>` : ''}
-      <h2 class="hv-title">${esc(h.title)}</h2>
-      ${h.notes ? `<div class="muted">${esc(h.notes)}</div>` : ''}
+      <h2 class="hv-title">${esc(h.title)}${h.notes ? ` <span class="muted hnote">(${esc(h.notes)})</span>` : ''}</h2>
       ${h.audio ? `<audio controls preload="none" src="${esc(h.audio)}"></audio>` : ''}
       ${link ? `<p><a class="ibtn" href="${esc(link)}" target="_blank" rel="noopener noreferrer" title="Open music link" aria-label="Open music link">🔗</a></p>` : ''}
       ${h.lyrics ? `<div class="hv-lyrics">${esc(h.lyrics)}</div>` : '<div class="muted" style="margin-top:14px">No lyrics have been added for this hymn yet.</div>'}
