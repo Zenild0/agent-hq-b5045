@@ -12,12 +12,23 @@ const fmtDay = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', { d
 export function mountGames(host, { code }) {
   const root = document.createElement('div'); // its own container, so listeners from an earlier visit never pile up
   host.replaceChildren(root);
-  const xp = xpFor(code); // XP, streak and badges stay on this phone (the leaderboard is switched off for now)
+  const xp = xpFor(code); // XP, streak and badges are kept on this phone; they are also sent to the server when the teacher has switched the leaderboard on
+  const unitsDone = () => { try { return Object.values(JSON.parse(localStorage.getItem('choir-singpath') || '{}')).filter((u) => u.stars).length; } catch { return 0; } };
+  let syncing = false;
+  async function syncXp() {
+    if (syncing || !access?.board || !xp.hasPending()) return;
+    syncing = true;
+    try { const r = await api('me/xp', { method: 'POST', code, body: xp.report(unitsDone()) }); if (r.enabled) xp.clearPending(); } catch { /* offline: try again after the next award */ }
+    syncing = false;
+  }
+  const award = xp.award;
+  xp.award = (...args) => { const a = award(...args); syncXp(); return a; };
   let view = 'hub', ctl = null, access = null;
 
   async function loadAccess() {
     try {
       access = await api('me/access', { code });
+      syncXp();
       try { localStorage.setItem(CACHE, JSON.stringify(access)); } catch { /* storage full */ }
     } catch (e) {
       if (e.status) throw e; // a real answer (wrong code, games off): do not hide it

@@ -102,9 +102,20 @@ async function loadGamesHub() {
       <button class="tg-card" data-game="staffgame"><span class="tg-n">2</span><span class="grow"><b>Notation trainer</b><span class="muted">Learn to read music: 20 levels, treble and bass clef.</span></span><span>›</span></button>
       <div class="tg-card soon"><span class="tg-n">3</span><span class="grow"><b>Rhythm trainer</b><span class="muted">Coming soon.</span></span></div>
     </div>
+    <div id="practiceBox"></div>
     <div id="subsBox"></div>`;
   $('#games').querySelectorAll('[data-game]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.game)));
   call('teacher/vocals-subs').then((s) => { $('#subsBox').innerHTML = subsPanelHtml(s); }).catch(() => {});
+  call('teacher/practice').then((r) => {
+    $('#practiceBox').innerHTML = `
+      <div class="card">
+        <h3 style="margin:0">Practice report</h3>
+        <div class="muted" style="margin-bottom:8px">${r.enabled ? 'Who has been practising this week.' : 'Practice is only recorded here while the Training XP leaderboard is switched on (More → Settings). Until then each child\'s XP stays on their phone.'}</div>
+        ${r.enabled ? `<div class="trio" style="margin:0 0 8px"><div class="tile t1"><small>Practised this week</small><b>${r.practised}/${r.total}</b></div><div class="tile t2"><small>Longest streak</small><b>${r.bestStreak}</b><small>days</small></div><div class="tile t3"><small>Quiet 7+ days</small><b>${r.quiet.length}</b></div></div>
+        ${r.rows.filter((x) => x.week > 0).map((x) => `<div class="row between sched-row"><span><b>${esc(x.name)}</b>${x.paid ? '' : ' <span class="badge info">trial</span>'}<div class="muted">${x.units} units · 🔥 ${x.streak}</div></span><b>${x.week} XP</b></div>`).join('') || '<div class="muted">Nobody has earned XP this week yet.</div>'}
+        ${r.quiet.length ? `<div class="muted" style="margin-top:8px"><b>Not practised for a week:</b> ${esc(r.quiet.slice(0, 12).join(', '))}${r.quiet.length > 12 ? '…' : ''}</div>` : ''}` : ''}
+      </div>`;
+  }).catch(() => {});
 }
 
 let staffTest = null;
@@ -931,6 +942,7 @@ async function loadSettings() {
         <div class="muted" style="margin-bottom:4px"><b>Training games for parents.</b> Switch each game on when you are ready, one at a time. Everyone gets every game free for 7 days (guests 3 days); one payment then unlocks all the games.</div>
         <label class="chk"><input name="gameEnabled" type="checkbox"${s.gameEnabled ? ' checked' : ''}> 🎤 Vocal trainer (game 1) is on for parents</label>
         <label class="chk"><input name="staffEnabled" type="checkbox"${s.staffEnabled ? ' checked' : ''}> 🎼 Notation trainer (game 2) is on for parents</label>
+        <label class="chk"><input name="trainingBoardEnabled" type="checkbox"${s.trainingBoardEnabled ? ' checked' : ''}> 🏆 Training XP leaderboard (shown only to children with a paid year; off until you switch it on)</label>
         <div class="muted" style="margin:8px 0">The first levels stay free. Parents pay you directly, then you unlock their child for a year (Children → the child → Vocals game), and that opens all the games. After 365 days they pay again.</div>
         <label class="field">Price for one year (₹)<input name="gamePrice" type="number" min="0" step="1" value="${s.gamePrice ?? 500}"></label>
         <label class="field">Mobile number to pay (UPI or phone)<input name="gamePayMobile" type="tel" maxlength="20" value="${esc(s.gamePayMobile ?? '')}"></label>
@@ -991,6 +1003,7 @@ async function loadSettings() {
       body.countSundayAbsences = f.get('countSundayAbsences') === 'on';
       body.gameEnabled = f.get('gameEnabled') === 'on';
       body.staffEnabled = f.get('staffEnabled') === 'on';
+      body.trainingBoardEnabled = f.get('trainingBoardEnabled') === 'on';
       body.gamePrice = f.get('gamePrice');
       body.gamePayMobile = f.get('gamePayMobile') || '';
       body.gameUpi = f.get('gameUpi') || '';

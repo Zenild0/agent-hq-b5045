@@ -34,7 +34,7 @@ export const BADGES = [
   { id: 'explorer', emoji: '🧭', name: 'Explorer', desc: 'Try both training games.' },
 ];
 
-const blank = () => ({ total: 0, byDay: {}, streak: { current: 0, best: 0, last: '', freeze: { week: '', used: false } }, badges: {}, done: {}, counts: { review: 0 }, games: {} });
+const blank = () => ({ pending: {}, total: 0, byDay: {}, streak: { current: 0, best: 0, last: '', freeze: { week: '', used: false } }, badges: {}, done: {}, counts: { review: 0 }, games: {} });
 
 // store: { load(): object|null, save(object) }. today(): 'YYYY-MM-DD'.
 export function makeXp(store, today = istToday) {
@@ -78,6 +78,7 @@ export function makeXp(store, today = istToday) {
     const before = s.total;
     s.total += gain;
     s.byDay[t] = used + gain;
+    if (gain) { s.pending = s.pending || {}; s.pending[t] = (s.pending[t] ?? 0) + gain; for (const k of Object.keys(s.pending)) if (daysBetween(k, t) > 14) delete s.pending[k]; } // what the server has not been told yet
     for (const k of Object.keys(s.byDay)) if (daysBetween(k, t) > 60) delete s.byDay[k]; // keep it small
     s.counts.review += d.review ?? 0;
     if (d.game) s.games[d.game] = true;
@@ -110,7 +111,9 @@ export function makeXp(store, today = istToday) {
       badges: BADGES.map((b) => ({ ...b, got: Boolean(s.badges[b.id]) })),
     };
   };
-  return { award, view, reset() { s = blank(); persist(); } };
+  // What to tell the server (only used while the leaderboard is switched on): XP per day not yet sent, plus the streak.
+  const report = (units = 0) => ({ days: { ...(s.pending || {}) }, streak: liveStreak(), best: s.streak.best, units });
+  return { award, view, report, hasPending: () => Object.keys(s.pending || {}).length > 0, clearPending() { s.pending = {}; persist(); }, reset() { s = blank(); persist(); } };
 }
 
 // The real one for a person on this phone (each child code has its own).

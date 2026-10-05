@@ -143,6 +143,7 @@ function show(t, fromBack = false) {
 
 function drawBoard() {
   const o = overview;
+  paintRankTabs();
   if (me?.guest) { // a guest sees their event's board, never the main choir's
     $('#board').innerHTML = (me.events || []).map((ev) => eventBoardHtml(ev, me.id)).join('') || '<div class="card muted">Your event board will appear here.</div>';
     return;
@@ -155,6 +156,39 @@ function drawBoard() {
 }
 
 // Not signed in: a friendly card at the top of Home to enter the child's code right there.
+// The Training XP leaderboard (shown only when the teacher has switched it on, and only to children who are signed in).
+let rankKind = 'attendance', xpRange = 'week';
+function paintRankTabs() {
+  const box = $('#rankTabs');
+  if (!box) return;
+  const on = overview?.settings?.trainingBoardEnabled && code && me && !me.guest;
+  if (!on) { box.innerHTML = ''; $('#attBoard').hidden = false; $('#xpBoard').hidden = true; rankKind = 'attendance'; return; }
+  box.innerHTML = `<div class="seg" role="group" aria-label="Leaderboard">${[['attendance', 'Attendance'], ['xp', 'Training XP']].map(([v, t]) => `<button type="button" data-rank="${v}" class="${rankKind === v ? 'on' : ''}" aria-pressed="${rankKind === v}">${t}</button>`).join('')}</div>`;
+  box.querySelectorAll('[data-rank]').forEach((b) => b.addEventListener('click', () => { rankKind = b.dataset.rank; paintRankTabs(); }));
+  $('#attBoard').hidden = rankKind !== 'attendance';
+  $('#xpBoard').hidden = rankKind !== 'xp';
+  if (rankKind === 'xp') drawXpBoard();
+}
+async function drawXpBoard() {
+  const box = $('#xpBoard');
+  box.innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    const d = await api('me/xp-board', { code });
+    if (!d.enabled) { box.innerHTML = '<div class="card muted">The Training XP leaderboard is not switched on right now.</div>'; return; }
+    if (d.locked) { box.innerHTML = `<div class="card"><h3 style="margin:0">Training XP leaderboard</h3><p class="muted">This board is for children with the full version of the training games (₹${esc(d.price ?? 500)} a year). Every child gets a free trial first. Your own XP and streak are always yours, in Training games.</p></div>`; return; }
+    const rows = (k) => d[k].top.map((r) => `<div class="ev-row${r.id === me.id ? ' me' : ''}"><span class="ev-rank">${r.rank}</span>${avatarHtml(r, 'sm')}<span class="grow">${esc(r.name)}${r.id === me.id ? ' (you)' : ''}<div class="muted" style="font-size:.75rem">${esc(r.title)}${r.streak ? ` · 🔥 ${r.streak} day${r.streak === 1 ? '' : 's'}` : ''}${r.units ? ` · ${r.units} units` : ''}</div></span><b>${r.xp} XP</b></div>`).join('') + (d[k].me ? `<div class="muted" style="text-align:center">You are number ${d[k].me.rank} with ${d[k].me.xp} XP</div>` : '');
+    const k = xpRange === 'all' ? 'all' : 'week';
+    box.innerHTML = `
+      <div class="card ev-card">
+        <div class="row between"><h2 style="margin:0">Training XP</h2></div>
+        <div class="muted">Children with the full version. Practice earns XP in every training game. The weekly board restarts on Monday.</div>
+        <div class="row" style="margin:8px 0"><button class="pill${k === 'week' ? ' on' : ''}" data-xr="week">This week</button><button class="pill${k === 'all' ? ' on' : ''}" data-xr="all">All time</button></div>
+        <div class="ev-board">${d[k].top.length ? rows(k) : '<div class="muted">Nobody has earned XP yet. Be the first!</div>'}</div>
+      </div>`;
+    box.querySelectorAll('[data-xr]').forEach((b) => b.addEventListener('click', () => { xpRange = b.dataset.xr; drawXpBoard(); }));
+  } catch (e) { box.innerHTML = `<div class="alert bad">${esc(e.message)}</div>`; }
+}
+
 function paintHomeCode(error = '') {
   const box = $('#homeCode');
   if (!box) return;
@@ -177,6 +211,9 @@ function paintHomeCode(error = '') {
 function boardTab() {
   const o = overview;
   $('#board').innerHTML = `
+    <div id="rankTabs"></div>
+    <div id="xpBoard" hidden></div>
+    <div id="attBoard">
     <div class="stage">
       <h2>🎤 Leaderboard</h2>
       <div class="sub">Choir year ${esc(o.seasonLabel)}<br>Come to every practice, and on time, to climb!</div>
@@ -192,6 +229,7 @@ function boardTab() {
       <div class="muted">Saturday practice = <b>${fmtPts(o.settings.satPoints)}</b> point · Sunday mass = <b>${fmtPts(o.settings.sunPoints)}</b> points ·
       Feast practices = <b>${fmtPts(o.settings.practicePoints)}</b> point each · Feast mass = <b>${fmtPts(o.settings.feastPoints)}</b> points.
       A day with any remark to improve (late, not paying attention, incomplete book, talking) takes off <b>${fmtPts(o.settings.remarkPenalty ?? 0.5)}</b> in total, however many. Each good remark (well behaved, helped others) adds <b>${fmtPts(o.settings.remarkBonus ?? 0.25)}</b>.</div>
+    </div>
     </div>`;
   drawHome();
   drawBoard();

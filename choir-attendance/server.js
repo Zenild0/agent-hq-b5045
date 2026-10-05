@@ -16,6 +16,7 @@ import { LEVELS, DAILY_COUNT, STAGES, stageSpec, isTimed } from './public/levels
 import { istNow, isDate, isTime, scheduleDays, nextPractice, shiftDate, rulesOf } from './lib/schedule.js';
 import { createTar, readTar } from './lib/tar.js';
 import { fetchPageText, PageError } from './lib/webpage.js';
+import { emptyXp, recordXp, weekXpOf, buildBoard } from './lib/xpboard.js';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const PUBLIC = resolve(here, 'public');
@@ -318,6 +319,39 @@ function accessFor(child) {
   };
 }
 const roundGate = new Map(); // child id -> { last, day, n } to stop floods
+// ---- training XP leaderboard (children with a paid year only; off until the teacher switches it on) ----
+const xpOf = (id) => store.db.game.kids[id]?.xp;
+function xpBoardFor(child) {
+  const { db } = store;
+  const today = istDate();
+  const enabled = Boolean(db.settings.trainingBoardEnabled);
+  const paid = isPaid(db.game.kids[child.id], today);
+  if (!enabled) return { enabled: false };
+  if (!paid) return { enabled: true, locked: true, price: db.settings.gamePrice };
+  const rows = db.children.filter((c) => c.active && !c.guest && isPaid(db.game.kids[c.id], today));
+  return { enabled: true, locked: false, ...buildBoard(xpOf, rows, today, child.id, (c) => ({ id: c.id, name: c.name, photo: photoUrl(c), head: headUrl(c) })) };
+}
+function xpReport(child, body) {
+  const { db } = store;
+  if (!db.settings.trainingBoardEnabled) return { enabled: false }; // nothing is kept while the board is off; the phone keeps its own XP and sends it later
+  const kid = (db.game.kids[child.id] ??= emptyKid());
+  kid.xp ??= emptyXp();
+  const accepted = recordXp(kid.xp, body, istDate());
+  if (accepted) store.save();
+  return { enabled: true, accepted, total: kid.xp.total };
+}
+// What the teacher sees: who has been practising.
+function practiceReport() {
+  const { db } = store;
+  const today = istDate();
+  const rows = db.children.filter((c) => c.active && !c.guest).map((c) => {
+    const x = xpOf(c.id);
+    return { id: c.id, name: c.name, week: weekXpOf(x, today), total: x?.total ?? 0, streak: x?.streak ?? 0, units: x?.units ?? 0, last: x?.updated ?? '', paid: isPaid(db.game.kids[c.id], today) };
+  }).sort((a, b) => b.week - a.week || b.total - a.total || a.name.localeCompare(b.name));
+  const quiet = rows.filter((r) => !r.last || (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${r.last}T00:00:00Z`)) / 86400000 >= 7);
+  return { enabled: Boolean(db.settings.trainingBoardEnabled), practised: rows.filter((r) => r.week > 0).length, total: rows.length, bestStreak: Math.max(0, ...rows.map((r) => r.streak)), rows: rows.slice(0, 30), quiet: quiet.map((r) => r.name) };
+}
+
 function gameOn() { if (!store.db.settings.gameEnabled) throw new HttpError(403, 'The Vocals game is switched off right now'); }
 function gameThrottle(id) {
   const now = Date.now();
@@ -392,7 +426,7 @@ function publicOverview(q) {
   const strip = (rows) => rows.map(({ id, name, photo, head, points, rank }) => ({ id, name, photo, head, points, rank }));
   return {
     season, seasonLabel: seasonLabel(season), seasons: seasonsWithData(db, today()),
-    settings: { satPoints: db.settings.satPoints, sunPoints: db.settings.sunPoints, feastPoints: db.settings.feastPoints, practicePoints: db.settings.practicePoints, remarkPenalty: db.settings.remarkPenalty, remarkBonus: db.settings.remarkBonus, gameEnabled: Boolean(db.settings.gameEnabled), staffEnabled: Boolean(db.settings.staffEnabled) },
+    settings: { satPoints: db.settings.satPoints, sunPoints: db.settings.sunPoints, feastPoints: db.settings.feastPoints, practicePoints: db.settings.practicePoints, remarkPenalty: db.settings.remarkPenalty, remarkBonus: db.settings.remarkBonus, gameEnabled: Boolean(db.settings.gameEnabled), staffEnabled: Boolean(db.settings.staffEnabled), trainingBoardEnabled: Boolean(db.settings.trainingBoardEnabled) },
     schedule: scheduleView(),
     month, monthLabel: monthLabel(month),
     monthBoard: strip(scoreboard(db, season, mr.start, mr.end, { hideOut: true })),
@@ -537,6 +571,7 @@ function updateSettings(body) {
   if ('remarkBonus' in body) s.remarkBonus = num(body.remarkBonus, 0, 5);
   if ('gameEnabled' in body) s.gameEnabled = Boolean(body.gameEnabled);
   if ('staffEnabled' in body) s.staffEnabled = Boolean(body.staffEnabled);
+  if ('trainingBoardEnabled' in body) s.trainingBoardEnabled = Boolean(body.trainingBoardEnabled);
   if ('gamePrice' in body) s.gamePrice = Math.round(num(body.gamePrice, 0, 100000));
   if ('gamePayMobile' in body) s.gamePayMobile = phone(body.gamePayMobile ?? '', 'Payment number');
   if ('gameUpi' in body) {
@@ -1090,6 +1125,7 @@ async function teacherApi(req, res, q, parts) {
       return res.end(tar);
     }
     if (b === 'home') return send(res, 200, teacherHome());
+    if (b === 'practice') return send(res, 200, practiceReport());
     if (b === 'sessions') return send(res, 200, { sessions: recentSessions() });
     if (b === 'vocals-subs') return send(res, 200, vocalsSubscriptions(store.db.children.filter((c) => c.active && !c.guest), store.db.game?.kids ?? {}));
     if (b === 'board') return send(res, 200, teacherBoard());
@@ -1212,7 +1248,9 @@ async function api(req, res, url) {
       await savePhoto(child, body.image, body.head);
       return send(res, 200, { photo: photoUrl(child), head: headUrl(child) });
     }
-    if (req.method === 'GET' && b === 'access') return send(res, 200, accessFor(child));
+    if (req.method === 'GET' && b === 'access') return send(res, 200, { ...accessFor(child), board: Boolean(store.db.settings.trainingBoardEnabled) });
+    if (req.method === 'GET' && b === 'xp-board') return send(res, 200, xpBoardFor(child));
+    if (req.method === 'POST' && b === 'xp') return send(res, 200, xpReport(child, await readBody(req, 5_000)));
     if (req.method === 'PUT' && b === 'schedule') { // a guest chooses whether to see the main choir's practice times
       const body = await readBody(req);
       child.showSchedule = Boolean(body.show);
