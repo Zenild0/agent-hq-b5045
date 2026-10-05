@@ -627,3 +627,18 @@ button.tile:active { transform: scale(.98); }
 .chip[class*=" "], .chips .chip { cursor: default; }
 html[data-theme=bright] .trio button.tile.t1, html[data-theme=bright] .trio button.tile.t3 { color: #1B1640; }
 html[data-theme=bright] .trio button.tile.t2 { color: #fff; }
+
+/* warm-up trainer */
+.wu-grid .btn.on { background: var(--brand); color: #fff; border-color: var(--brand); }
+html[data-theme=dark] .wu-grid .btn.on { background: #C8FF3D; color: #0E0B1F; border-color: #C8FF3D; }
+.wu-ex { display: grid; gap: 8px; }
+.wu-card { display: grid; gap: 2px; text-align: left; width: 100%; padding: 12px 14px; border-radius: 16px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; font: inherit; min-height: 56px; }
+.wu-card b { font: 800 1rem var(--font-head); }
+.wu-len { font-size: .75rem; font-weight: 800; color: var(--brand); }
+html[data-theme=dark] .wu-len { color: #C8FF3D; }
+.wu-pl-top { display: flex; justify-content: space-between; align-items: baseline; }
+.wu-keys { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.wk { min-width: 40px; text-align: center; padding: 8px 6px; border-radius: 10px; border: 2px solid var(--line); font: 800 .95rem var(--font-head); color: var(--muted); }
+.wk.now { background: var(--brand); border-color: var(--brand); color: #fff; transform: translateY(-2px); }
+html[data-theme=dark] .wk.now { background: #C8FF3D; border-color: #C8FF3D; color: #0E0B1F; }
+.wk.done { border-color: var(--ok); color: var(--ok); }

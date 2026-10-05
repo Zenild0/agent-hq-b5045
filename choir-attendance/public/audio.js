@@ -1,12 +1,22 @@
 // Sound and microphone for the singing game. Everything is made in the browser (no sound files).
 // The microphone is listened to live and thrown away: nothing is recorded, stored or sent.
 import { freqOfMidi, CHORDS } from './pitch.js';
+import { renderPiano, renderGuitar, renderTanpuraDrone } from './synth.js';
 
 // Opens the sound system. Call it from a tap (browsers require that). Add the microphone with enableMic().
 export async function openAudio() {
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
   await ctx.resume();
   const a = { ctx, stream: null, analyser: null, buf: null, sound: makeSound(ctx) };
+  // Pause and play the sound (the clock of everything that waits for a sound is the audio clock, so it stops too).
+  a.pause = () => ctx.suspend().catch(() => {});
+  a.resume = () => ctx.resume().catch(() => {});
+  a.stop = () => a.sound.stop();
+  a.after = (ms, cb) => { // like setTimeout, but it waits on the audio clock, so Pause really pauses it
+    const due = ctx.currentTime + ms / 1000;
+    const id = setInterval(() => { if (ctx.currentTime >= due) { clearInterval(id); cb(); } }, 40);
+    return () => clearInterval(id);
+  };
   a.enableMic = async () => {
     if (a.stream) return;
     a.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: true } });
@@ -26,114 +36,101 @@ export function micMessage(e) {
 }
 
 // The sound the phone plays for the child to sing along with. Chosen by the player and kept on this phone.
-//  harmonium and sitar: one SUSTAINED key (a chord is played as just its first note, held)
-//  keyboard: one struck KEY that rings and fades
-//  guitar: a STRUM (a chord is strummed, a single note is plucked)
+//  piano:   one grand-piano KEY, held (a chord is played as just its first note)
+//  tanpura: a steady drone on the note, the classic Indian reference for singers
+//  guitar:  an acoustic guitar; a chord is strummed and left to ring
+// Scales and tunes (warm-ups, "echo" levels) are always played on the grand piano.
 export const INSTRUMENTS = [
-  { id: 'harmonium', label: 'Harmonium', how: 'sustained' },
-  { id: 'sitar', label: 'Sitar', how: 'sustained' },
-  { id: 'keyboard', label: 'Keyboard', how: 'key' },
-  { id: 'guitar', label: 'Guitar', how: 'strum' },
+  { id: 'piano', label: 'Grand piano', how: 'One long, steady key to sing from.' },
+  { id: 'tanpura', label: 'Tanpura', how: 'A drone that rings on the note.' },
+  { id: 'guitar', label: 'Acoustic guitar', how: 'A strummed chord, left to ring.' },
 ];
 export function getInstrument() {
   try { const v = localStorage.getItem('choir-instrument'); if (INSTRUMENTS.some((i) => i.id === v)) return v; } catch { /* private mode */ }
-  return 'harmonium';
+  return 'piano';
 }
 export function setInstrument(id) { try { localStorage.setItem('choir-instrument', id); } catch { /* private mode */ } }
 
 function makeSound(ctx) {
-  const env = (g, t0, peak, attack, hold, dur, release = 0.25) => {
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.linearRampToValueAtTime(peak, t0 + attack);
-    g.gain.setValueAtTime(peak * hold, Math.max(t0 + attack + 0.01, t0 + dur - release));
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  };
-  // The old gentle bell-like key: used for the keyboard.
-  function key(freq, t0, dur, gain) {
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0, t0);
-    g.gain.linearRampToValueAtTime(gain, t0 + 0.02);
-    g.gain.exponentialRampToValueAtTime(gain * 0.55, t0 + Math.min(0.5, dur / 2));
-    g.gain.setValueAtTime(gain * 0.5, Math.max(t0 + 0.05, t0 + dur - 0.3));
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    g.connect(ctx.destination);
-    [[1, 'triangle', 1], [2, 'sine', 0.3], [3, 'sine', 0.1]].forEach(([m, w, amp]) => {
-      const o = ctx.createOscillator(), og = ctx.createGain();
-      o.type = w; o.frequency.value = freq * m; og.gain.value = amp;
-      o.connect(og).connect(g); o.start(t0); o.stop(t0 + dur + 0.05);
-    });
+  const sr = ctx.sampleRate;
+  const master = ctx.createGain();
+  master.gain.value = 0.9;
+  master.connect(ctx.destination);
+  // a gentle hall, made from decaying noise, so the instruments sound like they are in a room
+  const ir = ctx.createBuffer(2, Math.floor(sr * 1.8), sr);
+  for (let c = 0; c < 2; c++) {
+    const d = ir.getChannelData(c);
+    let seed = 777 + c * 91;
+    for (let i = 0; i < d.length; i++) { seed = (seed * 1664525 + 1013904223) >>> 0; d[i] = ((seed / 4294967296) * 2 - 1) * (1 - i / d.length) ** 2.6; }
   }
-  // Harmonium: two slightly detuned reeds, held perfectly steady (no fade, no wobble).
-  function harmonium(freq, t0, dur, gain) {
-    const g = ctx.createGain(), lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass'; lp.frequency.value = Math.min(3200, freq * 7); lp.Q.value = 0.7;
-    env(g, t0, gain * 0.7, 0.12, 1, dur, 0.3);
-    lp.connect(g).connect(ctx.destination);
-    [[1, 'sawtooth', 0.55], [1.003, 'sawtooth', 0.45], [2, 'square', 0.12]].forEach(([m, w, amp]) => {
-      const o = ctx.createOscillator(), og = ctx.createGain();
-      o.type = w; o.frequency.value = freq * m; og.gain.value = amp;
-      o.connect(og).connect(lp); o.start(t0); o.stop(t0 + dur + 0.05);
-    });
-  }
-  // Sitar: a bright pluck that keeps ringing (slow fade), with the buzzing upper partials of the bridge.
-  function sitar(freq, t0, dur, gain) {
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.linearRampToValueAtTime(gain * 0.8, t0 + 0.006);
-    g.gain.exponentialRampToValueAtTime(gain * 0.45, t0 + 0.5);
-    g.gain.exponentialRampToValueAtTime(gain * 0.3, Math.max(t0 + 0.6, t0 + dur - 0.3));
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    g.connect(ctx.destination);
-    [1, 2, 3, 4, 5, 6, 7].forEach((k, i) => {
-      const o = ctx.createOscillator(), og = ctx.createGain();
-      o.type = 'sine'; o.frequency.value = freq * k * (1 + 0.0007 * k * k); // slightly stretched, like a real string
-      og.gain.setValueAtTime([1, 0.75, 0.6, 0.5, 0.4, 0.3, 0.25][i], t0);
-      og.gain.exponentialRampToValueAtTime([1, 0.75, 0.6, 0.5, 0.4, 0.3, 0.25][i] * (i > 2 ? 0.25 : 0.7), t0 + 0.8); // the buzz dies away first
-      o.connect(og).connect(g); o.start(t0); o.stop(t0 + dur + 0.05);
-    });
-  }
-  // Guitar: a plucked string, bright at first, then mellow.
-  function guitar(freq, t0, dur, gain) {
-    const g = ctx.createGain(), lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass'; lp.Q.value = 1;
-    lp.frequency.setValueAtTime(Math.min(5000, freq * 12), t0);
-    lp.frequency.exponentialRampToValueAtTime(Math.max(500, freq * 2), t0 + 0.7);
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.linearRampToValueAtTime(gain, t0 + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    lp.connect(g).connect(ctx.destination);
-    [[1, 'sawtooth', 0.6], [1.002, 'triangle', 0.4]].forEach(([m, w, amp]) => {
-      const o = ctx.createOscillator(), og = ctx.createGain();
-      o.type = w; o.frequency.value = freq * m; og.gain.value = amp;
-      o.connect(og).connect(lp); o.start(t0); o.stop(t0 + dur + 0.05);
-    });
-  }
-  const voices = { harmonium, sitar, keyboard: key, guitar };
-  const SUSTAIN_S = 3.4;
+  const reverb = ctx.createConvolver();
+  reverb.buffer = ir;
+  const wetGain = ctx.createGain();
+  wetGain.gain.value = 0.22;
+  reverb.connect(wetGain).connect(master);
 
-  // A single note in the chosen instrument. Sustained instruments hold it; the others ring and fade.
+  const cache = new Map();
+  const live = new Set();
+  const bufferFor = (key, make) => {
+    if (!cache.has(key)) {
+      const data = make();
+      const b = ctx.createBuffer(1, data.length, sr);
+      b.copyToChannel(data, 0);
+      cache.set(key, b);
+    }
+    return cache.get(key);
+  };
+  // Play a rendered note at a time (seconds from now). Returns nothing; sources are tracked so Stop can end them.
+  const sound = (buffer, at, gain = 1, wet = 1) => {
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    const g = ctx.createGain();
+    g.gain.value = gain;
+    src.connect(g);
+    g.connect(master);
+    if (wet) { const w = ctx.createGain(); w.gain.value = wet; g.connect(w).connect(reverb); }
+    src.start(ctx.currentTime + at);
+    live.add(src);
+    src.onended = () => live.delete(src);
+  };
+  const round = (m) => Math.round(m);
+  const pianoBuf = (midi, secs) => bufferFor(`p${round(midi)}:${secs}`, () => renderPiano(freqOfMidi(midi), secs, sr));
+  const guitarBuf = (midi, secs = 3.6) => bufferFor(`g${round(midi)}:${secs}`, () => renderGuitar(freqOfMidi(midi), secs, sr));
+  const droneBuf = (midi, secs = 4.6) => bufferFor(`t${round(midi)}:${secs}`, () => renderTanpuraDrone(freqOfMidi(midi), secs, sr));
+
+  // One grand-piano key, held for `secs`.
+  const pianoNote = (midi, secs = 3.2, at = 0.05, gain = 1) => { sound(pianoBuf(midi, secs), at, gain, 1); return secs * 1000; };
+
+  // The reference to sing from, in the chosen instrument.
   const note = (midi, secs) => {
     const inst = getInstrument();
-    const dur = secs ?? (inst === 'harmonium' || inst === 'sitar' ? SUSTAIN_S : inst === 'guitar' ? 2.6 : 2.2);
-    voices[inst](freqOfMidi(midi), ctx.currentTime + 0.05, dur, inst === 'keyboard' ? 0.22 : 0.24);
-    return dur * 1000;
+    if (inst === 'tanpura') { sound(droneBuf(midi), 0.05, 1, 1.2); return 4600; }
+    if (inst === 'guitar') { sound(guitarBuf(midi, secs ?? 3.6), 0.05, 1, 0.8); return (secs ?? 3.6) * 1000; }
+    return pianoNote(midi, secs ?? 3.2);
   };
-  // A chord. Guitar strums all its notes; the others play the first note only, as one clear key to sing from.
-  const chord = (root, quality, secs = 3) => {
+  // A whole chord (with its real major or minor third). Guitar strums; everything else is the grand piano.
+  const chord = (root, quality, secs = 3.2) => {
     const inst = getInstrument();
-    if (inst !== 'guitar') return note(root, inst === 'keyboard' ? Math.min(secs, 2.6) : secs ?? SUSTAIN_S);
-    const t0 = ctx.currentTime + 0.05;
-    [root - 12, ...CHORDS[quality].map((s) => root + s)].forEach((m, i) => guitar(freqOfMidi(m), t0 + i * 0.05, secs, i === 0 ? 0.16 : 0.15));
+    const notes = [root - 12, ...CHORDS[quality].map((s) => root + s)];
+    if (inst === 'guitar') {
+      notes.forEach((m, i) => sound(guitarBuf(m + (i === 0 ? 0 : 0), Math.max(secs, 3)), 0.05 + i * 0.045, i === 0 ? 0.8 : 0.7, 0.8));
+      return Math.max(secs, 3) * 1000;
+    }
+    notes.forEach((m, i) => sound(pianoBuf(m, secs), 0.05 + i * 0.012, i === 0 ? 0.7 : 0.6, 1));
     return secs * 1000;
   };
-  const melody = (midis, each = 0.8) => {
-    const inst = getInstrument();
-    const t0 = ctx.currentTime + 0.05;
-    midis.forEach((m, i) => voices[inst](freqOfMidi(m), t0 + i * each, Math.max(each - 0.02, 0.2), 0.22));
-    return midis.length * each * 1000 + 200;
+  // Tunes and scales are always grand piano. `each` is the time between keys, `hold` how long each key is held.
+  const melody = (midis, each = 0.8, hold = each) => {
+    midis.forEach((m, i) => pianoNote(m, Math.max(hold, 0.3), 0.05 + i * each, 0.9));
+    return (midis.length - 1) * each * 1000 + Math.max(hold, 0.3) * 1000;
   };
+  // Many keys together (an arpeggio held, or a chord of any shape), all grand piano.
+  const keys = (midis, secs = 2.4) => { midis.forEach((m, i) => pianoNote(m, secs, 0.05 + i * 0.012, 0.65)); return secs * 1000; };
+  const stop = () => { for (const s of [...live]) { try { s.stop(); } catch { /* already ended */ } } live.clear(); };
   // What the phone plays for a game challenge. Returns how many milliseconds it lasts.
-  const play = (ch) => (ch.play.type === 'chord' ? chord(ch.play.root, ch.play.quality) : ch.play.type === 'note' ? note(ch.play.midi) : melody(ch.play.notes));
+  const play = (ch) => (ch.play.type === 'chord' ? note(ch.play.root) : ch.play.type === 'note' ? note(ch.play.midi) : melody(ch.play.notes, 0.85, 0.85));
+  // For chord challenges: the full chord, so a minor chord is heard as minor.
+  const hearChord = (ch) => (ch.play.type === 'chord' ? chord(ch.play.root, ch.play.quality) : play(ch));
   // The hint: a synthetic "ah" singer shows the notes to sing (about 3 seconds in total).
   const singer = (ch) => {
     const notes = ch.targets.map((pc) => 60 + pc);
@@ -163,5 +160,5 @@ function makeSound(ctx) {
     });
     if (ok) navigator.vibrate?.(60);
   };
-  return { chord, note, melody, play, singer, chime };
+  return { chord, note, melody, keys, pianoNote, play, hearChord, singer, chime, stop };
 }

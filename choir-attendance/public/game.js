@@ -167,7 +167,7 @@ export function mountGame(root, { code = '', preview = false, teacher = false } 
       <div class="card" id="sound">
         <h3 style="margin:0 0 6px">Sound to sing with</h3>
         <div class="seg" role="group" aria-label="Instrument">${INSTRUMENTS.map((i) => `<button type="button" data-inst="${i.id}" class="${getInstrument() === i.id ? 'on' : ''}" aria-pressed="${getInstrument() === i.id}">${i.label}</button>`).join('')}</div>
-        <div class="muted" style="margin-top:6px">${({ sustained: 'Plays one long, steady note to sing from.', key: 'Plays one key that rings and fades.', strum: 'Strums the whole chord.' })[INSTRUMENTS.find((i) => i.id === getInstrument()).how]} <button class="btn small" data-a="hear">▶ Hear it</button></div>
+        <div class="muted" style="margin-top:6px">${INSTRUMENTS.find((i) => i.id === getInstrument()).how} Scales and tunes are always played on the grand piano. <button class="btn small" data-a="hear">▶ Hear it</button></div>
       </div>
       ${state.pay ? `<div id="unlock">${unlockHtml()}</div>` : ''}
       ${d ? `<div class="card">
@@ -334,7 +334,7 @@ export function mountGame(root, { code = '', preview = false, teacher = false } 
     if (a === 'toLevel') return openLevel(Number(b.dataset.lvl) || selected);
     if (a === 'warm') return openWarm();
     if (a === 'hear') { // a short sample of the chosen sound (no microphone)
-      return openAudio().then((au) => { const ms = au.sound.chord(60, 'major', 3); setTimeout(() => au.close(), ms + 400); }).catch(() => {});
+      return openAudio().then((au) => { const ms = au.sound.note(60); setTimeout(() => au.close(), ms + 600); }).catch(() => {});
     }
   });
   root.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.closest?.('[data-lv]')) { e.preventDefault(); e.target.closest('[data-lv]').dispatchEvent(new MouseEvent('click', { bubbles: true })); } });

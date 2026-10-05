@@ -12,6 +12,12 @@ export const UNTIMED_CAP_MS = 600000; // a note never counts more than 10 minute
 
 export const NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
 const MAJOR_SCALE = [0, 2, 4, 5, 7, 9, 11];
+// Chord names as a musician writes them: flats for the keys that use flats, and "m" for minor (Cm, E♭m, F♯m).
+const MAJOR_ROOT = ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'];
+const MINOR_ROOT = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'B♭', 'B'];
+export const chordRoot = (pc, quality) => (quality === 'minor' ? MINOR_ROOT : MAJOR_ROOT)[((pc % 12) + 12) % 12];
+export const chordSymbol = (pc, quality) => `${chordRoot(pc, quality)}${quality === 'minor' ? 'm' : ''}`;
+export const chordTitle = (pc, quality) => `${chordSymbol(pc, quality)} · ${chordRoot(pc, quality)} ${quality}`;
 const INTERVALS = [{ n: 'major 3rd', s: 4 }, { n: '4th', s: 5 }, { n: '5th', s: 7 }, { n: '6th', s: 9 }];
 
 export const LEVELS = [
@@ -37,11 +43,11 @@ const rootMidi = (pc) => 60 + pc;
 function make(kind, lv, r, { pc = Math.floor(r() * 12), quality = 'major', blind = false } = {}) {
   const base = { kind, tol: lv.tol, hold: lv.hold, blind, level: lv.id, timed: isTimed(lv.id) };
   const chord = { type: 'chord', root: rootMidi(pc), quality };
-  const chordName = `${NAMES[pc]} ${quality}`;
+  const chordName = chordTitle(pc, quality);
   if (kind === 'root') return { ...base, title: chordName, how: 'Sing the FIRST note', play: chord, targets: [pc], limit: 15 - Math.min(5, lv.id) };
   if (kind === 'third' || kind === 'fifth') {
     const steps = kind === 'fifth' ? 7 : CHORDS[quality][1];
-    return { ...base, title: chordName, how: kind === 'fifth' ? 'Sing the FIFTH' : 'Sing the THIRD', play: chord, targets: [(pc + steps) % 12], limit: 14 };
+    return { ...base, title: chordName, how: kind === 'fifth' ? 'Sing the FIFTH' : quality === 'minor' ? 'Sing the THIRD (a minor third)' : 'Sing the THIRD', play: chord, targets: [(pc + steps) % 12], limit: 14 };
   }
   if (kind === 'hold') return { ...base, title: chordName, how: 'Sing it and HOLD it steady', play: chord, targets: [pc], limit: 14 };
   if (kind === 'memory') return { ...base, title: chordName, how: 'Remember it, then sing the FIRST note', play: chord, targets: [pc], delayMs: 4000, hideAfterPlay: true, limit: 10 };
