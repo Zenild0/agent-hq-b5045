@@ -287,11 +287,11 @@ function drawHymns() {
         <summary><span>${esc(c.label)}</span><span class="badge info">${items.length}</span></summary>
         ${items.length ? items.map((h) => `
           <div class="hymn">
-            <button class="link ht" data-hv="${esc(h.id)}">${esc(h.title)}</button>${az ? ` <span class="badge info">${esc(catLabel(h))}</span>` : ''}
+            <div class="row between"><span class="grow"><button class="link ht" data-hv="${esc(h.id)}">${esc(h.title)}</button>${az ? ` <span class="badge info">${esc(catLabel(h))}</span>` : ''}</span>
+              <span class="row" style="gap:6px;flex:none">${safeLink(h.link) ? `<a class="ibtn" href="${esc(safeLink(h.link))}" target="_blank" rel="noopener noreferrer" title="Music link" aria-label="Music link">🔗</a>` : ''}
+                <button class="ibtn" data-hv="${esc(h.id)}" title="Open full screen" aria-label="Open ${esc(h.title)} full screen">⛶</button></span></div>
             ${h.notes ? `<div class="muted">${esc(h.notes)}</div>` : ''}
             ${h.audio ? `<audio controls preload="none" src="${esc(h.audio)}"></audio>` : ''}
-            <div class="acts"><button class="btn small primary" data-hv="${esc(h.id)}">⛶ Open${h.lyrics ? ' lyrics' : ''} full screen</button>
-              ${safeLink(h.link) ? `<a class="btn small" href="${esc(safeLink(h.link))}" target="_blank" rel="noopener noreferrer">🔗 Music link</a>` : ''}</div>
           </div>`).join('') : '<div class="hymn muted">No hymns here yet.</div>'}
       </details>`;
   }).join('');

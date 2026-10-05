@@ -1133,7 +1133,7 @@ function drawHymnsTab() {
           <div class="hymn row between">
             <div class="grow"><div class="ht">${esc(h.title)}</div>
               <div>${az ? `<span class="badge info">${esc(categories.find((x) => x.id === h.category)?.label || '')}</span> ` : ''}${h.audio ? '<span class="badge ok">🎧 recording</span> ' : ''}${h.link ? '<span class="badge info">🔗 link</span>' : ''}</div></div>
-            <span class="row"><button class="btn small" data-hview="${esc(h.id)}">⛶ View</button><button class="btn small" data-hedit="${esc(h.id)}">Edit</button></span>
+            <span class="row"><button class="ibtn" data-hview="${esc(h.id)}" title="View full screen" aria-label="View full screen">⛶</button><button class="ibtn" data-hedit="${esc(h.id)}" title="Edit" aria-label="Edit">✎</button></span>
           </div>`).join('') || '<div class="hymn muted">No hymns here yet.</div>'}
       </details>`;
     }).join('')}`;

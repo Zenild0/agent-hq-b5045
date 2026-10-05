@@ -752,3 +752,7 @@ html[data-theme=dark] .xp-chip.title { background: #C8FF3D; border-color: #C8FF3
 
 .wu-scroll { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; }
 .wu-scroll .btn { flex: none; }
+
+/* small round action icon instead of a bulky button */
+.ibtn { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border-radius: 50%; border: 1px solid var(--line, rgba(128,128,128,.35)); background: transparent; color: inherit; font-size: 1.05rem; line-height: 1; text-decoration: none; cursor: pointer; flex: none; }
+.ibtn:hover, .ibtn:focus-visible { background: rgba(128,128,128,.15); }

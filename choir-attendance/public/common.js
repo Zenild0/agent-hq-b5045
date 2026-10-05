@@ -244,24 +244,24 @@ export function openHymnViewer(h, categoryLabel = '') {
     });
     document.addEventListener('fullscreenchange', () => {
       const b = viewer.querySelector('[data-hv=full]');
-      if (b) b.textContent = document.fullscreenElement ? '⤢ Exit full screen' : '⛶ Full screen';
+      if (b) b.textContent = document.fullscreenElement ? '⤢' : '⛶';
     });
   }
   const link = /^https?:\/\//i.test(h.link || '') ? h.link : '';
   viewer.innerHTML = `
     <div class="hv-bar">
-      <button class="btn small" data-hv="close">✕ Close</button>
+      <button class="ibtn" data-hv="close" title="Close" aria-label="Close">✕</button>
       <span class="grow"></span>
-      <button class="btn small" data-hv="smaller" aria-label="Smaller text">A−</button>
-      <button class="btn small" data-hv="bigger" aria-label="Bigger text">A+</button>
-      ${document.fullscreenEnabled ? '<button class="btn small primary" data-hv="full">⛶ Full screen</button>' : ''}
+      <button class="ibtn" data-hv="smaller" aria-label="Smaller text">A−</button>
+      <button class="ibtn" data-hv="bigger" aria-label="Bigger text">A+</button>
+      ${document.fullscreenEnabled ? '<button class="ibtn" data-hv="full" title="Full screen" aria-label="Full screen">⛶</button>' : ''}
     </div>
     <div class="hv-body" style="--hv-size:${readSize()}rem">
       ${categoryLabel ? `<div class="muted">${esc(categoryLabel)}</div>` : ''}
       <h2 class="hv-title">${esc(h.title)}</h2>
       ${h.notes ? `<div class="muted">${esc(h.notes)}</div>` : ''}
       ${h.audio ? `<audio controls preload="none" src="${esc(h.audio)}"></audio>` : ''}
-      ${link ? `<p><a class="btn small" href="${esc(link)}" target="_blank" rel="noopener noreferrer">🔗 Open music link</a></p>` : ''}
+      ${link ? `<p><a class="ibtn" href="${esc(link)}" target="_blank" rel="noopener noreferrer" title="Open music link" aria-label="Open music link">🔗</a></p>` : ''}
       ${h.lyrics ? `<div class="hv-lyrics">${esc(h.lyrics)}</div>` : '<div class="muted" style="margin-top:14px">No lyrics have been added for this hymn yet.</div>'}
     </div>`;
   const body = viewer.querySelector('.hv-body');
