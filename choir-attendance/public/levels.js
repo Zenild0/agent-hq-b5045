@@ -76,7 +76,7 @@ export function stageSpec(levelId, stage) {
   const lv = LEVELS.find((l) => l.id === levelId);
   const st = STAGES.find((s) => s.stage === stage);
   if (!lv || !st) throw new Error('unknown stage');
-  return { stage, name: st.name, count: Math.min(lv.count, Math.max(3, Math.ceil(lv.count * st.share))), tol: Math.min(50, Math.max(10, lv.tol + st.tolDelta)) };
+  return { stage, name: st.name, count: Math.min(lv.count, Math.max(3, Math.ceil(lv.count * st.share))), tol: Math.min(50, Math.max(12, lv.tol + st.tolDelta)) };
 }
 
 // Who you are on the journey, from the highest level cleared.
@@ -123,12 +123,27 @@ export function centsTo(midiFloat, pc) {
 
 // Follows the child's voice through a challenge. Feed it every frame: feed(nowMs, midiFloat | null).
 // A note counts when it has been held in range for `hold` ms. Repeated notes need a short break between them.
+// Two things keep it fair to real voices (which wobble: a natural vibrato is about 20 cents each way):
+//  - it judges the MIDDLE pitch over the last third of a second, i.e. the centre of the wobble, not each single instant;
+//  - a short drop-out (a breath, a consonant, one unclear frame) of up to 150 ms does not restart the hold.
+export const SMOOTH_MS = 350;
+export const GRACE_MS = 150;
+const signedSemis = (midi, pc) => ((((midi - pc) % 12) + 18) % 12) - 6; // -6..+6 semitones from the note, any octave
+
 export function makeTracker(ch) {
-  let step = 0, hitAt = 0, needBreak = false, clearSince = 0, doneAt = 0;
+  let step = 0, hitAt = 0, needBreak = false, clearSince = 0, doneAt = 0, lastIn = 0;
+  let win = []; // [{ t, d }] recent distances (in semitones) from the current target
+  let lastSound = 0;
   return {
     feed(now, midi) {
       const target = ch.targets[step] ?? ch.targets.at(-1);
-      const cents = midi == null ? Infinity : centsTo(midi, target);
+      win = win.filter((w) => now - w.t <= SMOOTH_MS);
+      if (midi != null) { win.push({ t: now, d: signedSemis(midi, target) }); lastSound = now; }
+      else if (now - lastSound >= 120) win = []; // real silence: forget the old average (a gap between repeated notes counts)
+      // enough recent frames to trust an average; otherwise fall back to what we have
+      const have = win.length >= 3;
+      const mid = have ? [...win].map((w) => w.d).sort((a, b) => a - b)[Math.floor(win.length / 2)] : null; // the middle value ignores a stray reading and sits at the centre of a vibrato
+      const cents = mid == null ? Infinity : Math.abs(mid) * 100;
       const inRange = cents <= ch.tol;
       let justAdvanced = false;
       if (needBreak) {
@@ -136,13 +151,14 @@ export function makeTracker(ch) {
       }
       if (!doneAt) {
         if (inRange && !needBreak) {
+          lastIn = now;
           if (!hitAt) hitAt = now;
           if (now - hitAt >= ch.hold) {
             step += 1; justAdvanced = true;
             if (step >= ch.targets.length) doneAt = now;
-            else { needBreak = ch.targets[step] === ch.targets[step - 1]; hitAt = 0; clearSince = 0; }
+            else { needBreak = ch.targets[step] === ch.targets[step - 1]; hitAt = 0; clearSince = 0; win = []; lastIn = 0; }
           }
-        } else hitAt = 0;
+        } else if (!hitAt || now - lastIn > GRACE_MS) hitAt = 0; // only a real miss restarts the hold
       }
       const warm = cents === Infinity ? 0 : Math.max(0, 1 - cents / 150);
       return { step, steps: ch.targets.length, hold: hitAt ? Math.min(1, (now - hitAt) / ch.hold) : 0, warm, done: Boolean(doneAt), justAdvanced, cents };

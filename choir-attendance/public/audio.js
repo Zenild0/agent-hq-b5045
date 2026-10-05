@@ -25,8 +25,31 @@ export function micMessage(e) {
     : `Could not start the microphone: ${e?.message || e}`;
 }
 
+// The sound the phone plays for the child to sing along with. Chosen by the player and kept on this phone.
+//  harmonium and sitar: one SUSTAINED key (a chord is played as just its first note, held)
+//  keyboard: one struck KEY that rings and fades
+//  guitar: a STRUM (a chord is strummed, a single note is plucked)
+export const INSTRUMENTS = [
+  { id: 'harmonium', label: 'Harmonium', how: 'sustained' },
+  { id: 'sitar', label: 'Sitar', how: 'sustained' },
+  { id: 'keyboard', label: 'Keyboard', how: 'key' },
+  { id: 'guitar', label: 'Guitar', how: 'strum' },
+];
+export function getInstrument() {
+  try { const v = localStorage.getItem('choir-instrument'); if (INSTRUMENTS.some((i) => i.id === v)) return v; } catch { /* private mode */ }
+  return 'harmonium';
+}
+export function setInstrument(id) { try { localStorage.setItem('choir-instrument', id); } catch { /* private mode */ } }
+
 function makeSound(ctx) {
-  function tone(freq, t0, dur, gain) {
+  const env = (g, t0, peak, attack, hold, dur, release = 0.25) => {
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(peak, t0 + attack);
+    g.gain.setValueAtTime(peak * hold, Math.max(t0 + attack + 0.01, t0 + dur - release));
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  };
+  // The old gentle bell-like key: used for the keyboard.
+  function key(freq, t0, dur, gain) {
     const g = ctx.createGain();
     g.gain.setValueAtTime(0, t0);
     g.gain.linearRampToValueAtTime(gain, t0 + 0.02);
@@ -40,16 +63,73 @@ function makeSound(ctx) {
       o.connect(og).connect(g); o.start(t0); o.stop(t0 + dur + 0.05);
     });
   }
+  // Harmonium: two slightly detuned reeds, held perfectly steady (no fade, no wobble).
+  function harmonium(freq, t0, dur, gain) {
+    const g = ctx.createGain(), lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = Math.min(3200, freq * 7); lp.Q.value = 0.7;
+    env(g, t0, gain * 0.7, 0.12, 1, dur, 0.3);
+    lp.connect(g).connect(ctx.destination);
+    [[1, 'sawtooth', 0.55], [1.003, 'sawtooth', 0.45], [2, 'square', 0.12]].forEach(([m, w, amp]) => {
+      const o = ctx.createOscillator(), og = ctx.createGain();
+      o.type = w; o.frequency.value = freq * m; og.gain.value = amp;
+      o.connect(og).connect(lp); o.start(t0); o.stop(t0 + dur + 0.05);
+    });
+  }
+  // Sitar: a bright pluck that keeps ringing (slow fade), with the buzzing upper partials of the bridge.
+  function sitar(freq, t0, dur, gain) {
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(gain * 0.8, t0 + 0.006);
+    g.gain.exponentialRampToValueAtTime(gain * 0.45, t0 + 0.5);
+    g.gain.exponentialRampToValueAtTime(gain * 0.3, Math.max(t0 + 0.6, t0 + dur - 0.3));
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    g.connect(ctx.destination);
+    [1, 2, 3, 4, 5, 6, 7].forEach((k, i) => {
+      const o = ctx.createOscillator(), og = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = freq * k * (1 + 0.0007 * k * k); // slightly stretched, like a real string
+      og.gain.setValueAtTime([1, 0.75, 0.6, 0.5, 0.4, 0.3, 0.25][i], t0);
+      og.gain.exponentialRampToValueAtTime([1, 0.75, 0.6, 0.5, 0.4, 0.3, 0.25][i] * (i > 2 ? 0.25 : 0.7), t0 + 0.8); // the buzz dies away first
+      o.connect(og).connect(g); o.start(t0); o.stop(t0 + dur + 0.05);
+    });
+  }
+  // Guitar: a plucked string, bright at first, then mellow.
+  function guitar(freq, t0, dur, gain) {
+    const g = ctx.createGain(), lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.Q.value = 1;
+    lp.frequency.setValueAtTime(Math.min(5000, freq * 12), t0);
+    lp.frequency.exponentialRampToValueAtTime(Math.max(500, freq * 2), t0 + 0.7);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(gain, t0 + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    lp.connect(g).connect(ctx.destination);
+    [[1, 'sawtooth', 0.6], [1.002, 'triangle', 0.4]].forEach(([m, w, amp]) => {
+      const o = ctx.createOscillator(), og = ctx.createGain();
+      o.type = w; o.frequency.value = freq * m; og.gain.value = amp;
+      o.connect(og).connect(lp); o.start(t0); o.stop(t0 + dur + 0.05);
+    });
+  }
+  const voices = { harmonium, sitar, keyboard: key, guitar };
+  const SUSTAIN_S = 3.4;
+
+  // A single note in the chosen instrument. Sustained instruments hold it; the others ring and fade.
+  const note = (midi, secs) => {
+    const inst = getInstrument();
+    const dur = secs ?? (inst === 'harmonium' || inst === 'sitar' ? SUSTAIN_S : inst === 'guitar' ? 2.6 : 2.2);
+    voices[inst](freqOfMidi(midi), ctx.currentTime + 0.05, dur, inst === 'keyboard' ? 0.22 : 0.24);
+    return dur * 1000;
+  };
+  // A chord. Guitar strums all its notes; the others play the first note only, as one clear key to sing from.
   const chord = (root, quality, secs = 3) => {
+    const inst = getInstrument();
+    if (inst !== 'guitar') return note(root, inst === 'keyboard' ? Math.min(secs, 2.6) : secs ?? SUSTAIN_S);
     const t0 = ctx.currentTime + 0.05;
-    CHORDS[quality].forEach((s) => tone(freqOfMidi(root + s), t0, secs, 0.17));
-    tone(freqOfMidi(root - 12), t0, secs, 0.12); // the root an octave lower, to anchor it
+    [root - 12, ...CHORDS[quality].map((s) => root + s)].forEach((m, i) => guitar(freqOfMidi(m), t0 + i * 0.05, secs, i === 0 ? 0.16 : 0.15));
     return secs * 1000;
   };
-  const note = (midi, secs = 2) => { tone(freqOfMidi(midi), ctx.currentTime + 0.05, secs, 0.22); return secs * 1000; };
   const melody = (midis, each = 0.8) => {
+    const inst = getInstrument();
     const t0 = ctx.currentTime + 0.05;
-    midis.forEach((m, i) => tone(freqOfMidi(m), t0 + i * each, each - 0.02, 0.22));
+    midis.forEach((m, i) => voices[inst](freqOfMidi(m), t0 + i * each, Math.max(each - 0.02, 0.2), 0.22));
     return midis.length * each * 1000 + 200;
   };
   // What the phone plays for a game challenge. Returns how many milliseconds it lasts.

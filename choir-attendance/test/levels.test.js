@@ -74,19 +74,23 @@ test('a note counts after the hold time, only inside the margin', () => {
   tr = makeTracker(ch);
   assert.equal(feedFor(tr, 0, 600, 60.25).done, true);
   tr = makeTracker(ch); // wobbling out of range resets the hold
-  feedFor(tr, 0, 300, 60); feedFor(tr, 316, 400, 63); 
-  assert.equal(feedFor(tr, 416, 800, 60).done, false);
+  feedFor(tr, 0, 300, 60); feedFor(tr, 316, 800, 63); // half a second on the wrong note
+  assert.equal(feedFor(tr, 816, 1200, 60).done, false);
+  assert.equal(feedFor(tr, 1216, 1900, 60).done, true);
+  tr = makeTracker(ch); // a 0.1 second slip is forgiven
+  feedFor(tr, 0, 300, 60); feedFor(tr, 316, 400, 63);
+  assert.equal(feedFor(tr, 416, 800, 60).done, true);
 });
 
 test('a melody must be sung in order, and a repeated note needs a gap', () => {
   const ch = { targets: [0, 2, 2], tol: 30, hold: 300 };
   const tr = makeTracker(ch);
   assert.equal(feedFor(tr, 0, 350, 62).step, 0, 'D first does not count');
-  assert.equal(feedFor(tr, 366, 700, 60).step, 1);
-  assert.equal(feedFor(tr, 716, 1100, 62).step, 2);
-  assert.equal(feedFor(tr, 1116, 2000, 62).done, false, 'holding D longer does not repeat the note');
-  feedFor(tr, 2016, 2200, null);
-  assert.equal(feedFor(tr, 2216, 2600, 62).done, true);
+  assert.equal(feedFor(tr, 366, 900, 60).step, 1);
+  assert.equal(feedFor(tr, 916, 1500, 62).step, 2);
+  assert.equal(feedFor(tr, 1516, 2400, 62).done, false, 'holding D longer does not repeat the note');
+  feedFor(tr, 2416, 2800, null); // a breath between the two Ds
+  assert.equal(feedFor(tr, 2816, 3700, 62).done, true);
 });
 
 test('a long steady hold needs the whole time', () => {
@@ -95,9 +99,12 @@ test('a long steady hold needs the whole time', () => {
   assert.equal(feedFor(tr, 0, 2900, 67).done, false);
   assert.equal(feedFor(tr, 2916, 3100, 67).done, true);
   const wobbly = makeTracker(ch);
-  feedFor(wobbly, 0, 2000, 67); feedFor(wobbly, 2016, 2100, 67.3);
-  assert.equal(feedFor(wobbly, 2116, 4500, 67).done, false);
-  assert.equal(feedFor(wobbly, 4516, 5200, 67).done, true);
+  feedFor(wobbly, 0, 2000, 67); feedFor(wobbly, 2016, 2500, 67.4); // half a second clearly off the note: start again
+  assert.equal(feedFor(wobbly, 2516, 5000, 67).done, false);
+  assert.equal(feedFor(wobbly, 5016, 6500, 67).done, true);
+  const brief = makeTracker(ch);
+  feedFor(brief, 0, 2000, 67); feedFor(brief, 2016, 2100, 67.4); // a 0.1 s slip is forgiven
+  assert.equal(feedFor(brief, 2116, 3200, 67).done, true);
 });
 
 test('three stages per level: shorter and gentler first, the full level last', () => {
