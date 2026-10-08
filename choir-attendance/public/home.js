@@ -1,5 +1,5 @@
 // The parent home screen: next practice, practice days (with the child's attendance), and the child's remarks.
-import { esc, fmtPts, fmtDate, avatarHtml, isGood } from './common.js';
+import { esc, fmtPts, fmtDate, avatarHtml, isGood, remarkLabel } from './common.js';
 
 export const fmtTime = (hhmm) => {
   const [h, m] = hhmm.split(':').map(Number);
@@ -99,7 +99,7 @@ export function remarksFoldHtml(me, open = false) {
       </summary>
       ${rows.map((h) => `
         <div class="remark"><div class="rd">${esc(fmtDate(h.date))}${net(h) ? ` <span class="muted">· ${net(h) > 0 ? '+' : '−'}${fmtPts(Math.abs(net(h)))}</span>` : ''}</div>
-          <div>${h.remarks.map((r) => `<span class="badge ${isGood(r) ? 'ok' : 'warn'}">${esc(r)}</span>`).join(' ')}</div></div>`).join('')
+          <div>${h.remarks.map((r) => `<span class="badge ${isGood(r) ? 'ok' : 'warn'}">${esc(remarkLabel(r))}</span>`).join(' ')}</div></div>`).join('')
         || '<div class="muted" style="margin-top:12px">No remarks yet. They appear here after practices.</div>'}
       <div class="muted" style="margin-top:12px">Only you can see these.</div>
     </details>`;

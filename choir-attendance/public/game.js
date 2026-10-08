@@ -284,7 +284,7 @@ export function mountGame(host, { code = '', preview = false, teacher = false, x
         ${out?.already ? '<div class="muted">Your first try today is the one that counts.</div>' : ''}
         ${newB.length ? `<div class="gm-new">New badge${newB.length > 1 ? 's' : ''}: ${newB.map((b) => `${b.emoji} ${esc(b.name)}`).join(', ')}</div>` : ''}
         ${nextStage ? `<button class="btn primary" data-play="${nextStage}" data-lvl="${lvId}">▶ Next: Stage ${nextStage}</button>` : ''}
-        ${kind !== 'daily' && !sc.pass ? `<button class="btn primary" data-play="${stage}" data-lvl="${lvId}">🔁 Try again</button><button class="btn" data-a="warm">🔥 Warm up first</button>` : ''}
+        ${kind !== 'daily' ? `<button class="btn${sc.pass ? '' : ' primary'}" data-play="${stage}" data-lvl="${lvId}">🔁 ${sc.pass ? 'Retry' : 'Try again'}</button>${sc.pass ? '' : '<button class="btn" data-a="warm">🔥 Warm up first</button>'}` : ''}
         <button class="btn" data-a="${kind === 'daily' ? 'home' : 'toLevel'}" data-lvl="${lvId}">Back</button>
       </div>`;
   }

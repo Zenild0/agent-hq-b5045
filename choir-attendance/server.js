@@ -5,7 +5,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  REMARKS, STATUSES, EXCUSE_REASONS, TYPES, EVENTS, OCCASION_TYPES, isValidDate, defaultType, seasonOf, seasonRange,
+  REMARKS, isValidRemark, STATUSES, EXCUSE_REASONS, TYPES, EVENTS, OCCASION_TYPES, isValidDate, defaultType, seasonOf, seasonRange,
   seasonLabel, prizeInfo, firstSeason, childStats, scoreboard, monthRange, monthLabel, pointsFor,
   isLeave, remarkDeduction, remarkBonus, sessionKey, photoUrl, headUrl, monthlyAchievers, yearlyAchievers, occasions, seasonsWithData,
   compareNames, findOccasion, slug,
@@ -532,7 +532,7 @@ function mark(body) {
   }
   const status = body.status ?? null;
   if (status !== null && !STATUSES.includes(status)) throw new HttpError(400, 'Invalid status');
-  const remarks = Array.isArray(body.remarks) ? body.remarks.filter((r) => REMARKS.includes(r)) : [];
+  const remarks = Array.isArray(body.remarks) ? body.remarks.filter((r) => isValidRemark(r)).slice(0, 12) : [];
   const reason = status === 'excused' && EXCUSE_REASONS.includes(body.reason) ? body.reason : '';
   const note = typeof body.note === 'string' ? body.note.trim().slice(0, 500) : '';
   const sess = getOrCreateSession(body.date, body.type, event);

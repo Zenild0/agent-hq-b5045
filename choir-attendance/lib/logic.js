@@ -70,6 +70,11 @@ export const compareNames = (a, b) => a.name.localeCompare(b.name, undefined, { 
 export const GOOD_REMARKS = ['Well behaved', 'Helped others'];
 export const NEGATIVE_REMARKS = REMARKS.filter((r) => !GOOD_REMARKS.includes(r));
 
+// A free comment is stored as "+ text" (positive) or "- text" (negative) in the same list as the fixed remarks.
+export const CUSTOM_REMARK = /^[+-] \S.{0,79}$/;
+export const isGoodRemark = (r) => GOOD_REMARKS.includes(r) || (typeof r === 'string' && r.startsWith('+ '));
+export const isValidRemark = (r) => REMARKS.includes(r) || CUSTOM_REMARK.test(r);
+
 export const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 // One session per date+type; feast sessions are also keyed by occasion.
@@ -131,13 +136,13 @@ const BASE_POINTS = { saturday: 'satPoints', sunday: 'sunPoints', practice: 'pra
 // one flat penalty per session, however many negative remarks were given.
 export function remarkDeduction(entry, settings) {
   if (!entry || entry.status !== 'present') return 0;
-  return (entry.remarks ?? []).some((r) => NEGATIVE_REMARKS.includes(r)) ? (settings.remarkPenalty ?? 0) : 0;
+  return (entry.remarks ?? []).some((r) => !isGoodRemark(r)) ? (settings.remarkPenalty ?? 0) : 0;
 }
 
 // Points gained from positive remarks (Well behaved, Helped others): each one adds remarkBonus.
 export function remarkBonus(entry, settings) {
   if (!entry || entry.status !== 'present') return 0;
-  return (entry.remarks ?? []).filter((r) => GOOD_REMARKS.includes(r)).length * (settings.remarkBonus ?? 0);
+  return (entry.remarks ?? []).filter(isGoodRemark).length * (settings.remarkBonus ?? 0);
 }
 
 // Base points + positive-remark bonus - the (single) negative-remark penalty; never below 0 for one session.
@@ -314,8 +319,8 @@ export function occasions(db, season) {
           cells: entries.map((e) => e?.status ?? null),
           points: list.reduce((sum, s) => sum + pointsFor(s.entries[c.id], s.type, db.settings), 0),
           attended: entries.filter((e) => e?.status === 'present').length,
-          good: remarks.filter((r) => GOOD_REMARKS.includes(r)).length,
-          concerns: remarks.filter((r) => !GOOD_REMARKS.includes(r)).length,
+          good: remarks.filter(isGoodRemark).length,
+          concerns: remarks.filter((r) => !isGoodRemark(r)).length,
         };
       })
       .sort(compareNames);

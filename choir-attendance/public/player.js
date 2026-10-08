@@ -29,7 +29,7 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
       <button class="btn" data-x="chord" disabled hidden>🎹 Hear the chord</button>
       <button class="btn" data-x="hint" disabled>🎶 Singer hint</button>
       <button class="btn" data-x="pause" disabled aria-pressed="false">⏸ Pause sound</button>
-      ${untimed ? `<button class="btn" data-x="prev">◀ Back</button><button class="btn" data-x="next">Next ▶</button>
+      ${untimed ? `<button class="btn" data-x="retry" disabled>🔁 Retry</button><button class="btn" data-x="prev">◀ Back</button><button class="btn" data-x="skip" disabled>Skip ▶</button>
       <button class="btn pl-skip" data-x="finish">✔ Finish round</button>`
     : '<button class="btn pl-skip" data-x="skip" disabled>⏭ Skip this note</button>'}
     </div>
@@ -55,18 +55,25 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
   };
   const slots = (n, done) => Array.from({ length: n }, (_, i) => (i < done ? '●' : '○')).join('');
   const allWon = () => notes.every((n) => n.won);
+  // The note after this one, or the first one still to do; -1 when there is none.
+  const nextOpen = () => (idx < deck.length - 1 ? idx + 1 : notes.findIndex((n, i) => !n.won && i !== idx));
 
   function render(stepDone = 0) {
     const n = notes[idx];
     const label = phase === 'done' ? '✔ Finish' : cur?.silent && untimed ? (n?.won ? '✓ Done' : phase === 'listening' ? '🔊 Hear the note' : '🎤 Start') : untimed ? (n?.won ? '✓ Done' : '▶ Play') : phase === 'reveal' ? '➡ Next' : '▶ Play';
     if (X('go').textContent !== label) X('go').textContent = label;
-    X('go').disabled = phase === 'playing' || (untimed && n?.won && phase !== 'done');
+    X('go').disabled = phase === 'playing';
     X('hint').disabled = phase !== 'listening';
     X('chord').hidden = !(cur?.play?.type === 'chord');
     X('chord').disabled = phase !== 'listening';
     X('pause').disabled = phase !== 'playing' && phase !== 'listening';
     if (!untimed) X('skip').disabled = phase !== 'listening';
-    else { X('prev').disabled = idx === 0 || phase === 'done'; X('next').disabled = idx >= deck.length - 1 || phase === 'done'; X('finish').disabled = phase === 'playing'; }
+    else {
+      X('prev').disabled = idx === 0 || phase === 'done' || phase === 'playing';
+      X('retry').disabled = phase === 'playing' || !(n?.won || n?.tried || phase === 'listening');
+      X('skip').disabled = phase === 'playing' || phase === 'done' || Boolean(n?.won) || nextOpen() < 0; // Done moves on after a win, so Skip is only for a note you cannot sing yet
+      X('finish').disabled = phase === 'playing';
+    }
     setText('no', phase === 'done' ? 'All done' : `Note ${Math.min(idx + 1, deck.length)} of ${deck.length}`);
     setText('streak', streak > 1 ? `🔥 ${streak} in a row` : ' ');
     setText('ringLab', phase === 'listening' ? 'You are singing' : phase === 'playing' ? 'Listen' : 'Ready');
@@ -88,15 +95,23 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
     if (phase === 'reveal') { phase = 'ready'; cur = deck[idx]; setMsg('Ready? Press Play.'); render(); return; }
     if (phase === 'listening') return replay('again'); // Play again simply plays the sound again
     if (phase !== 'ready') return;
-    if (untimed && notes[idx].won) return;
+    if (untimed && notes[idx].won) { const to = nextOpen(); if (to >= 0) goTo(to); else finishRound(); return; } // Done goes straight on
     if (!micReady) {
       if (starting) return; // a second tap while the microphone permission is pending must not start a second chord
       starting = true;
       try { await audio.enableMic(); micReady = true; loop(); } catch (e) { setMsg(micMessage(e)); return; } finally { starting = false; }
+      // Phones often switch the sound off while the permission box is open. Wake it up, give it a moment to settle,
+      // and if it will not wake, say so (the next tap is a fresh tap, which always works) instead of staying silent.
+      await audio.ensure();
+      await new Promise((r) => setTimeout(r, 300));
+      await audio.ensure();
+      if (dead || phase !== 'ready') return;
+      if (audio.ctx.state !== 'running') { setMsg('🎤 Microphone is ready. Tap Play to hear the note.'); return; }
     }
     if (dead || phase !== 'ready') return;
     await audio.ensure();
     if (dead || phase !== 'ready') return;
+    if (audio.ctx.state !== 'running') { setMsg('The sound is switched off. Tap Play again.'); return; }
     phase = 'playing'; recent = []; lastMidi = null; errSum = errN = 0; stepErrs = []; cur = deck[idx];
     setMsg('🎹 Listen carefully…');
     setPaused(false);
@@ -156,7 +171,7 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
     tracker = null;
     if (untimed) {
       phase = allWon() ? 'done' : 'ready';
-      setMsg(won ? `🎉 ${cur.noteName ? `That was ${cur.noteName}. ` : ''}Got it! ${(n.ms / 1000).toFixed(1)} s${phase === 'ready' ? ' Use Next ▶ for the next note' : ''}` : 'Skipped', won ? 'ok' : '');
+      setMsg(won ? `🎉 ${cur.noteName ? `That was ${cur.noteName}. ` : ''}Got it! ${(n.ms / 1000).toFixed(1)} s${phase === 'ready' ? ' Tap Done to go on' : ''}` : 'Skipped', won ? 'ok' : '');
       if (phase === 'done') X('fine').textContent = `All ${deck.length} matched · ${(totalMs(now) / 1000).toFixed(1)} s`;
     } else {
       const name = cur.targets.map((t) => NAMES[t]).join(' ');
@@ -166,6 +181,16 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
       if (phase === 'done') X('fine').textContent = `${notes.filter((x) => x.won).length} of ${deck.length} matched · ${(totalMs(now) / 1000).toFixed(1)} s`;
     }
     dots(); render();
+  }
+
+  // Sing this note again from scratch (a note already matched, or one still being tried).
+  function retry() {
+    if (!untimed || phase === 'playing') return;
+    leaveNote(performance.now());
+    Object.assign(notes[idx], { won: false, ms: 0, err: null, tried: false });
+    X('fine').textContent = ' ';
+    dots(); noteStatus(); render();
+    go();
   }
 
   function finishRound() {
@@ -221,7 +246,8 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
   X('exit').addEventListener('click', () => { destroy(); onExit?.(); });
   if (untimed) {
     X('prev').addEventListener('click', () => goTo(idx - 1));
-    X('next').addEventListener('click', () => goTo(idx + 1));
+    X('skip').addEventListener('click', () => { const to = nextOpen(); if (to >= 0) goTo(to); });
+    X('retry').addEventListener('click', retry);
     X('finish').addEventListener('click', finishRound);
     X('dots').addEventListener('click', (e) => { const d = e.target.closest('[data-i]'); if (d) goTo(Number(d.dataset.i)); });
   } else X('skip').addEventListener('click', () => { if (phase === 'listening') finishNote(false, performance.now()); });

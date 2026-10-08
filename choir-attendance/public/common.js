@@ -165,7 +165,9 @@ export function leaveBadge(leaves, max, exceeded) {
   return `<span class="badge ${cls}">${leaves}/${max} leaves</span>`;
 }
 
-export const isGood = (r) => r === 'Well behaved' || r === 'Helped others';
+export const isGood = (r) => r === 'Well behaved' || r === 'Helped others' || r.startsWith('+ ');
+// A free comment ("+ text" / "- text") is shown with a plus or minus sign.
+export const remarkLabel = (r) => (/^[+-] /.test(r) ? `${r[0] === '+' ? '＋' : '−'} ${r.slice(2)}` : r);
 
 const statusLabel = (h) => (h.status === 'excused' ? `Excused – ${h.reason ? h.reason.toLowerCase() : 'medical'}` : h.status === 'present' ? 'Present' : 'Absent');
 
@@ -175,7 +177,7 @@ export function historyHtml(history) {
     <tr>
       <td>${fmtDate(h.date)}<div class="muted">${esc(typeLabel(h.type, h.event))}</div></td>
       <td><span class="badge ${h.status === 'present' ? 'ok' : h.status === 'absent' ? 'bad' : 'info'}">${esc(statusLabel(h))}</span>
-        ${h.remarks.map((r) => `<span class="badge ${isGood(r) ? 'ok' : 'warn'}">${esc(r)}</span>`).join(' ')}
+        ${h.remarks.map((r) => `<span class="badge ${isGood(r) ? 'ok' : 'warn'}">${esc(remarkLabel(r))}</span>`).join(' ')}
         ${h.note ? `<div class="muted">📝 ${esc(h.note)}</div>` : ''}</td>
       <td class="num">${h.points ? `+${fmtPts(h.points)}` : '0'}${h.bonus ? `<div class="muted">+${fmtPts(h.bonus)} good remarks</div>` : ''}${h.deduction ? `<div class="muted">−${fmtPts(h.deduction)} for remarks</div>` : ''}</td>
     </tr>`).join('')}</tbody></table>`;
@@ -223,7 +225,7 @@ export function remarksLogHtml(log) {
     ${log.map((x) => `
       <div class="rlog">
         <div class="row between"><b>${fmtDate(x.date)}</b><span class="muted">${esc(typeLabel(x.type, x.event))}${x.status === 'absent' ? ' · absent' : x.status === 'excused' ? ' · medical' : ''}</span></div>
-        <div>${x.remarks.map((r) => `<span class="badge ${isGood(r) ? 'ok' : 'warn'}">${esc(r)}</span>`).join(' ')}${x.bonus ? ` <span class="badge ok">+${fmtPts(x.bonus)}</span>` : ''}${x.deduction ? ` <span class="badge bad">−${fmtPts(x.deduction)}</span>` : ''}</div>
+        <div>${x.remarks.map((r) => `<span class="badge ${isGood(r) ? 'ok' : 'warn'}">${esc(remarkLabel(r))}</span>`).join(' ')}${x.bonus ? ` <span class="badge ok">+${fmtPts(x.bonus)}</span>` : ''}${x.deduction ? ` <span class="badge bad">−${fmtPts(x.deduction)}</span>` : ''}</div>
         ${x.note ? `<div class="muted">📝 ${esc(x.note)}</div>` : ''}
       </div>`).join('')}`;
 }

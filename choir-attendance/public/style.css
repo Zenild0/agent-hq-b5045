@@ -758,3 +758,9 @@ html[data-theme=dark] .xp-chip.title { background: #C8FF3D; border-color: #C8FF3
 .ibtn:hover, .ibtn:focus-visible { background: rgba(128,128,128,.15); }
 .hnote { font-weight: 400; font-size: .85em; }
 .hline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+
+.sgn { font-weight: 800; }
+.sgn.pos { color: #16a34a; } .sgn.neg { color: #dc2626; }
+.chk .sgn { display: inline-block; width: 1.1em; text-align: center; margin-right: 4px; }
+.cin { flex: 1; min-width: 0; }
+.cchip .x { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 0 2px; font-size: .9em; }

@@ -7,7 +7,7 @@ configure({ key: 'choir-theme-teacher', lens: false }); // the teacher area keep
 applyLook();
 import { waLink,
   $, api, esc, fmtPts, fmtDate, typeLabel, headerHtml, footerHtml, avatarHtml, leaveBadge,
-  renderBoard, statsHtml, historyHtml, leaveAlertHtml, remarksLogHtml, openHymnViewer,
+  renderBoard, remarkLabel, isGood, statsHtml, historyHtml, leaveAlertHtml, remarksLogHtml, openHymnViewer,
 } from './common.js';
 
 let pin = '';
@@ -423,7 +423,13 @@ function extraHtml(c) {
       ${c.status === 'excused' ? `<label class="field">Medical reason
         <select class="reason"><option value="">Optional</option>${view.excuseReasons.map((r) => `<option${c.reason === r ? ' selected' : ''}>${esc(r)}</option>`).join('')}</select></label>
         <div class="muted">Medical leave never counts as a leave.</div>` : ''}
-      <div class="chk-grid">${view.remarkOptions.map((r) => `<label class="chk"><input type="checkbox" value="${esc(r)}"${c.remarks.includes(r) ? ' checked' : ''}> ${esc(r)}</label>`).join('')}</div>
+      <div class="chk-grid">${view.remarkOptions.map((r) => `<label class="chk"><input type="checkbox" value="${esc(r)}"${c.remarks.includes(r) ? ' checked' : ''}> <span class="sgn ${isGood(r) ? 'pos' : 'neg'}">${isGood(r) ? '＋' : '−'}</span>${esc(r)}</label>`).join('')}</div>
+      <div class="custom-rem">
+        ${c.remarks.filter((r) => !view.remarkOptions.includes(r)).map((r) => `<span class="badge ${isGood(r) ? 'ok' : 'warn'} cchip">${esc(remarkLabel(r))} <button type="button" class="x" data-rmcustom="${esc(r)}" aria-label="Remove">✕</button></span>`).join(' ')}
+        <div class="row" style="gap:6px;margin-top:6px"><input class="cin" maxlength="78" placeholder="Write your own remark…" aria-label="Your own remark">
+          <button type="button" class="ibtn sgn pos" data-addcustom="+" title="Add as positive" aria-label="Add as positive">＋</button>
+          <button type="button" class="ibtn sgn neg" data-addcustom="-" title="Add as negative" aria-label="Add as negative">−</button></div>
+      </div>
       <textarea rows="2" maxlength="500" placeholder="Private note (parents can't see this)">${esc(c.note)}</textarea>
     </div>`;
 }
@@ -478,8 +484,21 @@ function wireRow(el) {
     replaceRow(el, c);
   });
   $('.reason', el)?.addEventListener('change', (e) => { c.reason = e.target.value; save(); });
-  el.querySelectorAll('input[type=checkbox]').forEach((i) => i.addEventListener('change', () => {
-    c.remarks = [...el.querySelectorAll('input[type=checkbox]:checked')].map((x) => x.value);
+  el.querySelectorAll('.chk-grid input[type=checkbox]').forEach((i) => i.addEventListener('change', () => {
+    const own = c.remarks.filter((r) => !view.remarkOptions.includes(r)); // keep the free comments
+    c.remarks = [...[...el.querySelectorAll('.chk-grid input:checked')].map((x) => x.value), ...own];
+    save();
+  }));
+  el.querySelectorAll('[data-addcustom]').forEach((b) => b.addEventListener('click', () => {
+    const text = $('.cin', el).value.trim().replace(/\s+/g, ' ');
+    if (!text) { $('.cin', el).focus(); return; }
+    const r = `${b.dataset.addcustom} ${text}`;
+    if (!c.remarks.includes(r)) c.remarks = [...c.remarks, r];
+    save();
+  }));
+  $('.cin', el)?.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
+  el.querySelectorAll('[data-rmcustom]').forEach((b) => b.addEventListener('click', () => {
+    c.remarks = c.remarks.filter((r) => r !== b.dataset.rmcustom);
     save();
   }));
   $('textarea', el)?.addEventListener('change', (e) => { c.note = e.target.value; save(); });
