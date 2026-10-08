@@ -21,7 +21,7 @@ export async function openAudio() {
   };
   a.enableMic = async () => {
     if (a.stream) return;
-    a.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: true } });
+    a.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true } });
     a.analyser = ctx.createAnalyser(); a.analyser.fftSize = 4096;
     ctx.createMediaStreamSource(a.stream).connect(a.analyser);
     a.buf = new Float32Array(a.analyser.fftSize);
@@ -64,9 +64,13 @@ export function setInstrument(id) { try { localStorage.setItem('choir-instrument
 function makeSound(ctx) {
   const sr = ctx.sampleRate;
   const state = { shift: rangeShift() }; // octaves moved for 'My voice'; the staff warm-up sets it to 0
+  // Everything goes through one gentle limiter, so several keys or a strummed chord can never push the sound past
+  // full scale (that is what sounds like crackle or distortion on a phone speaker).
   const master = ctx.createGain();
-  master.gain.value = 0.9;
-  master.connect(ctx.destination);
+  master.gain.value = 0.8;
+  const limiter = ctx.createDynamicsCompressor();
+  limiter.threshold.value = -9; limiter.knee.value = 10; limiter.ratio.value = 12; limiter.attack.value = 0.003; limiter.release.value = 0.15;
+  master.connect(limiter).connect(ctx.destination);
   // a gentle hall, made from decaying noise, so the instruments sound like they are in a room
   const ir = ctx.createBuffer(2, Math.floor(sr * 1.8), sr);
   for (let c = 0; c < 2; c++) {
@@ -157,7 +161,7 @@ function makeSound(ctx) {
         const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = q;
         const bg = ctx.createGain(); bg.gain.value = amp; o.connect(bp).connect(bg).connect(out);
       });
-      out.connect(ctx.destination); o.start(s); lfo.start(s); o.stop(s + each + 0.05); lfo.stop(s + each + 0.05);
+      out.connect(master); o.start(s); lfo.start(s); o.stop(s + each + 0.05); lfo.stop(s + each + 0.05);
     });
     return 3000;
   };
@@ -167,7 +171,7 @@ function makeSound(ctx) {
       const o = ctx.createOscillator(), g = ctx.createGain();
       o.type = 'sine'; o.frequency.value = freqOfMidi(m);
       g.gain.setValueAtTime(0.0001, t0 + i * 0.09); g.gain.exponentialRampToValueAtTime(0.16, t0 + i * 0.09 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + i * 0.09 + 0.35);
-      o.connect(g).connect(ctx.destination); o.start(t0 + i * 0.09); o.stop(t0 + i * 0.09 + 0.4);
+      o.connect(g).connect(master); o.start(t0 + i * 0.09); o.stop(t0 + i * 0.09 + 0.4);
     });
     if (ok) navigator.vibrate?.(60);
   };

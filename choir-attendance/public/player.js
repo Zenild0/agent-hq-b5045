@@ -7,7 +7,7 @@ import { NAMES, makeTracker, UNTIMED_CAP_MS } from './levels.js';
 import { micMessage } from './audio.js';
 import { staffSvg } from './staff.js';
 
-const GAP_MS = 400;
+const GAP_MS = 550; // silence after a sound before listening (the microphone no longer cancels echo, so the room tail must die away first)
 
 export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }) {
   const untimed = !deck[0]?.timed;
