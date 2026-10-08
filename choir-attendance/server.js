@@ -1,0 +1,1393 @@
+import { createServer } from 'node:http';
+import { readFile, writeFile, mkdir, rm, stat } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import {
+  REMARKS, isValidRemark, STATUSES, EXCUSE_REASONS, TYPES, EVENTS, OCCASION_TYPES, isValidDate, defaultType, seasonOf, seasonRange,
+  seasonLabel, prizeInfo, firstSeason, childStats, scoreboard, monthRange, monthLabel, pointsFor,
+  isLeave, remarkDeduction, remarkBonus, sessionKey, photoUrl, headUrl, monthlyAchievers, yearlyAchievers, occasions, seasonsWithData,
+  compareNames, findOccasion, slug,
+} from './lib/logic.js';
+import { openStore, newCode } from './lib/store.js';
+import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, setPaid, resetWarmups, resetAllWarmups, isPaid, hasFull, trialOf, startTrial, TRIAL_DAYS, paidUntilOf, daysLeft, wasPaid, warmupsLeft, useWarmup, GameError, PaywallError } from './lib/game.js';
+import { LEVELS, DAILY_COUNT, STAGES, stageSpec, isTimed } from './public/levels.js';
+import { istNow, isDate, isTime, scheduleDays, nextPractice, shiftDate, rulesOf } from './lib/schedule.js';
+import { createTar, readTar } from './lib/tar.js';
+import { fetchPageText, PageError } from './lib/webpage.js';
+import { emptyXp, recordXp, weekXpOf, buildBoard } from './lib/xpboard.js';
+
+const here = fileURLToPath(new URL('.', import.meta.url));
+const PUBLIC = resolve(here, 'public');
+const DATA_FILE = process.env.CHOIR_DATA || join(here, 'data', 'db.json');
+const PHOTOS = join(dirname(DATA_FILE), 'photos');
+const PORT = Number(process.env.PORT) || 3000;
+const PIN_ENV = process.env.CHOIR_PIN || ''; // optional: lets the teacher in from other devices
+const store = openStore(DATA_FILE);
+
+const today = () => istDate(); // everything in the app runs on Indian time (the server itself keeps UTC)
+const MIME = {
+  '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript',
+  '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg',
+};
+
+class HttpError extends Error {
+  constructor(status, message) { super(message); this.status = status; }
+}
+
+const send = (res, status, body) => {
+  res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+  res.end(JSON.stringify(body));
+};
+
+async function readBody(req, limit = 100_000) {
+  let size = 0;
+  const chunks = [];
+  for await (const c of req) {
+    size += c.length;
+    if (size > limit) throw new HttpError(413, 'Request too large');
+    chunks.push(c);
+  }
+  if (!chunks.length) return {};
+  let body;
+  try { body = JSON.parse(Buffer.concat(chunks).toString()); } catch { throw new HttpError(400, 'Invalid JSON'); }
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'Please send a JSON object'); // null, a number or a list would crash the handlers
+  return body;
+}
+
+// The teacher area has no PIN: it simply opens only on the computer that runs the app.
+// Requests that arrive through a shared link, a proxy or the network are refused, so
+// children's details and parent codes can't be reached by anyone else.
+// (Optional: set CHOIR_PIN to also allow the teacher in from another device, with that PIN.)
+const pinFailures = new Map(); // ip -> { n, resetAt }
+function tooManyFailures(map, ip, limit) {
+  const f = map.get(ip);
+  return Boolean(f && f.resetAt > Date.now() && f.n >= limit);
+}
+function noteFailure(map, ip) {
+  const f = map.get(ip);
+  const cur = f && f.resetAt > Date.now() ? f : { n: 0, resetAt: Date.now() + 30 * 60_000 };
+  cur.n += 1;
+  map.set(ip, cur);
+}
+
+// When hosted behind a proxy (CHOIR_TRUST_PROXY=1), the real visitor is in X-Forwarded-For.
+const TRUST_HOPS = Number(process.env.CHOIR_TRUST_PROXY) || 0;
+function clientIp(req) {
+  if (TRUST_HOPS > 0) {
+    const parts = String(req.headers['x-forwarded-for'] || '').split(',').map((x) => x.trim()).filter(Boolean);
+    const ip = parts[parts.length - TRUST_HOPS];
+    if (ip) return ip;
+  }
+  return req.socket.remoteAddress || '?';
+}
+
+// Public mode (CHOIR_PUBLIC=1): use this whenever the app is shared through a tunnel or hosting.
+// The "this computer is the teacher" shortcut is switched off, so the teacher area always needs CHOIR_PIN.
+const PUBLIC_MODE = process.env.CHOIR_PUBLIC === '1';
+
+// Online, the PIN is the only thing between the internet and children's details: refuse weak ones.
+if (PUBLIC_MODE && PIN_ENV && PIN_ENV.length < 8) {
+  console.error('\nCHOIR_PIN is too short for online use. Choose 8 or more letters/digits.\n(If you use start-choir-online.bat, delete choir-pin.txt and run it again.)\n');
+  process.exit(1);
+}
+
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+function isLocal(req) {
+  if (PUBLIC_MODE) return false;
+  const host = String(req.headers.host || '').replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
+  const proxied = ['x-forwarded-for', 'x-forwarded-host', 'x-real-ip', 'forwarded', 'cf-connecting-ip'].some((h) => req.headers[h]);
+  return LOOPBACK.has(req.socket.remoteAddress) && ['localhost', '127.0.0.1', '::1'].includes(host) && !proxied;
+}
+
+function checkTeacher(req) {
+  if (isLocal(req)) return;
+  if (!PIN_ENV) throw new HttpError(403, 'The teacher area only opens on the computer where the app is running.');
+  const ip = clientIp(req);
+  if (tooManyFailures(pinFailures, ip, 10)) throw new HttpError(429, 'Too many wrong PINs. Please wait a few minutes.');
+  const a = Buffer.from(String(req.headers['x-pin'] ?? ''));
+  const b = Buffer.from(PIN_ENV);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    noteFailure(pinFailures, ip);
+    throw new HttpError(401, 'PIN required');
+  }
+}
+
+// ---- input cleaning ----------------------------------------------------
+
+const text = (v, max, label) => {
+  const s = typeof v === 'string' ? v.trim() : '';
+  if (s.length > max) throw new HttpError(400, `${label} is too long (max ${max} characters)`);
+  return s;
+};
+const phone = (v, label) => {
+  const s = text(v, 20, label);
+  if (!/^[0-9+()\-\s]*$/.test(s)) throw new HttpError(400, `${label} can only have digits, + ( ) - and spaces`);
+  return s;
+};
+const cleanName = (v) => {
+  const s = text(v, 80, 'Name').replace(/\s+/g, ' ');
+  if (!s) throw new HttpError(400, 'Name is required');
+  return s;
+};
+
+// Applies only the fields present in `body` onto `child`.
+function applyProfile(child, body, { teacher }) {
+  if (teacher) {
+    if ('name' in body) child.name = cleanName(body.name);
+    if ('standard' in body) child.standard = text(body.standard, 20, 'Standard');
+    if ('joinedYear' in body) {
+      const y = body.joinedYear === '' || body.joinedYear === null ? null : Number(body.joinedYear);
+      if (y !== null && (!Number.isInteger(y) || y < 1990 || y > 2100)) throw new HttpError(400, 'Year joined must be a 4-digit year');
+      child.joinedYear = y;
+    }
+  }
+  if ('contact' in body) child.contact = phone(body.contact, 'Contact number');
+  if ('address' in body) child.address = text(body.address, 300, 'Address');
+  if ('emergencyName' in body) child.emergencyName = text(body.emergencyName, 80, 'Parent name');
+  if ('emergencyPhone' in body) child.emergencyPhone = phone(body.emergencyPhone, 'Parent number');
+}
+
+const profileOf = (c) => ({
+  id: c.id, name: c.name, photo: photoUrl(c), head: headUrl(c), standard: c.standard, joinedYear: c.joinedYear,
+  contact: c.contact, address: c.address, emergencyName: c.emergencyName, emergencyPhone: c.emergencyPhone,
+});
+
+function seasonFromQuery(q) {
+  const s = q.get('season');
+  return s && /^\d{4}$/.test(s) ? Number(s) : seasonOf(today());
+}
+
+// ---- shared child detail (attendance history + stats) --------------------
+
+// Every remark / note given to a child, with its date (all years), newest first. Teacher only.
+function remarkLogFor(child) {
+  const { db } = store;
+  return Object.values(db.sessions)
+    .filter((s) => { const e = s.entries[child.id]; return e && (e.remarks?.length || e.note); })
+    .sort((a, b) => b.date.localeCompare(a.date) || b.type.localeCompare(a.type))
+    .map((s) => {
+      const e = s.entries[child.id];
+      return {
+        date: s.date, type: s.type, event: s.event, status: e.status, remarks: e.remarks || [], note: e.note || '',
+        deduction: remarkDeduction(e, db.settings), bonus: remarkBonus(e, db.settings),
+      };
+    });
+}
+
+// A special event's own leaderboard and attendance (for guests): only that event's sessions count, and it never
+// touches the main choir leaderboard.
+function eventViewsFor(child) {
+  const { db } = store;
+  const out = [];
+  for (const occ of db.occasions) {
+    if (!occ.members.includes(child.id)) continue;
+    const range = seasonRange(occ.season);
+    const sessions = Object.values(db.sessions).filter((s) => OCCASION_TYPES.includes(s.type) && slug(s.event) === slug(occ.name) && s.date >= range.start && s.date <= range.end);
+    const rows = occ.members.map((id) => db.children.find((c) => c.id === id)).filter(Boolean).map((c) => {
+      let points = 0, present = 0;
+      for (const sess of sessions) { const e = sess.entries[c.id]; if (e?.status === 'present') present += 1; points += pointsFor(e, sess.type, db.settings); }
+      return { id: c.id, name: c.name, photo: photoUrl(c), head: headUrl(c), points, present };
+    }).sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
+    let rank = 0;
+    rows.forEach((r, i) => { if (!(i && rows[i - 1].points === r.points)) rank += 1; r.rank = rank; });
+    const mine = rows.find((r) => r.id === child.id);
+    out.push({
+      id: occ.id, name: occ.name, season: occ.season, sessions: sessions.filter((x) => Object.values(x.entries).some((e) => e.status)).length,
+      board: rows.slice(0, 10), total: rows.length, me: mine ? { rank: mine.rank, points: mine.points, present: mine.present } : null,
+      attendance: sessions.filter((x) => x.entries[child.id]?.status).sort((a, b) => b.date.localeCompare(a.date)).map((x) => ({ date: x.date, type: x.type, status: x.entries[child.id].status })),
+    });
+  }
+  return out;
+}
+
+function childDetail(child, season, { teacher = false } = {}) {
+  const { db } = store;
+  const range = seasonRange(season);
+  const history = Object.values(db.sessions)
+    .filter((s) => s.date >= range.start && s.date <= range.end && s.entries[child.id]?.status)
+    .sort((a, b) => b.date.localeCompare(a.date) || b.type.localeCompare(a.type))
+    .map((s) => {
+      const e = s.entries[child.id];
+      return {
+        date: s.date, type: s.type, event: s.event, status: e.status, reason: e.reason || '', remarks: e.remarks || [],
+        points: pointsFor(e, s.type, db.settings), deduction: remarkDeduction(e, db.settings), bonus: remarkBonus(e, db.settings), leave: isLeave(e, s.type, db.settings),
+        ...(teacher ? { note: e.note || '' } : {}),
+      };
+    });
+  const month = today().slice(0, 7);
+  const mr = monthRange(month);
+  const yearBoard = scoreboard(db, season, range.start, range.end, { hideOut: true });
+  const monthBoard = scoreboard(db, season, mr.start, mr.end, { hideOut: true });
+  return {
+    ...profileOf(child), season, seasonLabel: seasonLabel(season), settings: db.settings,
+    stats: childStats(db, child.id, season), history, guest: Boolean(child.guest), showSchedule: Boolean(child.showSchedule),
+    ...(child.guest ? { events: eventViewsFor(child) } : {}),
+    ...(teacher ? { remarkLog: remarkLogFor(child), ...gameAccess(child.id) } : {}),
+    yearRank: yearBoard.find((r) => r.id === child.id)?.rank ?? null, yearRanked: yearBoard.length,
+    monthPoints: monthBoard.find((r) => r.id === child.id)?.points ?? 0, // so a screen can show "this month" next to "this year"
+    monthRank: monthBoard.find((r) => r.id === child.id)?.rank ?? null, monthLabel: monthLabel(month),
+  };
+}
+
+// ---- public (leaderboard + achievers only: no private details) ------------
+
+
+// ---- practice schedule (Indian time) ---------------------------------------
+
+function scheduleView() {
+  const { schedule } = store.db;
+  const now = istNow();
+  const resolve = (d) => ({ ...d, note: d.note || schedule.note || '' });
+  const days = scheduleDays(schedule, shiftDate(now.date, -150), shiftDate(now.date, 200)).map(resolve);
+  const next = nextPractice(schedule, now);
+  return { today: now.date, next: next ? resolve(next) : null, days, usual: { rules: rulesOf(schedule), weekday: schedule.weekday, time: schedule.time, note: schedule.note, from: schedule.from } };
+}
+
+function updateSchedule(body) {
+  const sc = store.db.schedule;
+  if ('time' in body) { // older single-time form: changes the first regular practice
+    if (!isTime(body.time)) throw new HttpError(400, 'Time must look like 19:00');
+    sc.time = body.time;
+    const rules = rulesOf(sc);
+    if (rules.length) rules[0] = { ...rules[0], time: body.time };
+    sc.rules = rules;
+  }
+  if ('rules' in body) {
+    const list = Array.isArray(body.rules) ? body.rules : null;
+    if (!list || list.length > 7) throw new HttpError(400, 'Please send up to 7 regular practices');
+    const seen = new Set();
+    const rules = list.map((r) => {
+      if (!Number.isInteger(r?.weekday) || r.weekday < 0 || r.weekday > 6) throw new HttpError(400, 'Pick a day of the week');
+      if (!isTime(r.time)) throw new HttpError(400, 'Time must look like 19:00');
+      if (seen.has(r.weekday)) throw new HttpError(400, 'Each day of the week can appear once');
+      seen.add(r.weekday);
+      return { weekday: r.weekday, time: r.time };
+    }).sort((a, b) => ((a.weekday + 6) % 7) - ((b.weekday + 6) % 7)); // Monday first
+    sc.rules = rules;
+    if (rules.length) { sc.weekday = rules[0].weekday; sc.time = rules[0].time; }
+  }
+  if ('note' in body) sc.note = text(body.note ?? '', 140, 'Note');
+  store.save();
+}
+
+function setScheduleDay(body) {
+  if (!isDate(body.date)) throw new HttpError(400, 'Pick a valid date');
+  const sc = store.db.schedule;
+  const o = { ...(sc.days[body.date] || {}) };
+  if ('time' in body) { if (body.time === '' || body.time === null) delete o.time; else if (isTime(body.time)) o.time = body.time; else throw new HttpError(400, 'Time must look like 19:00'); }
+  if ('cancelled' in body) { if (body.cancelled) o.cancelled = true; else delete o.cancelled; }
+  if ('label' in body) { const l = text(body.label ?? '', 40, 'Name'); if (l) o.label = l; else delete o.label; }
+  if ('note' in body) { const n = text(body.note ?? '', 140, 'Note'); if (n) o.note = n; else delete o.note; }
+  if ('special' in body) { if (body.special) o.special = true; else delete o.special; }
+  if (o.special && !o.time) o.time = sc.time;
+  if (Object.keys(o).length) sc.days[body.date] = o; else delete sc.days[body.date];
+  store.save();
+}
+
+function removeScheduleDay(date) {
+  if (!isDate(date)) throw new HttpError(400, 'Pick a valid date');
+  delete store.db.schedule.days[date];
+  store.save();
+}
+
+
+// ---- singing game (scores only: no audio is ever sent or stored) -------------
+
+const GAME_GAP_MS = Number(process.env.CHOIR_GAME_GAP_MS ?? 8000);
+// What the teacher sees for one child: unlocked until when, or expired.
+function gameAccess(id) {
+  const kid = store.db.game.kids[id];
+  const today = istDate();
+  return { gamePaid: isPaid(kid, today), gamePaidUntil: paidUntilOf(kid), gameExpired: wasPaid(kid) && !isPaid(kid, today), warmupLeft: warmupsLeft(kid, today) ?? 3 };
+}
+// What a signed-in child (or guest) can use: the free trial, or the paid year. Opening the games starts the trial.
+function accessFor(child) {
+  const { db } = store;
+  const today = istDate();
+  const kid = (db.game.kids[child.id] ??= emptyKid());
+  const anyGame = db.settings.gameEnabled || db.settings.staffEnabled;
+  if (anyGame && startTrial(db.game, child.id, today, child.guest ? Number(process.env.CHOIR_TRIAL_GUEST_DAYS ?? TRIAL_DAYS.guest) : Number(process.env.CHOIR_TRIAL_DAYS ?? TRIAL_DAYS.member))) store.save();
+  const paid = isPaid(kid, today);
+  const left = daysLeft(kid, today);
+  return {
+    full: hasFull(kid, today), paid, paidUntil: paidUntilOf(kid), expired: wasPaid(kid) && !paid,
+    trial: trialOf(kid, today), guest: Boolean(child.guest),
+    pay: !paid || left <= 30 ? { price: db.settings.gamePrice, mobile: db.settings.gamePayMobile, upi: db.settings.gameUpi } : null,
+    games: { vocals: Boolean(db.settings.gameEnabled), notation: Boolean(db.settings.staffEnabled) },
+  };
+}
+const roundGate = new Map(); // child id -> { last, day, n } to stop floods
+// ---- training XP leaderboard (children with a paid year only; off until the teacher switches it on) ----
+const xpOf = (id) => store.db.game.kids[id]?.xp;
+function xpBoardFor(child) {
+  const { db } = store;
+  const today = istDate();
+  const enabled = Boolean(db.settings.trainingBoardEnabled);
+  const paid = isPaid(db.game.kids[child.id], today);
+  if (!enabled) return { enabled: false };
+  if (!paid) return { enabled: true, locked: true, price: db.settings.gamePrice };
+  const rows = db.children.filter((c) => c.active && !c.guest && isPaid(db.game.kids[c.id], today));
+  return { enabled: true, locked: false, ...buildBoard(xpOf, rows, today, child.id, (c) => ({ id: c.id, name: c.name, photo: photoUrl(c), head: headUrl(c) })) };
+}
+function xpReport(child, body) {
+  const { db } = store;
+  if (!db.settings.trainingBoardEnabled) return { enabled: false }; // nothing is kept while the board is off; the phone keeps its own XP and sends it later
+  const kid = (db.game.kids[child.id] ??= emptyKid());
+  kid.xp ??= emptyXp();
+  const accepted = recordXp(kid.xp, body, istDate());
+  if (accepted) store.save();
+  return { enabled: true, accepted, total: kid.xp.total };
+}
+// What the teacher sees: who has been practising.
+function practiceReport() {
+  const { db } = store;
+  const today = istDate();
+  const rows = db.children.filter((c) => c.active && !c.guest).map((c) => {
+    const x = xpOf(c.id);
+    return { id: c.id, name: c.name, week: weekXpOf(x, today), total: x?.total ?? 0, streak: x?.streak ?? 0, units: x?.units ?? 0, last: x?.updated ?? '', paid: isPaid(db.game.kids[c.id], today) };
+  }).sort((a, b) => b.week - a.week || b.total - a.total || a.name.localeCompare(b.name));
+  const quiet = rows.filter((r) => !r.last || (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${r.last}T00:00:00Z`)) / 86400000 >= 7);
+  return { enabled: Boolean(db.settings.trainingBoardEnabled), practised: rows.filter((r) => r.week > 0).length, total: rows.length, bestStreak: Math.max(0, ...rows.map((r) => r.streak)), rows: rows.slice(0, 30), quiet: quiet.map((r) => r.name) };
+}
+
+function gameOn() { if (!store.db.settings.gameEnabled) throw new HttpError(403, 'The Vocals game is switched off right now'); }
+function gameThrottle(id) {
+  const now = Date.now();
+  const g = roundGate.get(id) || { last: 0, day: istDate(), n: 0 };
+  if (g.day !== istDate()) { g.day = istDate(); g.n = 0; }
+  if (now - g.last < GAME_GAP_MS || g.n >= 300) throw new HttpError(429, 'Slow down a little and try again');
+  g.last = now; g.n += 1; roundGate.set(id, g);
+}
+const gameChildren = () => store.db.children.filter((c) => c.active);
+const boardOut = (rows, meId) => {
+  const top = rows.slice(0, 10).map((r) => ({ id: r.id, name: r.name, photo: photoUrl(store.db.children.find((c) => c.id === r.id)), head: headUrl(store.db.children.find((c) => c.id === r.id)), won: r.won, ms: r.ms, rank: r.rank, stars: r.stars }));
+  const mine = rows.find((r) => r.id === meId);
+  return { top, me: mine && !top.some((t) => t.id === meId) ? { rank: mine.rank, won: mine.won, ms: mine.ms } : null, total: rows.length };
+};
+
+function gameState(child, q) {
+  const { db } = store;
+  const kid = db.game.kids[child.id] ?? emptyKid();
+  const today = istDate();
+  const level = Math.min(LEVELS.length, Math.max(1, Number(q.get('level')) || Math.min(LEVELS.length, maxPlayable(kid))));
+  const week = weekKeyOf(today);
+  const daily = db.game.daily[today]?.[child.id] ?? null;
+  const paid = hasFull(kid, today); // paid for, or in the free trial
+  const subscribed = isPaid(kid, today);
+  const left = daysLeft(kid, today);
+  return {
+    paid,
+    subscribed,
+    trial: trialOf(kid, today),
+    warmupLeft: warmupsLeft(kid, today),
+    paidUntil: paidUntilOf(kid), // empty if never unlocked; a past date means the year has ended
+    expired: wasPaid(kid) && !subscribed,
+    renewSoon: subscribed && left <= 30, // within 30 days of the end: the renew card shows
+    pay: !subscribed || left <= 30 ? { price: db.settings.gamePrice, mobile: db.settings.gamePayMobile, upi: db.settings.gameUpi } : null,
+    levels: LEVELS.map(({ id, tier, name, how, tol, hold, count }) => ({ id, tier, name, how, tol, hold, count, timed: isTimed(id), stages: STAGES.map((st) => stageSpec(id, st.stage)) })),
+    me: { id: child.id, name: child.name, paid, cleared: kid.cleared, stages: kid.stages ?? {}, best: kid.best, top: kid.top ?? {}, badges: kid.badges, maxPlayable: maxPlayable(kid), dailyStreak: dailyStreak(kid, today) },
+    // the daily challenge and the weekly boards are part of the full game
+    daily: paid ? { date: today, seed: dailySeed(today), count: DAILY_COUNT, mine: daily, board: boardOut(dailyBoard(db.game, gameChildren(), today), child.id) } : null,
+    weekly: paid ? { week, level, board: boardOut(weeklyBoard(db.game, gameChildren(), week, level), child.id) } : { week, level, board: null },
+  };
+}
+async function gameApi(req, res, q, child, action) {
+  gameOn();
+  if (req.method === 'GET' && !action) { accessFor(child); return send(res, 200, gameState(child, q)); } // opening the game starts the free trial
+  if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed');
+  if (action === 'warmup') { // opening the Warm-up room: 3 free sessions, then part of the full game
+    try { const w = useWarmup(store.db.game, child.id, istDate()); store.save(); return send(res, 200, w); }
+    catch (e) { if (e instanceof PaywallError) throw new HttpError(403, e.message); throw e; }
+  }
+  const body = await readBody(req, 20_000);
+  gameThrottle(child.id);
+  try {
+    let out;
+    if (action === 'round') out = applyRound(store.db.game, child.id, Number(body.level), Number(body.stage), body.results, istDate());
+    else if (action === 'daily') out = applyDaily(store.db.game, child.id, istDate(), body.results);
+    else throw new HttpError(404, 'Not found');
+    store.save();
+    return send(res, 200, { ...out, state: gameState(child, new URLSearchParams({ level: String(Number(body.level) || '') })) });
+  } catch (e) {
+    if (e instanceof PaywallError) throw new HttpError(403, e.message);
+    if (e instanceof GameError) throw new HttpError(400, e.message);
+    throw e;
+  }
+}
+
+function publicOverview(q) {
+  const { db } = store;
+  const season = seasonFromQuery(q);
+  const range = seasonRange(season);
+  const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(q.get('month') || '') ? q.get('month') : today().slice(0, 7);
+  const mr = monthRange(month);
+  const strip = (rows) => rows.map(({ id, name, photo, head, points, rank }) => ({ id, name, photo, head, points, rank }));
+  return {
+    season, seasonLabel: seasonLabel(season), seasons: seasonsWithData(db, today()),
+    settings: { satPoints: db.settings.satPoints, sunPoints: db.settings.sunPoints, feastPoints: db.settings.feastPoints, practicePoints: db.settings.practicePoints, remarkPenalty: db.settings.remarkPenalty, remarkBonus: db.settings.remarkBonus, gameEnabled: Boolean(db.settings.gameEnabled), staffEnabled: Boolean(db.settings.staffEnabled), trainingBoardEnabled: Boolean(db.settings.trainingBoardEnabled) },
+    schedule: scheduleView(),
+    month, monthLabel: monthLabel(month),
+    monthBoard: strip(scoreboard(db, season, mr.start, mr.end, { hideOut: true })),
+    yearBoard: strip(scoreboard(db, season, range.start, range.end, { hideOut: true })),
+    monthly: monthlyAchievers(db, season, today()),
+    yearly: yearlyAchievers(db, today()),
+  };
+}
+
+// ---- parent access: one private code per child ---------------------------
+
+const failures = new Map(); // ip -> { n, resetAt }
+// How many devices are currently locked out (teacher sees this and can unlock everyone).
+function lockedOutCount() {
+  const now = Date.now();
+  let n = 0;
+  for (const [ip, f] of failures) if (f.resetAt > now && f.n >= (ip === '*all*' ? 100 : 5)) n += 1;
+  return n;
+}
+
+function childByCode(req) {
+  const ip = clientIp(req);
+  // Short codes are easier to guess, so wrong tries are limited strictly.
+  if (tooManyFailures(failures, ip, 5) || tooManyFailures(failures, '*all*', 100)) {
+    throw new HttpError(429, 'Too many wrong codes. Please try again in about half an hour.');
+  }
+  const code = String(req.headers['x-code'] || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const child = code.length >= 3 ? store.db.children.find((c) => c.code === code && c.active) : null;
+  if (!child) {
+    noteFailure(failures, ip);
+    noteFailure(failures, '*all*');
+    throw new HttpError(401, 'That code was not found. Please check it with your choir teacher.');
+  }
+  return child;
+}
+
+// ---- teacher ------------------------------------------------------------
+
+// Feast sessions belong to an occasion (with its own roster). Reads are lenient, writes are strict.
+function occasionFor(date, type, event, { must = true } = {}) {
+  if (!OCCASION_TYPES.includes(type)) return { name: '', occ: null };
+  const e = text(event, 60, 'Occasion');
+  const occ = e ? findOccasion(store.db, seasonOf(date), e) : null;
+  if (!occ && must) throw new HttpError(400, 'Create this occasion first (Occasions tab)');
+  return { name: occ?.name ?? e, occ };
+}
+
+function checkSessionKey(date, type, event, opts) {
+  if (!isValidDate(date)) throw new HttpError(400, 'Invalid date');
+  if (!TYPES.includes(type)) throw new HttpError(400, 'Invalid session type');
+  return occasionFor(date, type, event, opts);
+}
+
+// Regular sessions: the main group. Occasions: exactly the people picked for that occasion.
+function rosterOf(type, occ) {
+  const { db } = store;
+  if (OCCASION_TYPES.includes(type)) return (occ?.members ?? []).map((id) => db.children.find((c) => c.id === id)).filter((c) => c?.active);
+  return db.children.filter((c) => c.active && !c.guest);
+}
+
+// Children over the leave limit whom the teacher has not decided about yet.
+function pendingDecisions(season) {
+  const { db } = store;
+  return db.children.filter((c) => c.active && !c.guest).flatMap((c) => {
+    const st = childStats(db, c.id, season);
+    return st.exceeded && !st.decision ? [{ id: c.id, name: c.name, leaves: st.leaves }] : [];
+  });
+}
+
+function sessionView(date, type, eventName) {
+  const { db } = store;
+  const season = seasonOf(date);
+  const { name: event, occ } = checkSessionKey(date, type, eventName, { must: false });
+  const sess = db.sessions[sessionKey(date, type, event)];
+  return {
+    date, type, event, season, settings: db.settings, remarkOptions: REMARKS, excuseReasons: EXCUSE_REASONS,
+    occasions: db.occasions.filter((o) => o.season === season).map((o) => o.name).sort(),
+    missingOccasion: OCCASION_TYPES.includes(type) && !occ,
+    pending: pendingDecisions(season),
+    children: rosterOf(type, occ).map((c) => {
+      const e = sess?.entries[c.id] || {};
+      const st = childStats(db, c.id, season);
+      return {
+        id: c.id, name: c.name, photo: photoUrl(c), head: headUrl(c), standard: c.standard, guest: Boolean(c.guest),
+        status: e.status || null, reason: e.reason || '', remarks: e.remarks || [], note: e.note || '',
+        leaves: st.leaves, exceeded: st.exceeded && !c.guest, decision: st.decision?.status ?? null,
+      };
+    }).sort(compareNames),
+  };
+}
+
+function getOrCreateSession(date, type, event) {
+  const { db } = store;
+  const key = sessionKey(date, type, event);
+  return db.sessions[key] ?? (db.sessions[key] = { date, type, event, entries: {} });
+}
+
+function mark(body) {
+  const { db } = store;
+  const { name: event, occ } = checkSessionKey(body.date, body.type, body.event);
+  if (!rosterOf(body.type, occ).some((c) => c.id === body.childId)) {
+    throw new HttpError(400, OCCASION_TYPES.includes(body.type) ? 'That child is not part of this occasion' : 'That child is not in the main group');
+  }
+  const status = body.status ?? null;
+  if (status !== null && !STATUSES.includes(status)) throw new HttpError(400, 'Invalid status');
+  const remarks = Array.isArray(body.remarks) ? body.remarks.filter((r) => isValidRemark(r)).slice(0, 12) : [];
+  const reason = status === 'excused' && EXCUSE_REASONS.includes(body.reason) ? body.reason : '';
+  const note = typeof body.note === 'string' ? body.note.trim().slice(0, 500) : '';
+  const sess = getOrCreateSession(body.date, body.type, event);
+  if (status === null && !remarks.length && !note) delete sess.entries[body.childId];
+  else sess.entries[body.childId] = { status, reason, remarks: [...new Set(remarks)], note };
+  if (!Object.keys(sess.entries).length) delete db.sessions[sessionKey(body.date, body.type, event)];
+  store.save();
+}
+
+function markAllPresent(body) {
+  const { name: event, occ } = checkSessionKey(body.date, body.type, body.event);
+  const sess = getOrCreateSession(body.date, body.type, event);
+  for (const c of rosterOf(body.type, occ)) {
+    const e = (sess.entries[c.id] ??= { status: null, remarks: [], note: '' });
+    if (!e.status) e.status = 'present';
+  }
+  store.save();
+}
+
+function updateSettings(body) {
+  const s = store.db.settings;
+  const num = (v, min, max) => {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < min || n > max) throw new HttpError(400, 'Invalid setting value');
+    return n;
+  };
+  for (const k of ['satPoints', 'sunPoints', 'practicePoints', 'feastPoints']) if (k in body) s[k] = num(body[k], 0, 100);
+  if ('publicUrl' in body) {
+    const u = text(body.publicUrl, 200, 'Website address').replace(/\/+$/, '');
+    if (u && !/^https?:\/\/[^\s]+$/.test(u)) throw new HttpError(400, 'Website address must start with http:// or https://');
+    s.publicUrl = u;
+  }
+  if ('maxLeaves' in body) s.maxLeaves = Math.round(num(body.maxLeaves, 0, 100));
+  if ('latePointsFactor' in body) s.latePointsFactor = num(body.latePointsFactor, 0, 1);
+  if ('remarkPenalty' in body) s.remarkPenalty = num(body.remarkPenalty, 0, 5);
+  if ('remarkBonus' in body) s.remarkBonus = num(body.remarkBonus, 0, 5);
+  if ('gameEnabled' in body) s.gameEnabled = Boolean(body.gameEnabled);
+  if ('staffEnabled' in body) s.staffEnabled = Boolean(body.staffEnabled);
+  if ('trainingBoardEnabled' in body) s.trainingBoardEnabled = Boolean(body.trainingBoardEnabled);
+  if ('gamePrice' in body) s.gamePrice = Math.round(num(body.gamePrice, 0, 100000));
+  if ('gamePayMobile' in body) s.gamePayMobile = phone(body.gamePayMobile ?? '', 'Payment number');
+  if ('gameUpi' in body) {
+    const u = text(body.gameUpi ?? '', 60, 'UPI ID');
+    if (u && !/^[\w.\-]{2,}@[\w.\-]{2,}$/.test(u)) throw new HttpError(400, 'A UPI ID looks like name@bank');
+    s.gameUpi = u;
+  }
+  if ('countSundayAbsences' in body) s.countSundayAbsences = Boolean(body.countSundayAbsences);
+  if ('firstSeason' in body) s.firstSeason = body.firstSeason === null || body.firstSeason === '' ? null : Math.round(num(body.firstSeason, 2000, 2200));
+  store.save();
+}
+
+const jpegBytes = (image, what) => {
+  const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(typeof image === 'string' ? image : '');
+  if (!m) throw new HttpError(400, `${what} must be a JPEG image`);
+  const buf = Buffer.from(m[1], 'base64');
+  if (buf.length > 1_000_000 || buf[0] !== 0xff || buf[1] !== 0xd8) throw new HttpError(400, `${what} is too large or not a valid JPEG`);
+  return buf;
+};
+// Two small pictures per child: the square profile photo, and (optionally) a tight crop of the face for the bobble-heads.
+async function savePhoto(child, image, head) {
+  const profile = jpegBytes(image, 'Photo');
+  const face = head ? jpegBytes(head, 'Head picture') : null;
+  await mkdir(PHOTOS, { recursive: true });
+  await writeFile(join(PHOTOS, `${child.id}.jpg`), profile);
+  child.photoVersion = Date.now();
+  if (face) { await writeFile(join(PHOTOS, `${child.id}-head.jpg`), face); child.headVersion = child.photoVersion; }
+  else if (child.headVersion) { await rm(join(PHOTOS, `${child.id}-head.jpg`), { force: true }); child.headVersion = 0; } // a new profile photo without a head: the old head would no longer match
+  store.save();
+}
+
+// One child per line: "Name" or "Name, Standard". Numbering / bullets are ignored.
+// Guests are children who are not in the main choir (only listed for special occasions).
+function createChildren(text, { standard = '', joinedYear = null, guest = false } = {}) {
+  const { db } = store;
+  const lines = String(text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length > 300) throw new HttpError(400, 'Please add at most 300 names at a time');
+  const seen = new Set(db.children.map((c) => c.name.toLowerCase()));
+  const added = [];
+  const skipped = [];
+  for (const line of lines) {
+    const [rawName, rawStd] = line.replace(/^(?:\d+[.)]|[-*\u2022])\s*/, '').split(/[,\t;]/).map((x) => x.trim());
+    try {
+      const c = {
+        id: randomUUID().slice(0, 8), name: '', active: true, joinedOn: today(), code: newCode(db),
+        standard: '', joinedYear: Number(today().slice(0, 4)), contact: '', address: '',
+        emergencyName: '', emergencyPhone: '', photoVersion: 0, headVersion: 0, leaveDecisions: {}, guest,
+      };
+      const fields = { name: rawName, standard: rawStd || standard || '' };
+      if (joinedYear) fields.joinedYear = joinedYear;
+      applyProfile(c, fields, { teacher: true });
+      if (seen.has(c.name.toLowerCase())) { skipped.push({ line, reason: 'already in the list' }); continue; }
+      seen.add(c.name.toLowerCase());
+      db.children.push(c); // pushed now so the next code is unique
+      added.push(c);
+    } catch (err) {
+      skipped.push({ line, reason: err.message });
+    }
+  }
+  return { added, skipped };
+}
+
+const childOut = (c) => ({ ...profileOf(c), code: c.code, active: c.active, guest: Boolean(c.guest), gamePaid: isPaid(store.db.game.kids[c.id], istDate()) });
+
+// Teacher-chosen code (e.g. 1001 or CC01): 3-8 letters/digits, unique.
+function customCode(value, child) {
+  const code = String(value ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (code.length < 3 || code.length > 8) throw new HttpError(400, 'A code needs 3 to 8 letters or digits, like 1001 or CC01');
+  if (store.db.children.some((c) => c !== child && c.code === code)) throw new HttpError(400, `The code ${code} is already used by another child`);
+  return code;
+}
+
+function bulkAdd(body) {
+  if (!String(body.text ?? '').trim()) throw new HttpError(400, 'Type or paste at least one name');
+  const { added, skipped } = createChildren(body.text, { standard: body.standard, joinedYear: body.joinedYear });
+  store.save();
+  return { added: added.map(childOut), skipped };
+}
+
+// ---- occasions (feasts): their own roster of main-group children + guests ----
+
+const occasionName = (v) => {
+  const n = text(v, 60, 'Occasion name');
+  if (!n) throw new HttpError(400, 'Give the occasion a name');
+  return n;
+};
+
+function pickMembers(ids, current = []) {
+  const { db } = store;
+  const list = Array.isArray(ids) ? ids : [];
+  return [...new Set(list)].filter((id) => db.children.some((c) => c.id === id && c.active && (!c.guest || current.includes(id))));
+}
+
+function hasEntries(occ, childId) {
+  return Object.values(store.db.sessions).some((s) => OCCASION_TYPES.includes(s.type) && slug(s.event) === slug(occ.name)
+    && s.date >= seasonRange(occ.season).start && s.date <= seasonRange(occ.season).end && s.entries[childId]?.status);
+}
+
+function createOccasion(body) {
+  const { db } = store;
+  const season = Number.isInteger(body.season) ? body.season : seasonOf(today());
+  const name = occasionName(body.name);
+  if (findOccasion(db, season, name)) throw new HttpError(400, `${name} already exists for this year`);
+  const members = pickMembers(body.members);
+  const guests = createChildren(body.guests, { standard: body.standard, guest: true });
+  const occ = { id: randomUUID().slice(0, 8), season, name, members: [...members, ...guests.added.map((c) => c.id)] };
+  db.occasions.push(occ);
+  store.save();
+  return { id: occ.id, guestsAdded: guests.added.length, skipped: guests.skipped };
+}
+
+// ---- guests added straight from the Children page: the event is a required choice ----
+
+function guestEvent(body) {
+  const { db } = store;
+  if (body.newEvent && String(body.newEvent).trim()) {
+    const season = seasonOf(today());
+    const name = occasionName(body.newEvent);
+    return findOccasion(db, season, name) ?? (db.occasions.push({ id: randomUUID().slice(0, 8), season, name, members: [] }), db.occasions.at(-1));
+  }
+  const occ = db.occasions.find((o) => o.id === body.eventId);
+  if (!occ) throw new HttpError(400, 'Pick an event for the guest, or add a new one');
+  return occ;
+}
+
+function addGuests(body) {
+  if (!String(body.text ?? '').trim()) throw new HttpError(400, 'Type at least one guest name');
+  const { db } = store;
+  const before = db.occasions.length;
+  const occ = guestEvent(body);
+  const { added, skipped } = createChildren(body.text, { standard: body.standard, guest: true });
+  occ.members = [...occ.members, ...added.map((c) => c.id)];
+  if (!added.length && db.occasions.length > before) db.occasions.pop(); // nothing saved, so no empty event is left behind
+  store.save();
+  const key = (n) => n.toLowerCase();
+  return {
+    event: { id: occ.id, name: occ.name },
+    added: added.map(childOut),
+    skipped: skipped.map((x) => {
+      const same = db.children.find((c) => key(c.name) === key(x.line.split(/[,\t;]/)[0].replace(/^(?:\d+[.)]|[-*•])\s*/, '').trim()));
+      if (!same) return x;
+      return { line: x.line, reason: same.guest ? 'is already a guest. Use “Add to another event” on their card' : 'is already in the choir, so they are not a guest' };
+    }),
+  };
+}
+
+function guestsView() {
+  const { db } = store;
+  const season = seasonOf(today());
+  const events = db.occasions.filter((o) => o.season === season).map((o) => ({
+    id: o.id, name: o.name,
+    guests: o.members.map((id) => db.children.find((c) => c.id === id)).filter((c) => c?.guest).map(childOut),
+  }));
+  const placed = new Set(events.flatMap((e) => e.guests.map((g) => g.id)));
+  const others = db.children.filter((c) => c.guest && !placed.has(c.id)).map(childOut); // guests from earlier years
+  return { events, others, allEvents: events.map((e) => ({ id: e.id, name: e.name })) };
+}
+
+function guestToEvent(guestId, eventId) {
+  const guest = store.db.children.find((c) => c.id === guestId && c.guest);
+  const occ = store.db.occasions.find((o) => o.id === eventId);
+  if (!guest) throw new HttpError(404, 'Guest not found');
+  if (!occ) throw new HttpError(400, 'Pick an event');
+  if (occ.members.includes(guest.id)) throw new HttpError(400, `${guest.name} is already in ${occ.name}`);
+  occ.members.push(guest.id);
+  store.save();
+  return { ok: true };
+}
+
+function updateOccasion(occ, body) {
+  const keep = pickMembers(body.members, occ.members);
+  for (const id of occ.members) {
+    if (!keep.includes(id) && hasEntries(occ, id)) {
+      const c = store.db.children.find((x) => x.id === id);
+      throw new HttpError(400, `${c?.name ?? 'A child'} already has attendance in ${occ.name}, so can't be removed. Mark them absent instead.`);
+    }
+  }
+  const guests = createChildren(body.guests, { standard: body.standard, guest: true });
+  occ.members = [...keep, ...guests.added.map((c) => c.id)];
+  store.save();
+  return { guestsAdded: guests.added.length, skipped: guests.skipped };
+}
+
+function deleteOccasion(occ) {
+  if (occ.members.some((id) => hasEntries(occ, id))) throw new HttpError(400, 'This occasion already has attendance recorded, so it can\'t be deleted');
+  store.db.occasions = store.db.occasions.filter((o) => o !== occ);
+  store.save();
+}
+
+// ---- hymn library: hymns taught that are not in the book ----------------------
+
+const HYMN_CATEGORIES = ['Entrance', 'LHM', 'Gloria', 'Response', 'Acclamation', 'Offertory', 'Holy', 'Peace', 'Communion', 'Recessional'];
+const HYMN_LABELS = { LHM: 'Lord Have Mercy (LHM)' };
+const AUDIO_TYPES = {
+  'audio/mpeg': 'mp3', 'audio/mp3': 'mp3', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/m4a': 'm4a',
+  'audio/aac': 'aac', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/wave': 'wav', 'audio/ogg': 'ogg', 'audio/webm': 'webm',
+};
+const AUDIO_MIME = { mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', wav: 'audio/wav', ogg: 'audio/ogg', webm: 'audio/webm' };
+const HYMNS_DIR = join(dirname(DATA_FILE), 'hymns');
+const MAX_AUDIO = 25_000_000;
+
+const hymnOut = (h) => ({
+  id: h.id, title: h.title, category: h.category, link: h.link, notes: h.notes, lyrics: h.lyrics ?? '',
+  audio: h.audioExt ? `/hymns/${h.id}.${h.audioExt}?v=${h.audioVersion}` : null,
+});
+
+const hymnList = () => ({
+  categories: HYMN_CATEGORIES.map((id) => ({ id, label: HYMN_LABELS[id] ?? id })),
+  hymns: [...store.db.hymns].sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' })).map(hymnOut),
+});
+
+function applyHymn(h, body) {
+  if ('title' in body) {
+    const t = text(body.title, 120, 'Title').replace(/\s+/g, ' ');
+    if (!t) throw new HttpError(400, 'Hymn title is required');
+    h.title = t;
+  }
+  if ('category' in body) {
+    if (!HYMN_CATEGORIES.includes(body.category)) throw new HttpError(400, 'Choose a category from the list');
+    h.category = body.category;
+  }
+  if ('link' in body) {
+    const l = text(body.link, 500, 'Link');
+    if (l && !/^https?:\/\/[^\s]+$/i.test(l)) throw new HttpError(400, 'The link must start with http:// or https://');
+    h.link = l;
+  }
+  if ('notes' in body) h.notes = text(body.notes, 300, 'Notes');
+  if ('lyrics' in body) h.lyrics = text(body.lyrics, 6000, 'Lyrics');
+}
+
+// Teacher-only helper: look up lyrics online (free LRCLIB catalogue, no key, nothing is stored here).
+// The teacher reads, edits and chooses; only then does anything get saved with the hymn.
+const LYRICS_URL = process.env.CHOIR_LYRICS_URL || 'https://lrclib.net/api/search';
+async function searchLyrics(query) {
+  const term = String(query ?? '').replace(/\s+/g, ' ').trim().slice(0, 100);
+  if (term.length < 2) throw new HttpError(400, 'Type at least two letters of the hymn title');
+  let rows;
+  try {
+    const r = await fetch(`${LYRICS_URL}?q=${encodeURIComponent(term)}`, {
+      signal: AbortSignal.timeout(8000), headers: { 'user-agent': 'ChildrensChoirZD/1.0 (church choir app)' },
+    });
+    if (!r.ok) throw new Error(`status ${r.status}`);
+    rows = await r.json();
+  } catch {
+    throw new HttpError(502, 'Could not reach the online lyrics search right now. You can still type or paste the words.');
+  }
+  const clean = (v, n) => String(v ?? '').replace(/\r\n?/g, '\n').trim().slice(0, n);
+  const seen = new Set();
+  const results = [];
+  for (const x of Array.isArray(rows) ? rows : []) {
+    const lyrics = clean(x?.plainLyrics, 6000);
+    if (!lyrics) continue;
+    const key = `${clean(x.trackName, 120)}|${clean(x.artistName, 80)}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    results.push({ title: clean(x.trackName, 120), artist: clean(x.artistName, 80), album: clean(x.albumName, 80), lyrics });
+    if (results.length >= 8) break;
+  }
+  return { query: term, results };
+}
+
+const sameHymn = (a, b) => a.category === b.category && a.title.toLowerCase() === b.title.toLowerCase();
+const newHymn = () => ({ id: randomUUID().slice(0, 8), title: '', category: '', link: '', notes: '', lyrics: '', audioExt: '', audioVersion: 0 });
+
+function createHymn(body) {
+  const h = newHymn();
+  applyHymn(h, body);
+  if (!h.title || !h.category) throw new HttpError(400, 'A hymn needs a title and a category');
+  if (store.db.hymns.some((x) => sameHymn(x, h))) throw new HttpError(400, `${h.title} is already in ${h.category}`);
+  store.db.hymns.push(h);
+  store.save();
+  return hymnOut(h);
+}
+
+// Paste many titles for one category. A line is "Title" or "Title | https://link".
+function bulkHymns(body) {
+  if (!HYMN_CATEGORIES.includes(body.category)) throw new HttpError(400, 'Choose a category first');
+  const lines = String(body.text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) throw new HttpError(400, 'Paste at least one hymn title');
+  if (lines.length > 300) throw new HttpError(400, 'Please add at most 300 hymns at a time');
+  const added = [];
+  const skipped = [];
+  for (const line of lines) {
+    const [title, link = ''] = line.replace(/^(?:\d+[.)]|[-*•])\s*/, '').split('|').map((x) => x.trim());
+    try {
+      const h = newHymn();
+      applyHymn(h, { title, category: body.category, link });
+      if (store.db.hymns.some((x) => sameHymn(x, h))) { skipped.push({ line, reason: 'already in the list' }); continue; }
+      store.db.hymns.push(h);
+      added.push(hymnOut(h));
+    } catch (err) {
+      skipped.push({ line, reason: err.message });
+    }
+  }
+  store.save();
+  return { added, skipped };
+}
+
+async function readRaw(req, limit, tooBig = 'That file is too big') {
+  const chunks = [];
+  let size = 0;
+  for await (const c of req) {
+    size += c.length;
+    if (size > limit) throw new HttpError(413, tooBig);
+    chunks.push(c);
+  }
+  return Buffer.concat(chunks);
+}
+
+async function removeAudio(h) {
+  if (h.audioExt) await rm(join(HYMNS_DIR, `${h.id}.${h.audioExt}`), { force: true });
+  h.audioExt = '';
+  h.audioVersion = 0;
+}
+
+async function saveHymnAudio(h, req) {
+  const type = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+  const ext = AUDIO_TYPES[type];
+  if (!ext) throw new HttpError(400, 'Please upload an MP3, M4A, WAV or OGG recording');
+  const buf = await readRaw(req, MAX_AUDIO, 'That recording is too big (max 25 MB)');
+  if (!buf.length) throw new HttpError(400, 'That file is empty');
+  await mkdir(HYMNS_DIR, { recursive: true });
+  await removeAudio(h);
+  await writeFile(join(HYMNS_DIR, `${h.id}.${ext}`), buf);
+  h.audioExt = ext;
+  h.audioVersion = Date.now();
+  store.save();
+  return hymnOut(h);
+}
+
+// Bring back hymns that are missing from a backup (.tar) or a data file (.json). Nothing else is touched,
+// and hymns already in the list (same title and category) are left alone.
+async function recoverHymns(req) {
+  const buf = await readRaw(req, 120_000_000, 'That file is too big to read here. Use Settings → Restore for a whole backup.'); // kept modest: the server has little memory
+  let saved;
+  let files = [];
+  if (buf[0] === 0x7b) { // "{" : a plain data file
+    try { saved = JSON.parse(buf.toString('utf8')); } catch { saved = null; }
+  } else {
+    try { files = readTar(buf); } catch { files = null; }
+    const dbf = files?.find((f) => f.name === 'db.json');
+    try { saved = JSON.parse(dbf?.data.toString('utf8') ?? ''); } catch { saved = null; }
+  }
+  if (!saved || !Array.isArray(saved.hymns)) throw new HttpError(400, 'That is not a Choir backup or data file');
+  const added = [];
+  let already = 0;
+  for (const old of saved.hymns) {
+    const h = newHymn();
+    try { applyHymn(h, { title: old.title, category: old.category, link: old.link ?? '', notes: old.notes ?? '', lyrics: old.lyrics ?? '' }); } catch { continue; }
+    if (!h.title || !h.category) continue;
+    if (store.db.hymns.some((x) => sameHymn(x, h))) { already += 1; continue; }
+    const audio = old.audioExt && AUDIO_MIME[old.audioExt] ? files.find((f) => f.name === `hymns/${old.id}.${old.audioExt}`) : null;
+    if (audio) {
+      await mkdir(HYMNS_DIR, { recursive: true });
+      await writeFile(join(HYMNS_DIR, `${h.id}.${old.audioExt}`), audio.data);
+      h.audioExt = old.audioExt;
+      h.audioVersion = Date.now();
+    }
+    store.db.hymns.push(h);
+    added.push(h.title);
+  }
+  if (added.length) store.save();
+  return { added, already };
+}
+
+async function teacherHymns(req, res, method, id, action) {
+  const { db } = store;
+  if (method === 'POST' && id === 'recover') return send(res, 200, await recoverHymns(req));
+  const h = id && id !== 'bulk' ? db.hymns.find((x) => x.id === id) : null;
+  if (id && id !== 'bulk' && !h) throw new HttpError(404, 'Hymn not found');
+  if (h && action === 'audio') {
+    if (method === 'PUT') return send(res, 200, await saveHymnAudio(h, req));
+    if (method === 'DELETE') { await removeAudio(h); store.save(); return send(res, 200, hymnOut(h)); }
+    throw new HttpError(405, 'Method not allowed');
+  }
+  const body = await readBody(req);
+  if (method === 'POST' && id === 'bulk') return send(res, 201, bulkHymns(body));
+  if (method === 'POST' && !id) return send(res, 201, createHymn(body));
+  if (method === 'PATCH' && h) {
+    const draft = { ...h };
+    applyHymn(draft, body);
+    if (db.hymns.some((x) => x !== h && sameHymn(x, draft))) throw new HttpError(400, `${draft.title} is already in ${draft.category}`);
+    Object.assign(h, draft);
+    store.save();
+    return send(res, 200, hymnOut(h));
+  }
+  if (method === 'DELETE' && h) {
+    await removeAudio(h);
+    db.hymns = db.hymns.filter((x) => x !== h);
+    store.save();
+    return send(res, 200, { ok: true });
+  }
+  throw new HttpError(404, 'Not found');
+}
+
+// Audio with Range support so players can seek.
+async function serveAudio(req, res, file, ext) {
+  let st;
+  try { st = await stat(file); } catch { throw new HttpError(404, 'Not found'); }
+  let start = 0;
+  let end = st.size - 1;
+  let status = 200;
+  const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+  if (m && (m[1] || m[2])) {
+    if (m[1] === '') start = Math.max(0, st.size - Number(m[2]));
+    else { start = Number(m[1]); if (m[2]) end = Math.min(end, Number(m[2])); }
+    if (start > end || start >= st.size) {
+      res.writeHead(416, { 'content-range': `bytes */${st.size}` });
+      return res.end();
+    }
+    status = 206;
+  }
+  res.writeHead(status, {
+    'content-type': AUDIO_MIME[ext], 'accept-ranges': 'bytes', 'content-length': end - start + 1,
+    'cache-control': 'public, max-age=86400', 'x-content-type-options': 'nosniff',
+    ...(status === 206 ? { 'content-range': `bytes ${start}-${end}/${st.size}` } : {}),
+  });
+  if (req.method === 'HEAD') return res.end();
+  createReadStream(file, { start, end }).pipe(res);
+}
+
+// ---- backup & restore: one .tar file with the database, photos and recordings ----
+
+const BACKUP_FILE = /^(photos\/[a-f0-9]{8}(-head)?\.jpg|hymns\/[a-f0-9]{8}\.(mp3|m4a|aac|wav|ogg|webm))$/;
+
+async function buildBackup() {
+  const { db } = store;
+  const files = [{ name: 'db.json', data: Buffer.from(JSON.stringify(db)) }];
+  for (const c of db.children) {
+    if (!c.photoVersion) continue;
+    try { files.push({ name: `photos/${c.id}.jpg`, data: await readFile(join(PHOTOS, `${c.id}.jpg`)) }); } catch { /* photo file missing */ }
+    if (c.headVersion) try { files.push({ name: `photos/${c.id}-head.jpg`, data: await readFile(join(PHOTOS, `${c.id}-head.jpg`)) }); } catch { /* head file missing */ }
+  }
+  if (db.teacher?.photoVersion) try { files.push({ name: `photos/${db.teacher.id}.jpg`, data: await readFile(join(PHOTOS, `${db.teacher.id}.jpg`)) }); } catch { /* photo file missing */ }
+  for (const h of db.hymns) {
+    if (!h.audioExt) continue;
+    try { files.push({ name: `hymns/${h.id}.${h.audioExt}`, data: await readFile(join(HYMNS_DIR, `${h.id}.${h.audioExt}`)) }); } catch { /* recording missing */ }
+  }
+  return createTar(files);
+}
+
+async function restoreBackup(req) {
+  const buf = await readRaw(req, 400_000_000, 'That backup is too big');
+  let files;
+  try { files = readTar(buf); } catch { throw new HttpError(400, 'That is not a Choir backup file'); }
+  const dbFile = files.find((f) => f.name === 'db.json');
+  let parsed;
+  try { parsed = JSON.parse(dbFile?.data.toString('utf8') ?? ''); } catch { parsed = null; }
+  if (!parsed || !Array.isArray(parsed.children) || typeof parsed.sessions !== 'object' || parsed.sessions === null) {
+    throw new HttpError(400, 'That is not a Choir backup file');
+  }
+  await rm(PHOTOS, { recursive: true, force: true });
+  await rm(HYMNS_DIR, { recursive: true, force: true });
+  await mkdir(PHOTOS, { recursive: true });
+  await mkdir(HYMNS_DIR, { recursive: true });
+  let restored = 0;
+  for (const f of files) {
+    if (!BACKUP_FILE.test(f.name)) continue; // only known file names are ever written
+    await writeFile(join(f.name.startsWith('photos/') ? PHOTOS : HYMNS_DIR, f.name.split('/')[1]), f.data);
+    restored += 1;
+  }
+  store.replace(parsed);
+  return { children: store.db.children.length, files: restored };
+}
+
+function teacherBoard() {
+  const { db } = store;
+  const season = seasonOf(today());
+  const range = seasonRange(season);
+  const prize = prizeInfo(db, season, today());
+  const month = today().slice(0, 7);
+  const mr = monthRange(month);
+  return {
+    season, seasonLabel: seasonLabel(season), prize, month, monthLabel: monthLabel(month),
+    prizeBoard: scoreboard(db, season, range.start, prize.date < range.end ? prize.date : range.end),
+    monthBoard: scoreboard(db, season, mr.start, mr.end),
+    yearBoard: scoreboard(db, season, range.start, range.end),
+    pending: pendingDecisions(season),
+  };
+}
+
+// The teacher's own profile (name, instruments, photo). The photo is stored like a child's, under its own random id.
+const teacherProfile = () => (store.db.teacher ??= { id: randomUUID().slice(0, 8), name: '', instruments: '', photoVersion: 0, headVersion: 0 });
+const profileView = () => { const t = teacherProfile(); return { name: t.name, instruments: t.instruments, photo: photoUrl(t) }; };
+function updateTeacherProfile(body) {
+  const t = teacherProfile();
+  if ('name' in body) t.name = text(body.name ?? '', 60, 'Name').replace(/\s+/g, ' ');
+  if ('instruments' in body) t.instruments = text(body.instruments ?? '', 120, 'Instruments').replace(/\s+/g, ' ');
+  store.save();
+  return profileView();
+}
+
+// Who has an active Vocals year, who is about to run out, and who has run out.
+function vocalsSubscriptions(roster, kids) {
+  const t = istDate();
+  const rows = [];
+  for (const c of roster) {
+    const kid = kids[c.id];
+    if (!kid?.paid) { rows.push({ id: c.id, name: c.name, until: '', daysLeft: 0, state: 'none' }); continue; }
+    const left = daysLeft(kid, t);
+    rows.push({ id: c.id, name: c.name, until: paidUntilOf(kid), daysLeft: left, state: left <= 0 ? 'expired' : left <= 30 ? 'soon' : 'active' });
+  }
+  // Active subscribers first (fewest days left to most), then everyone else (lapsed ones before those who never paid).
+  const order = { soon: 0, active: 0, expired: 1, none: 2 };
+  rows.sort((a, b) => order[a.state] - order[b.state]
+    || (order[a.state] === 0 ? a.daysLeft - b.daysLeft : order[a.state] === 1 ? b.daysLeft - a.daysLeft : 0)
+    || a.name.localeCompare(b.name));
+  return {
+    active: rows.filter((r) => r.state === 'active' || r.state === 'soon').length,
+    soon: rows.filter((r) => r.state === 'soon').length,
+    expired: rows.filter((r) => r.state === 'expired').length,
+    none: rows.filter((r) => r.state === 'none').length,
+    rows,
+  };
+}
+
+// The last recorded practices and masses, with who was there (for the teacher's Home page).
+function recentSessions(limit = 15) {
+  const { db } = store;
+  const byId = new Map(db.children.map((c) => [c.id, c]));
+  const name = (id) => byId.get(id)?.name ?? 'Former child';
+  const roster = db.children.filter((c) => c.active && !c.guest);
+  const t = today();
+  return Object.values(db.sessions)
+    .filter((x) => x.date <= t && Object.values(x.entries).some((e) => e.status))
+    .sort((a, b) => b.date.localeCompare(a.date) || a.type.localeCompare(b.type))
+    .slice(0, limit)
+    .map((x) => {
+      const pick = (...st) => Object.entries(x.entries).filter(([, e]) => st.includes(e.status)).map(([id]) => name(id)).sort((a, b) => a.localeCompare(b));
+      const occasion = OCCASION_TYPES.includes(x.type);
+      const unmarked = occasion ? [] : roster.filter((c) => !x.entries[c.id]?.status).map((c) => c.name).sort((a, b) => a.localeCompare(b));
+      return { date: x.date, type: x.type, event: x.event || '', present: pick('present'), absent: pick('absent'), excused: pick('excused'), unmarked };
+    });
+}
+
+// The teacher's home page: a small snapshot, all worked out here so the page stays quick.
+function teacherHome() {
+  const { db } = store;
+  const t = today();
+  const season = seasonOf(t);
+  const range = seasonRange(season);
+  const mr = monthRange(t.slice(0, 7));
+  const roster = db.children.filter((c) => c.active && !c.guest);
+  const sc = scheduleView();
+
+  // the most recent session that has been recorded
+  const past = Object.values(db.sessions).filter((x) => x.date <= t && !OCCASION_TYPES.includes(x.type));
+  past.sort((a, b) => b.date.localeCompare(a.date));
+  const last = past[0] ?? null;
+  const marked = last ? roster.filter((c) => last.entries[c.id]?.status) : [];
+  const lastSession = last ? {
+    date: last.date, type: last.type, event: last.event || '',
+    present: marked.filter((c) => last.entries[c.id].status === 'present').length,
+    marked: marked.length, total: roster.length,
+    unmarked: roster.filter((c) => !last.entries[c.id]?.status).map((c) => c.name),
+  } : null;
+
+  // children close to (or over) the leave limit
+  const max = db.settings.maxLeaves;
+  const attention = [];
+  for (const c of roster) {
+    const st = childStats(db, c.id, season);
+    if (st.exceeded) { if (!st.decision) attention.push({ kind: 'over', id: c.id, name: c.name, leaves: st.leaves, max }); } else if (max > 0 && st.leaves >= max - 1 && st.leaves > 0) attention.push({ kind: 'near', id: c.id, name: c.name, leaves: st.leaves, max });
+  }
+  attention.sort((a, b) => (a.kind === 'over' ? 0 : 1) - (b.kind === 'over' ? 0 : 1) || a.name.localeCompare(b.name));
+
+  const top = scoreboard(db, season, mr.start, mr.end).filter((r) => r.eligible && r.points > 0 && r.rank <= 3)
+    .map((r) => ({ id: r.id, name: r.name, points: r.points, rank: r.rank, photo: r.photo, head: r.head }));
+
+  const kids = db.game?.kids ?? {};
+  return {
+    today: t, next: sc.next, season, seasonLabel: seasonLabel(season), monthLabel: monthLabel(t.slice(0, 7)),
+    children: roster.length, lastSession, attention, top,
+    gameEnabled: Boolean(db.settings.gameEnabled),
+    vocalsUnlocked: roster.filter((c) => isPaid(kids[c.id], istDate())).length,
+    subs: vocalsSubscriptions(roster, kids),
+    lastBackup: db.lastBackupAt ?? null,
+    profile: profileView(),
+  };
+}
+
+async function teacherApi(req, res, q, parts) {
+  const [, b, id, action] = parts;
+  const childRoute = b === 'children' || b === 'child';
+  const child = id && childRoute ? store.db.children.find((c) => c.id === id) : null;
+  if (id && childRoute && !child) throw new HttpError(404, 'Child not found');
+
+  if (req.method === 'GET') {
+    if (b === 'session') {
+      const date = q.get('date') || today();
+      const type = q.get('type') || defaultType(date);
+      return send(res, 200, sessionView(date, type, q.get('event')));
+    }
+    if (b === 'children' && !id) {
+      return send(res, 200, {
+        children: [...store.db.children].sort(compareNames).map(childOut),
+        settings: store.db.settings, firstSeason: firstSeason(store.db, today()),
+        pending: pendingDecisions(seasonOf(today())), lockedOut: lockedOutCount(),
+      });
+    }
+    if (b === 'child' && id) return send(res, 200, { ...childDetail(child, seasonFromQuery(q), { teacher: true }), code: child.code, active: child.active, guest: Boolean(child.guest) });
+    if (b === 'backup') {
+      const tar = await buildBackup();
+      store.db.lastBackupAt = today(); store.save();
+      res.writeHead(200, {
+        'content-type': 'application/x-tar', 'content-length': tar.length, 'cache-control': 'no-store',
+        'content-disposition': `attachment; filename="choir-backup-${today()}.tar"`,
+      });
+      return res.end(tar);
+    }
+    if (b === 'home') return send(res, 200, teacherHome());
+    if (b === 'practice') return send(res, 200, practiceReport());
+    if (b === 'sessions') return send(res, 200, { sessions: recentSessions() });
+    if (b === 'vocals-subs') return send(res, 200, vocalsSubscriptions(store.db.children.filter((c) => c.active && !c.guest), store.db.game?.kids ?? {}));
+    if (b === 'board') return send(res, 200, teacherBoard());
+    if (b === 'schedule') return send(res, 200, scheduleView());
+    if (b === 'occasions') {
+      const season = seasonFromQuery(q);
+      return send(res, 200, {
+        season, seasonLabel: seasonLabel(season), seasons: seasonsWithData(store.db, today()), presets: EVENTS,
+        events: occasions(store.db, season),
+        main: store.db.children.filter((c) => c.active && !c.guest).sort(compareNames).map((c) => ({ id: c.id, name: c.name, photo: photoUrl(c) })),
+      });
+    }
+    if (b === 'guests') return send(res, 200, guestsView());
+    if (b === 'lyrics') return send(res, 200, await searchLyrics(q.get('q')));
+    throw new HttpError(404, 'Not found');
+  }
+
+  if (b === 'hymns') return teacherHymns(req, res, req.method, id, action);
+  if (req.method === 'POST' && b === 'lyrics-link') {
+    const body = await readBody(req);
+    try { return send(res, 200, await fetchPageText(body.url)); } catch (e) { throw e instanceof PageError ? new HttpError(400, e.message) : e; }
+  }
+  if (req.method === 'POST' && b === 'restore') return send(res, 200, await restoreBackup(req));
+
+  const body = await readBody(req, (b === 'children' && action === 'photo') || (b === 'profile' && id === 'photo') ? 1_500_000 : 100_000);
+  if (req.method === 'PUT' && b === 'profile' && !id) return send(res, 200, updateTeacherProfile(body));
+  if (req.method === 'POST' && b === 'profile' && id === 'photo') { await savePhoto(teacherProfile(), body.image, null); return send(res, 200, profileView()); }
+  if (req.method === 'PUT' && b === 'mark') { mark(body); return send(res, 200, { ok: true }); }
+  if (req.method === 'POST' && b === 'mark-all-present') { markAllPresent(body); return send(res, 200, { ok: true }); }
+  if (req.method === 'POST' && b === 'bulk-children') return send(res, 201, bulkAdd(body));
+  if (req.method === 'POST' && b === 'guests' && !id) return send(res, 201, addGuests(body));
+  if (req.method === 'POST' && b === 'guests' && id && action === 'event') return send(res, 200, guestToEvent(id, body.eventId));
+  if (b === 'occasions') {
+    const occ = id ? store.db.occasions.find((o) => o.id === id) : null;
+    if (id && !occ) throw new HttpError(404, 'Occasion not found');
+    if (req.method === 'POST' && !id) return send(res, 201, createOccasion(body));
+    if (req.method === 'PUT' && occ) return send(res, 200, updateOccasion(occ, body));
+    if (req.method === 'DELETE' && occ) { deleteOccasion(occ); return send(res, 200, { ok: true }); }
+  }
+  if (req.method === 'POST' && b === 'unlock-codes') {
+    const cleared = lockedOutCount();
+    failures.clear();
+    return send(res, 200, { cleared });
+  }
+  if (req.method === 'POST' && b === 'game-warmups') { // reset the free Warm-up sessions for everyone
+    const n = resetAllWarmups(store.db.game);
+    store.save();
+    return send(res, 200, { reset: n });
+  }
+  if (b === 'schedule') {
+    if (req.method === 'PUT' && !id) { updateSchedule(body); return send(res, 200, scheduleView()); }
+    if (req.method === 'PUT' && id === 'day') { setScheduleDay(body); return send(res, 200, scheduleView()); }
+    if (req.method === 'DELETE' && id === 'day') { removeScheduleDay(body.date); return send(res, 200, scheduleView()); }
+  }
+  if (req.method === 'PUT' && b === 'settings') { updateSettings(body); return send(res, 200, store.db.settings); }
+  if (b === 'children') {
+    if (req.method === 'POST' && !id) {
+      const c = {
+        id: randomUUID().slice(0, 8), name: '', active: true, joinedOn: today(), code: newCode(store.db),
+        standard: '', joinedYear: Number(today().slice(0, 4)), contact: '', address: '',
+        emergencyName: '', emergencyPhone: '', photoVersion: 0, headVersion: 0, leaveDecisions: {},
+      };
+      applyProfile(c, body, { teacher: true });
+      if (!c.name) throw new HttpError(400, 'Name is required');
+      if (store.db.children.some((x) => x.name.toLowerCase() === c.name.toLowerCase())) throw new HttpError(409, `${c.name} is already in the list. If it is a different child, add a surname or initial to tell them apart.`); // also stops an accidental double tap
+      store.db.children.push(c);
+      store.save();
+      return send(res, 201, childOut(c));
+    }
+    if (req.method === 'PATCH' && id && !action) {
+      applyProfile(child, body, { teacher: true });
+      if ('active' in body) child.active = Boolean(body.active);
+      if (body.guest === false) child.guest = false; // promote a guest to the main group
+      if ('code' in body) child.code = customCode(body.code, child);
+      store.save();
+      return send(res, 200, childOut(child));
+    }
+    if (req.method === 'POST' && id && action === 'newcode') { // a fresh private code (the old one stops working at once)
+      child.code = newCode(store.db);
+      store.save();
+      return send(res, 200, { code: child.code });
+    }
+    if (req.method === 'POST' && id && action === 'photo') {
+      await savePhoto(child, body.image, body.head);
+      return send(res, 200, { photo: photoUrl(child), head: headUrl(child) });
+    }
+    if (req.method === 'PUT' && id && action === 'decision') {
+      const season = Number.isInteger(body.season) ? body.season : seasonOf(today());
+      if (body.status === null) delete child.leaveDecisions[season];
+      else if (body.status === 'keep' || body.status === 'out') child.leaveDecisions[season] = { status: body.status, on: today() };
+      else throw new HttpError(400, 'Decision must be keep, out or null');
+      store.save();
+      return send(res, 200, { decision: child.leaveDecisions[season] ?? null });
+    }
+    if (req.method === 'PUT' && id && action === 'game') {
+      if (body.resetWarmups) resetWarmups(store.db.game, child.id); // give the three free Warm-up sessions again
+      else setPaid(store.db.game, child.id, body.paid, istDate());
+      store.save();
+      return send(res, 200, gameAccess(child.id));
+    }
+    if (req.method === 'POST' && id && action === 'new-code') {
+      child.code = newCode(store.db);
+      store.save();
+      return send(res, 200, { code: child.code });
+    }
+  }
+  throw new HttpError(404, 'Not found');
+}
+
+async function api(req, res, url) {
+  const q = url.searchParams;
+  const parts = url.pathname.split('/').filter(Boolean).slice(1); // drop "api"
+  const [a, b] = parts;
+
+  if (req.method === 'GET' && a === 'public') return send(res, 200, publicOverview(q));
+  if (req.method === 'GET' && a === 'hymns') return send(res, 200, hymnList());
+  if (req.method === 'GET' && a === 'meta') return send(res, 200, { pinRequired: !isLocal(req) && Boolean(PIN_ENV), teacherAllowed: isLocal(req) || Boolean(PIN_ENV) });
+
+  if (a === 'me') {
+    const child = childByCode(req);
+    if (req.method === 'POST' && b === 'photo') { // a parent adds or changes their own child's photo (already cropped to the face)
+      const body = await readBody(req, 1_500_000);
+      await savePhoto(child, body.image, body.head);
+      return send(res, 200, { photo: photoUrl(child), head: headUrl(child) });
+    }
+    if (req.method === 'GET' && b === 'access') return send(res, 200, { ...accessFor(child), board: Boolean(store.db.settings.trainingBoardEnabled) });
+    if (req.method === 'GET' && b === 'xp-board') return send(res, 200, xpBoardFor(child));
+    if (req.method === 'POST' && b === 'xp') return send(res, 200, xpReport(child, await readBody(req, 5_000)));
+    if (req.method === 'PUT' && b === 'schedule') { // a guest chooses whether to see the main choir's practice times
+      const body = await readBody(req);
+      child.showSchedule = Boolean(body.show);
+      store.save();
+      return send(res, 200, { showSchedule: child.showSchedule });
+    }
+    if (req.method === 'GET') return send(res, 200, childDetail(child, seasonFromQuery(q)));
+    if (req.method === 'PUT') {
+      const body = await readBody(req);
+      applyProfile(child, body, { teacher: false }); // parents may only change contact details
+      store.save();
+      return send(res, 200, profileOf(child));
+    }
+    throw new HttpError(405, 'Method not allowed');
+  }
+
+  if (a === 'game') return gameApi(req, res, q, childByCode(req), b);
+
+  if (a !== 'teacher') throw new HttpError(404, 'Not found');
+  checkTeacher(req);
+  return teacherApi(req, res, q, parts);
+}
+
+// App files are never cached by browsers or Cloudflare, so an update shows up on the next page load.
+async function serveFile(res, file, headers = { 'cache-control': 'no-store' }) {
+  try {
+    const data = await readFile(file);
+    res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream', ...headers });
+    res.end(data);
+  } catch {
+    throw new HttpError(404, 'Not found');
+  }
+}
+
+async function serveStatic(req, res, pathname) {
+  if (pathname === '/healthz') { res.writeHead(200, { 'content-type': 'text/plain' }); return res.end('ok'); }
+  const audio = /^\/hymns\/([a-f0-9]{8})\.(mp3|m4a|aac|wav|ogg|webm)$/.exec(pathname);
+  if (audio) {
+    if (!store.db.hymns.some((h) => h.id === audio[1] && h.audioExt === audio[2])) throw new HttpError(404, 'Not found');
+    return serveAudio(req, res, join(HYMNS_DIR, `${audio[1]}.${audio[2]}`), audio[2]);
+  }
+  const photo = /^\/photos\/([a-f0-9]{8})(-head)?\.jpg$/.exec(pathname);
+  if (photo) return serveFile(res, join(PHOTOS, `${photo[1]}${photo[2] ?? ''}.jpg`), { 'cache-control': 'public, max-age=86400' });
+  const rel = pathname === '/' ? 'index.html' : pathname === '/teacher' ? 'teacher.html' : pathname === '/favicon.ico' ? 'icon-192.png' : pathname.slice(1); // browsers ask for /favicon.ico on their own
+  const file = normalize(join(PUBLIC, rel));
+  if (!file.startsWith(PUBLIC + sep)) throw new HttpError(404, 'Not found');
+  return serveFile(res, file);
+}
+
+export const server = createServer(async (req, res) => {
+  // Basic hardening on every response: no type sniffing, no framing, no referrer leaks, and only this site may use the camera and microphone.
+  res.setHeader('x-content-type-options', 'nosniff');
+  res.setHeader('x-frame-options', 'DENY');
+  res.setHeader('referrer-policy', 'same-origin');
+  res.setHeader('permissions-policy', 'camera=(self), microphone=(self), geolocation=()');
+  try {
+    let url;
+    try { url = new URL(req.url, 'http://localhost'); } catch { throw new HttpError(400, 'Bad address'); }
+    if (url.pathname.startsWith('/api/')) await api(req, res, url);
+    else if (req.method === 'GET' || req.method === 'HEAD') { // HEAD: the same answer without the body (Node leaves it out)
+      let path;
+      try { path = decodeURIComponent(url.pathname); } catch { throw new HttpError(400, 'Bad address'); }
+      await serveStatic(req, res, path);
+    }
+    else throw new HttpError(405, 'Method not allowed');
+  } catch (err) {
+    if (!(err instanceof HttpError)) console.error(err);
+    send(res, err.status || 500, { error: err.status ? err.message : 'Server error' });
+  }
+});
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  server.listen(PORT, () => {
+    console.log(`Choir attendance running on http://localhost:${PORT}  (teacher: /teacher)`);
+    console.log(PUBLIC_MODE
+      ? `Public mode: the teacher pages need your PIN${PIN_ENV ? '' : ' (CHOIR_PIN is not set, so they are locked)'}.`
+      : 'Teacher area: open it on this computer only. Other devices cannot reach it.');
+  });
+}

@@ -1,0 +1,113 @@
+import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync, copyFileSync, readdirSync, unlinkSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { randomInt, randomUUID } from 'node:crypto';
+import { defaultSchedule, istNow } from './schedule.js';
+import { emptyGame } from './game.js';
+import { DEFAULT_SETTINGS, OCCASION_TYPES, seasonOf, slug } from './logic.js';
+
+// No 0/O/1/I/L so codes are easy to read out over the phone.
+const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+// Short, roll-number style codes (4 characters). Teachers can also type their own, e.g. 1001 or CC01.
+export function newCode(db, length = 4) {
+  for (;;) {
+    let code = '';
+    for (let i = 0; i < length; i += 1) code += CODE_CHARS[randomInt(CODE_CHARS.length)];
+    if (!db.children.some((c) => c.code === code)) return code;
+  }
+}
+
+export const PROFILE_DEFAULTS = {
+  standard: '', joinedYear: null, contact: '', address: '',
+  emergencyName: '', emergencyPhone: '', photoVersion: 0, headVersion: 0,
+  leaveDecisions: {}, // { [season]: { status: 'keep' | 'out', on: 'YYYY-MM-DD' } }
+  guest: false, // true = not in the main choir, only listed for special occasions
+};
+
+// Fill in fields added in newer versions so older db.json files keep working.
+function migrate(db) {
+  let changed = false;
+  for (const c of db.children) {
+    for (const [k, v] of Object.entries(PROFILE_DEFAULTS)) {
+      if (!(k in c)) { c[k] = structuredClone(v); changed = true; }
+    }
+    if (c.joinedYear === null && c.joinedOn) { c.joinedYear = Number(c.joinedOn.slice(0, 4)); changed = true; }
+    if (!c.code) { c.code = newCode(db); changed = true; }
+  }
+  if (!db.game || typeof db.game !== 'object') { db.game = emptyGame(); changed = true; }
+  if (!db.schedule || typeof db.schedule !== 'object') { db.schedule = defaultSchedule(istNow().date); changed = true; }
+  if (!Array.isArray(db.schedule.rules)) { db.schedule.rules = [{ weekday: db.schedule.weekday ?? 6, time: db.schedule.time || '19:00' }]; changed = true; }
+  for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) {
+    if (!(k in db.settings)) { db.settings[k] = v; changed = true; }
+  }
+  // One-time: remarks now cost points directly, so the old default "late earns half" is retired.
+  if (!db.latePolicyV2) {
+    if (db.settings.latePointsFactor === 0.5) db.settings.latePointsFactor = 1;
+    db.latePolicyV2 = true;
+    changed = true;
+  }
+  // One-time: older versions made longer codes. Shorten them (the teacher can still edit any code).
+  if (!db.codesShortened) {
+    for (const c of db.children) if (c.code.length > 4) c.code = newCode(db);
+    db.codesShortened = true;
+    changed = true;
+  }
+  for (const s of Object.values(db.sessions)) {
+    if (!('event' in s)) { s.event = ''; changed = true; }
+  }
+  // Occasions (feasts) have their own roster. Older data had none: create them from recorded sessions.
+  for (const s of Object.values(db.sessions)) {
+    if (!OCCASION_TYPES.includes(s.type) || !s.event) continue;
+    const season = seasonOf(s.date);
+    let occ = db.occasions.find((o) => o.season === season && slug(o.name) === slug(s.event));
+    if (!occ) {
+      occ = { id: randomUUID().slice(0, 8), season, name: s.event, members: db.children.filter((c) => c.active && !c.guest).map((c) => c.id) };
+      db.occasions.push(occ);
+      changed = true;
+    }
+    for (const id of Object.keys(s.entries)) if (!occ.members.includes(id)) { occ.members.push(id); changed = true; }
+  }
+  return changed;
+}
+
+// Tiny JSON-file store. Writes are atomic (tmp file + rename).
+const blank = () => ({ settings: { ...DEFAULT_SETTINGS }, children: [], sessions: {}, occasions: [], hymns: [], codesShortened: false, latePolicyV2: true, schedule: defaultSchedule(istNow().date), game: emptyGame() });
+const withDefaults = (saved) => ({ ...blank(), ...saved, settings: { ...DEFAULT_SETTINGS, ...saved.settings } });
+
+export function openStore(file) {
+  let db;
+  try { db = existsSync(file) ? withDefaults(JSON.parse(readFileSync(file, 'utf8'))) : blank(); }
+  catch (e) { // never overwrite a file we cannot read: stop with a clear message so it can be restored from a backup
+    throw new Error(`The data file ${file} is damaged (${e.message}). Nothing was changed. Restore it from a backup (for example the nightly .tar), then start again.`);
+  }
+  mkdirSync(dirname(file), { recursive: true });
+  // A safety net: the first time each day the data changes, keep a copy of how it looked just before.
+  // The last 30 days are kept next to the data file (snapshots/db-YYYY-MM-DD.json). Small files, no extra cost.
+  const snapDir = join(dirname(file), 'snapshots');
+  let snapDay = '';
+  const snapshot = () => {
+    try {
+      const day = istNow().date;
+      if (day === snapDay || !existsSync(file)) return;
+      snapDay = day;
+      mkdirSync(snapDir, { recursive: true });
+      const dest = join(snapDir, `db-${day}.json`);
+      if (!existsSync(dest)) copyFileSync(file, dest);
+      for (const old of readdirSync(snapDir).filter((n) => /^db-\d{4}-\d{2}-\d{2}\.json$/.test(n)).sort().slice(0, -30)) unlinkSync(join(snapDir, old));
+    } catch { /* a snapshot problem must never stop a save */ }
+  };
+  snapshot();
+  const save = () => {
+    snapshot();
+    writeFileSync(`${file}.tmp`, JSON.stringify(db, null, 2));
+    renameSync(`${file}.tmp`, file);
+  };
+  if (migrate(db)) save();
+  // Used by "restore from backup": swap in a whole new database.
+  const replace = (next) => {
+    db = withDefaults(next);
+    migrate(db);
+    save();
+  };
+  return { get db() { return db; }, save, replace };
+}

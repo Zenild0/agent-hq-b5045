@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#3a1fa8">
+  <title>Children's Choir ZD – Teacher</title>
+  <link rel="icon" href="/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/teacher.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&family=Nunito:wght@400;600;700;800&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <script>
+    // apply the saved look before the first paint so there is no flash of the wrong colours
+    (function () {
+      var d = document.documentElement;
+      try {
+        var t = localStorage.getItem('choir-theme-teacher');
+        d.dataset.theme = t === 'light' || t === 'bright' ? t : 'dark';
+      } catch (e) { d.dataset.theme = 'dark'; }
+    })();
+  </script>
+</head>
+<body class="app">
+  <div id="app"></div>
+  <dialog id="dlg"><div class="dlg" id="dlgBody"></div></dialog>
+  <script type="module" src="teacher.js"></script>
+</body>
+</html>
