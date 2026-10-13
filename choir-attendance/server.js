@@ -13,7 +13,7 @@ import {
 import { openStore, newCode } from './lib/store.js';
 import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, setPaid, resetWarmups, resetAllWarmups, isPaid, hasFull, trialOf, startTrial, TRIAL_DAYS, paidUntilOf, daysLeft, wasPaid, warmupsLeft, useWarmup, GameError, PaywallError } from './lib/game.js';
 import { LEVELS, DAILY_COUNT, STAGES, stageSpec, isTimed } from './public/levels.js';
-import { istNow, isDate, isTime, scheduleDays, nextPractice, shiftDate, rulesOf } from './lib/schedule.js';
+import { istNow, isDate, isTime, toMinutes, scheduleDays, nextPractice, shiftDate, rulesOf } from './lib/schedule.js';
 import { createTar, readTar } from './lib/tar.js';
 import { fetchPageText, PageError } from './lib/webpage.js';
 import { emptyXp, recordXp, weekXpOf, buildBoard } from './lib/xpboard.js';
@@ -222,7 +222,7 @@ function childDetail(child, season, { teacher = false } = {}) {
   const monthBoard = scoreboard(db, season, mr.start, mr.end, { hideOut: true });
   return {
     ...profileOf(child), season, seasonLabel: seasonLabel(season), settings: db.settings,
-    stats: childStats(db, child.id, season), history, guest: Boolean(child.guest), showSchedule: Boolean(child.showSchedule),
+    stats: childStats(db, child.id, season), history, occasionPractices: upcomingOccasionPractices(child.id), guest: Boolean(child.guest), showSchedule: Boolean(child.showSchedule),
     ...(child.guest ? { events: eventViewsFor(child) } : {}),
     ...(teacher ? { remarkLog: remarkLogFor(child), ...gameAccess(child.id) } : {}),
     yearRank: yearBoard.find((r) => r.id === child.id)?.rank ?? null, yearRanked: yearBoard.length,
@@ -741,6 +741,52 @@ function guestToEvent(guestId, eventId) {
   return { ok: true };
 }
 
+// ---- scheduled practices of an occasion (their own dates and times, separate from the regular schedule) ----
+
+const practiceOut = (occ, p) => ({ id: p.id, occId: occ.id, event: occ.name, date: p.date, time: p.time, note: p.note || '' });
+const byWhen = (a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time);
+
+function occasionPracticeInput(body, current = {}) {
+  const date = 'date' in body ? body.date : current.date;
+  const time = 'time' in body ? body.time : current.time;
+  if (!isDate(date)) throw new HttpError(400, 'Pick the practice date');
+  if (!isTime(time)) throw new HttpError(400, 'Pick the practice time');
+  return { date, time, note: 'note' in body ? text(body.note ?? '', 140, 'Note') : current.note || '' };
+}
+
+function savePractice(occ, body) {
+  occ.practices ??= [];
+  const data = occasionPracticeInput(body, body.pid ? occ.practices.find((p) => p.id === body.pid) : {});
+  if (occ.practices.some((p) => p.id !== body.pid && p.date === data.date && p.time === data.time)) throw new HttpError(400, 'That date and time is already on the list');
+  if (body.pid) {
+    const p = occ.practices.find((x) => x.id === body.pid);
+    if (!p) throw new HttpError(404, 'Practice not found');
+    Object.assign(p, data);
+  } else {
+    if (occ.practices.length >= 60) throw new HttpError(400, 'That is plenty of practices for one occasion');
+    occ.practices.push({ id: randomUUID().slice(0, 8), ...data });
+  }
+  occ.practices.sort(byWhen);
+  store.save();
+  return occ.practices.map((p) => practiceOut(occ, p));
+}
+
+function removePractice(occ, pid) {
+  occ.practices = (occ.practices ?? []).filter((p) => p.id !== pid);
+  store.save();
+  return occ.practices.map((p) => practiceOut(occ, p));
+}
+
+// Upcoming occasion practices, soonest first: for the teacher all of them, for a child only the occasions they are in.
+function upcomingOccasionPractices(childId = null) {
+  const now = istNow();
+  return store.db.occasions
+    .filter((o) => !childId || o.members.includes(childId))
+    .flatMap((o) => (o.practices ?? []).map((p) => practiceOut(o, p)))
+    .filter((p) => p.date > now.date || (p.date === now.date && toMinutes(p.time) + 120 > now.minutes))
+    .sort(byWhen);
+}
+
 function updateOccasion(occ, body) {
   const keep = pickMembers(body.members, occ.members);
   for (const id of occ.members) {
@@ -1192,11 +1238,12 @@ async function teacherApi(req, res, q, parts) {
       const season = seasonFromQuery(q);
       return send(res, 200, {
         season, seasonLabel: seasonLabel(season), seasons: seasonsWithData(store.db, today()), presets: EVENTS,
-        events: occasions(store.db, season),
+        events: occasions(store.db, season).map((e) => ({ ...e, practices: (store.db.occasions.find((o) => o.id === e.id)?.practices ?? []).map((p) => practiceOut({ id: e.id, name: e.event }, p)) })),
         main: store.db.children.filter((c) => c.active && !c.guest).sort(compareNames).map((c) => ({ id: c.id, name: c.name, photo: photoUrl(c) })),
       });
     }
     if (b === 'guests') return send(res, 200, guestsView());
+    if (b === 'occasion-practices') return send(res, 200, { practices: upcomingOccasionPractices() });
     if (b === 'lyrics') return send(res, 200, await searchLyrics(q.get('q')));
     throw new HttpError(404, 'Not found');
   }
@@ -1220,6 +1267,10 @@ async function teacherApi(req, res, q, parts) {
     const occ = id ? store.db.occasions.find((o) => o.id === id) : null;
     if (id && !occ) throw new HttpError(404, 'Occasion not found');
     if (req.method === 'POST' && !id) return send(res, 201, createOccasion(body));
+    if (occ && action === 'practices') {
+      if (req.method === 'POST' || req.method === 'PUT') return send(res, 200, { practices: savePractice(occ, req.method === 'PUT' ? body : { ...body, pid: undefined }) });
+      if (req.method === 'DELETE') return send(res, 200, { practices: removePractice(occ, body.pid) });
+    }
     if (req.method === 'PUT' && occ) return send(res, 200, updateOccasion(occ, body));
     if (req.method === 'DELETE' && occ) { deleteOccasion(occ); return send(res, 200, { ok: true }); }
   }

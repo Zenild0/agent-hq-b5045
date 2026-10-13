@@ -55,3 +55,32 @@ test('a failed add does not leave an empty new event behind', async () => {
   assert.equal(r.data.added.length, 0);
   assert.ok(!(await j('/api/teacher/guests')).data.events.some((e) => e.name === 'Ghost Event'));
 });
+
+test('an occasion keeps its own list of practice dates and times, separate from the regular schedule', async () => {
+  const ev = (await j('/api/teacher/guests', { method: 'POST', body: { text: 'Pia Shah', newEvent: 'Christmas' } })).data.event;
+  const inDays = (n) => new Date(Date.now() + 330 * 60000 + n * 86400000).toISOString().slice(0, 10);
+  const add = (body) => j(`/api/teacher/occasions/${ev.id}/practices`, { method: 'POST', body });
+  assert.equal((await add({ date: inDays(9), time: '18:30', note: 'Bring carol books' })).status, 200);
+  assert.equal((await add({ date: inDays(3), time: '17:00' })).status, 200);
+  assert.equal((await add({ date: inDays(3), time: '17:00' })).status, 400, 'the same date and time twice');
+  assert.equal((await add({ date: 'x', time: '17:00' })).status, 400);
+  assert.equal((await add({ date: inDays(5), time: '25:00' })).status, 400);
+  const list = (await add({ date: inDays(-4), time: '19:00' })).data.practices;
+  assert.deepEqual(list.map((p) => p.time), ['19:00', '17:00', '18:30'], 'oldest first');
+  const first = list[1];
+  const edited = (await j(`/api/teacher/occasions/${ev.id}/practices`, { method: 'PUT', body: { pid: first.id, time: '17:30' } })).data.practices;
+  assert.equal(edited.find((p) => p.id === first.id).time, '17:30');
+  const view = (await j('/api/teacher/occasions')).data.events.find((e) => e.id === ev.id);
+  assert.equal(view.practices.length, 3);
+  const up = (await j('/api/teacher/occasion-practices')).data.practices;
+  assert.equal(up.length, 2, 'the past one is not upcoming');
+  assert.equal(up[0].event, 'Christmas');
+  // a guest in the occasion sees them on their own page; someone outside does not
+  const guest = (await j('/api/teacher/children')).data.children.find((c) => c.name === 'Pia Shah');
+  const mine = await fetch(`${base}/api/me`, { headers: { 'x-code': guest.code } }).then((r) => r.json());
+  assert.equal(mine.occasionPractices.length, 2);
+  const other = (await j('/api/teacher/children', { method: 'POST', body: { name: 'Outsider' } })).data;
+  assert.equal((await fetch(`${base}/api/me`, { headers: { 'x-code': other.code } }).then((r) => r.json())).occasionPractices.length, 0);
+  const left = (await j(`/api/teacher/occasions/${ev.id}/practices`, { method: 'DELETE', body: { pid: first.id } })).data.practices;
+  assert.equal(left.length, 2);
+});

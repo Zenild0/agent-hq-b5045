@@ -2,7 +2,7 @@ import {
   $, api, esc, fmtPts, headerHtml, footerHtml, renderBoard, achieversHtml, avatarHtml,
   statsHtml, historyHtml, leaveAlertHtml, openHymnViewer,
 } from './common.js';
-import { nextCardHtml, daysFoldHtml, remarksFoldHtml, guestHomeHtml, eventBoardHtml } from './home.js';
+import { nextCardHtml, daysFoldHtml, remarksFoldHtml, guestHomeHtml, eventBoardHtml, occasionPracticesHtml } from './home.js';
 import { pickPhotos } from './photo.js';
 import { applyLook, lookCardHtml, wireLook, configure } from './theme.js';
 import { initBack, noteVisit, onBackFirst } from './nav.js';
@@ -103,7 +103,7 @@ function drawHome() {
   const days = open('daysFold');
   const rem = open('remarksFold');
   if (me?.guest) { // a guest: their own event first; the main choir's practice times only if they opt in
-    box.innerHTML = guestHomeHtml(me)
+    box.innerHTML = guestHomeHtml(me) + occasionPracticesHtml(me)
       + (me.showSchedule ? nextCardHtml(overview.schedule) + daysFoldHtml(overview.schedule, me.history || [], days) : '')
       + remarksFoldHtml(me, rem);
     $('#schedOpt')?.addEventListener('change', async (e) => {
@@ -114,6 +114,7 @@ function drawHome() {
     return;
   }
   box.innerHTML = nextCardHtml(overview.schedule)
+    + occasionPracticesHtml(me)
     + (me ? trioHtml(me, overview.schedule) : '')
     + daysFoldHtml(overview.schedule, me ? me.history || [] : null, days)
     + (me ? remarksFoldHtml(me, rem) : '');

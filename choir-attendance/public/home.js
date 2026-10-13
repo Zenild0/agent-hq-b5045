@@ -152,3 +152,16 @@ export function guestHomeHtml(me) {
     <label class="card row between sched-opt"><span class="grow"><b>Main choir practice times</b><div class="muted">Show the regular practice days here</div></span>
       <input type="checkbox" id="schedOpt" class="switch"${me.showSchedule ? ' checked' : ''} aria-label="Show the main choir practice times"></label>`;
 }
+
+// Practices the teacher scheduled for the special occasions this child is in (separate from the regular practice).
+export function occasionPracticesHtml(me) {
+  const list = me?.occasionPractices || [];
+  if (!list.length) return '';
+  return `
+    <section class="card" aria-label="Special practices">
+      <div class="tag">Special practices</div>
+      ${list.slice(0, 8).map((p) => `
+        <div class="row between" style="padding:6px 0;border-top:1px solid var(--line)">
+          <span><b>${WD[dow(p.date)]} ${ymd(p.date)[2]} ${MONTHS[ymd(p.date)[1] - 1].slice(0, 3)}</b> · ${fmtTime(p.time)}<div class="muted">${esc(p.event)}${p.note ? ` · ${esc(p.note)}` : ''}</div></span></div>`).join('')}
+    </section>`;
+}

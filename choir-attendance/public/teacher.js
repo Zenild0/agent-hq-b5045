@@ -528,7 +528,9 @@ async function loadOccasions() {
       <div class="card">
         <div class="row between"><h3 style="margin:0">${esc(ev.event)} <span class="muted">· ${ev.total} people</span></h3>
           <div class="row"><button class="btn small" data-edit="${esc(ev.id)}">👥 People</button>
-            <button class="btn small" data-add="${esc(ev.event)}">＋ Practice</button></div></div>
+            <button class="btn small" data-sched="${esc(ev.id)}">📅 Schedule</button>
+            <button class="btn small" data-add="${esc(ev.event)}" data-next="${esc((ev.practices.find((p) => p.date >= todayStr()) || {}).date || '')}">＋ Practice</button></div></div>
+        ${ev.practices.filter((p) => p.date >= todayStr()).length ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">${ev.practices.filter((p) => p.date >= todayStr()).map((p) => `<span class="badge info">📅 ${esc(fmtDate(p.date))} · ${esc(fmtClock(p.time))}</span>`).join('')}</div>` : '<div class="muted" style="margin-top:8px">No practice dates scheduled. Tap 📅 Schedule to add them.</div>'}
         ${ev.sessions.length ? `<div class="matrix-wrap"><table class="matrix">
           <thead><tr><th>Child</th>${ev.sessions.map((x) => `
             <th><button class="link" data-goto="${x.date}|${x.type}|${esc(ev.event)}">${x.date.slice(8)}/${x.date.slice(5, 7)}</button><div class="muted">${x.type === 'feast' ? '🎶 Mass' : 'Practice'}<br>${x.presentCount} here</div></th>`).join('')}
@@ -545,9 +547,10 @@ async function loadOccasions() {
   $('#newOccasion').addEventListener('click', () => run(() => openOccasion(null)));
   $('#occasions').querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => run(() => openOccasion(b.dataset.edit))));
   $('#occasions').querySelectorAll('[data-add]').forEach((b) => b.addEventListener('click', () => {
-    type = 'practice'; event = b.dataset.add; date = todayStr();
+    type = 'practice'; event = b.dataset.add; date = b.dataset.next === todayStr() || !b.dataset.next ? todayStr() : b.dataset.next;
     showTab('attendance');
   }));
+  $('#occasions').querySelectorAll('[data-sched]').forEach((b) => b.addEventListener('click', () => run(() => openOccPractices(b.dataset.sched))));
   $('#occasions').querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => {
     [date, type, event] = b.dataset.goto.split('|');
     showTab('attendance');
@@ -558,6 +561,50 @@ async function loadOccasions() {
     await call(`teacher/children/${c.id}`, { method: 'PATCH', body: { guest: false } });
     await loadOccasions();
   })));
+}
+
+// The scheduled practices of one occasion: as many dates and times as needed, each with an optional note.
+async function openOccPractices(eventId, backTo = loadOccasions) {
+  const o = await call(`teacher/occasions${occSeason ? `?season=${occSeason}` : ''}`);
+  const ev = o.events.find((x) => x.id === eventId);
+  if (!ev) throw new Error('Occasion not found');
+  let list = ev.practices;
+  const draw = () => {
+    $('#dlgBody').innerHTML = `
+      <div class="row between"><h2 style="margin:0">${esc(ev.event)} · practices</h2><button class="btn small" id="close" aria-label="Close">✕</button></div>
+      <p class="muted">These dates and times are separate from the regular Saturday practice. Parents of everyone in this occasion see them.</p>
+      ${list.map((p) => `
+        <div class="card" data-p="${esc(p.id)}" style="padding:10px">
+          <div class="row" style="gap:8px;flex-wrap:wrap">
+            <input type="date" class="pd" value="${esc(p.date)}" aria-label="Date" style="flex:1;min-width:140px">
+            <input type="time" class="pt" value="${esc(p.time)}" aria-label="Time" style="width:120px">
+            <button class="ibtn" data-del="${esc(p.id)}" title="Remove this practice" aria-label="Remove this practice">✕</button></div>
+          <input class="pn" maxlength="140" value="${esc(p.note)}" placeholder="Note (optional), e.g. Bring carol books" style="margin-top:6px;width:100%"></div>`).join('') || '<div class="empty">No practice dates yet. Add the first one below.</div>'}
+      <h3 style="margin:14px 0 6px">Add a practice</h3>
+      <form id="pf" class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
+        <label class="field" style="margin:0;flex:1;min-width:140px">Date<input type="date" name="date" required min="${todayStr()}"></label>
+        <label class="field" style="margin:0;width:120px">Time<input type="time" name="time" required value="${esc(lastTime)}"></label>
+        <label class="field" style="margin:0;flex:1 1 100%">Note (optional)<input name="note" maxlength="140"></label>
+        <button class="btn primary">＋ Add practice</button><span id="pmsg" class="muted" aria-live="polite"></span></form>`;
+    $('#close').addEventListener('click', () => { dlg.close(); backTo(); });
+    $('#pf').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const body = Object.fromEntries(new FormData(e.target));
+      try { lastTime = body.time; list = (await call(`teacher/occasions/${ev.id}/practices`, { method: 'POST', body })).practices.map((p) => p); draw(); } catch (err) { $('#pmsg').textContent = `⚠️ ${err.message}`; }
+    });
+    $('#dlgBody').querySelectorAll('[data-p]').forEach((card) => {
+      const pid = card.dataset.p;
+      const save = async () => {
+        try { list = (await call(`teacher/occasions/${ev.id}/practices`, { method: 'PUT', body: { pid, date: $('.pd', card).value, time: $('.pt', card).value, note: $('.pn', card).value } })).practices; draw(); }
+        catch (err) { alert(err.message); draw(); }
+      };
+      card.querySelectorAll('input').forEach((i) => i.addEventListener('change', save));
+      $('[data-del]', card).addEventListener('click', async () => { list = (await call(`teacher/occasions/${ev.id}/practices`, { method: 'DELETE', body: { pid } })).practices; draw(); });
+    });
+  };
+  let lastTime = list.at(-1)?.time || '18:00';
+  if (!dlg.open) dlg.showModal();
+  draw();
 }
 
 // Create or edit an occasion: choose main-group children, add guests who are not in the choir.
@@ -1355,7 +1402,7 @@ const fmtClock = (hhmm) => {
 };
 
 async function loadSchedule() {
-  const sc = await call('teacher/schedule');
+  const [sc, occ] = await Promise.all([call('teacher/schedule'), call('teacher/occasion-practices')]);
   const usual = sc.usual;
   // Only the exceptions are listed: cancelled, a different time, a note of their own, or a special day.
   const exceptions = sc.days.filter((d) => d.date >= sc.today && (d.cancelled || d.special || d.time !== usual.time || d.label || (d.note && d.note !== usual.note)));
@@ -1375,8 +1422,16 @@ async function loadSchedule() {
       <div class="row" style="margin-top:12px">
         <button class="btn" id="chgDay">Cancel or change a day</button>
         <button class="btn primary" id="addSpecial">Add a special day</button></div>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Occasion practices <span class="muted">(separate from Saturdays)</span></h3>
+      ${occ.practices.map((p) => `
+        <div class="row between" style="border-top:1px solid var(--line);padding:8px 0">
+          <span><b>${esc(fmtDate(p.date))}</b> · ${esc(fmtClock(p.time))}<div class="muted">${esc(p.event)}${p.note ? ` · ${esc(p.note)}` : ''}</div></span>
+          <button class="ibtn" data-occp="${esc(p.occId)}" title="Edit this occasion's practices" aria-label="Edit practices">✎</button></div>`).join('') || '<div class="muted">No occasion practices coming up. Add them from <b>Special occasions → 📅 Schedule</b>.</div>'}
     </div>`;
   $('#editUsual').addEventListener('click', () => openUsual(usual));
+  $('#schedule').querySelectorAll('[data-occp]').forEach((b) => b.addEventListener('click', () => run(() => openOccPractices(b.dataset.occp, loadSchedule))));
   $('#usualNote').addEventListener('change', (e) => run(async () => { await call('teacher/schedule', { method: 'PUT', body: { note: e.target.value } }); flash('Saved', 'ok'); }));
   $('#chgDay').addEventListener('click', () => openDay(sc, { date: sc.next?.date || sc.today }, 'change'));
   $('#addSpecial').addEventListener('click', () => openDay(sc, { date: sc.today }, 'special'));
