@@ -46,7 +46,7 @@ const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce
 export function headerHtml(title, subtitle = '') {
   return `
     <header class="top"><div class="top-inner">
-      <img class="logo" src="/logo.png" width="60" height="60" alt="Children's Choir ZD logo" onerror="this.outerHTML='<div class=\\'logo-fallback\\' aria-hidden=\\'true\\'>🎵</div>'">
+      <img class="logo" src="/logo.png" width="72" height="72" alt="Treble Makers Children's Choir logo" onerror="this.outerHTML='<div class=\\'logo-fallback\\' aria-hidden=\\'true\\'>🎵</div>'">
       <div class="grow"><h1>${esc(title)}</h1><small>${subtitle}</small></div>
     </div></header>`;
 }
