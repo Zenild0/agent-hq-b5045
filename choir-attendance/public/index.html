@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#3a1fa8">
+  <title>Children's Choir ZD</title>
+  <link rel="icon" href="/icon-192.png" type="image/png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Music&text=%F0%9D%84%9E%F0%9D%84%A2">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&family=Nunito:wght@400;600;700;800&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <script>
+    // apply the saved look before the first paint so there is no flash of the wrong colours
+    (function () {
+      var d = document.documentElement;
+      try {
+        var t = localStorage.getItem('choir-theme');
+        d.dataset.theme = t === 'light' || t === 'bright' ? t : 'dark';
+        d.dataset.lens = localStorage.getItem('choir-lens') === 'parent' ? 'parent' : 'kid';
+      } catch (e) { d.dataset.theme = 'dark'; }
+    })();
+  </script>
+</head>
+<body class="app">
+  <div id="app"></div>
+  <script type="module" src="parent.js"></script>
+</body>
+</html>
