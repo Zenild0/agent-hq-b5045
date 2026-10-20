@@ -768,11 +768,37 @@ function applyChord(c, body) {
   c.updated = Date.now();
 }
 
+// ---- song requests: a student asks for a song that is not in the Chord Book yet; the teacher sees them in one list ----
+const titleKey = (t) => String(t ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+function requestChord(child, body) {
+  const { db } = store;
+  if (!db.settings.chordsEnabled) throw new HttpError(403, 'The Chord Book is switched off right now');
+  if (!accessFor(child).full) throw new HttpError(402, 'The Chord Book is part of the paid version');
+  const title = text(body.title, 80, 'Song name');
+  const key = titleKey(title);
+  if (key.length < 2) throw new HttpError(400, 'Type the name of the song');
+  if (db.chords.some((c) => titleKey(c.title) === key)) throw new HttpError(409, `${title} is already in the Chord Book. Search for it.`);
+  let r = db.chordRequests.find((x) => x.key === key);
+  if (!r) {
+    if (db.chordRequests.filter((x) => x.by.includes(child.id)).length >= 5) throw new HttpError(400, 'You already have 5 songs waiting. Your teacher will add them soon.');
+    if (db.chordRequests.length >= 300) throw new HttpError(400, 'There are too many requests right now. Please ask your teacher.');
+    r = { id: randomUUID().slice(0, 8), key, title, by: [], at: today() };
+    db.chordRequests.push(r);
+  }
+  if (!r.by.includes(child.id)) r.by.push(child.id);
+  store.save();
+  return { ok: true, title: r.title, count: r.by.length };
+}
+
+const chordRequestList = () => store.db.chordRequests.slice().sort((a, b) => b.by.length - a.by.length || a.at.localeCompare(b.at))
+  .map((r) => ({ id: r.id, title: r.title, count: r.by.length, at: r.at, names: r.by.map((id) => store.db.children.find((c) => c.id === id)?.name).filter(Boolean) }));
+
 function saveChord(c, body) {
   const fresh = !c;
   const item = c ?? { id: randomUUID().slice(0, 8), title: '', key: '', kind: 'hymn', category: '', hymnId: '', body: '', updated: 0, addedOn: today() };
   applyChord(item, body);
-  if (fresh) store.db.chords.push(item);
+  if (fresh) { store.db.chords.push(item); store.db.chordRequests = store.db.chordRequests.filter((r) => r.key !== titleKey(item.title)); } // a requested song is answered the moment it is added
   store.save();
   return { ...chordSummary(item), body: item.body };
 }
@@ -793,7 +819,7 @@ function chordLibrary(child) {
   const acc = accessFor(child);
   const list = db.chords.slice().sort((a, b) => a.title.localeCompare(b.title));
   if (!acc.full) return { locked: true, count: list.length, trial: acc.trial, expired: acc.expired, pay: acc.pay ?? { price: db.settings.gamePrice, mobile: db.settings.gamePayMobile, upi: db.settings.gameUpi } };
-  return { locked: false, trial: acc.trial, paid: acc.paid, categories: [...new Set(list.map((c) => c.category).filter(Boolean))].sort(), songs: list.map(chordSummary) };
+  return { locked: false, requested: db.chordRequests.filter((r) => r.by.includes(child.id)).map((r) => r.title), trial: acc.trial, paid: acc.paid, categories: [...new Set(list.map((c) => c.category).filter(Boolean))].sort(), songs: list.map(chordSummary) };
 }
 
 function chordSong(child, id) {
@@ -1307,6 +1333,7 @@ async function teacherApi(req, res, q, parts) {
     }
     if (b === 'guests') return send(res, 200, guestsView());
     if (b === 'free-chords') return send(res, 200, { songs: freeChordList() });
+    if (b === 'chord-requests') return send(res, 200, { requests: chordRequestList() });
     if (b === 'chords') return send(res, 200, { songs: store.db.chords.slice().sort((a, b) => a.title.localeCompare(b.title)).map((c) => ({ ...chordSummary(c), body: c.body })), hymns: store.db.hymns.map((h) => ({ id: h.id, title: h.title })) });
     if (b === 'occasion-practices') return send(res, 200, { practices: upcomingOccasionPractices() });
     if (b === 'lyrics') return send(res, 200, await searchLyrics(q.get('q')));
@@ -1330,6 +1357,7 @@ async function teacherApi(req, res, q, parts) {
   if (req.method === 'PUT' && b === 'mark') { mark(body); return send(res, 200, { ok: true }); }
   if (req.method === 'POST' && b === 'mark-all-present') { markAllPresent(body); return send(res, 200, { ok: true }); }
   if (req.method === 'POST' && b === 'bulk-children') return send(res, 201, bulkAdd(body));
+  if (req.method === 'DELETE' && b === 'chord-requests' && id) { store.db.chordRequests = store.db.chordRequests.filter((r) => r.id !== id); store.save(); return send(res, 200, { requests: chordRequestList() }); }
   if (req.method === 'POST' && b === 'free-chords') {
     if (id === 'all') { // save every sheet that is not in the Chord Book yet
       const todo = FREE_CHORDS.filter((f) => !hasChordTitle(f));
@@ -1446,6 +1474,7 @@ async function api(req, res, url) {
     }
     if (req.method === 'GET' && b === 'access') return send(res, 200, { ...accessFor(child), board: Boolean(store.db.settings.trainingBoardEnabled) });
     if (req.method === 'GET' && b === 'xp-board') return send(res, 200, xpBoardFor(child));
+    if (req.method === 'POST' && b === 'chords' && parts[2] === 'request') return send(res, 200, requestChord(child, await readBody(req, 2_000)));
     if (req.method === 'GET' && b === 'chords') return send(res, 200, parts[2] ? chordSong(child, parts[2]) : chordLibrary(child));
     if (req.method === 'POST' && b === 'xp') return send(res, 200, xpReport(child, await readBody(req, 5_000)));
     if (req.method === 'PUT' && b === 'schedule') { // a guest chooses whether to see the main choir's practice times

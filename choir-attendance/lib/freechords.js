@@ -336,4 +336,208 @@ Ever[D]lasting is Thy [G]reign.`),
 [G]This little light of mine, I'm gonna let it [D]shine;
 [G]This little light of mine, I'm gonna let it [C]shine,
 Let it [G]shine, [D]let it shine, let it [G]shine.`, 'song'),
+
+  S('crown-him-with-many-crowns', 'Crown Him with Many Crowns', 'D', 'Entrance', `
+{Verse 1}
+[D]Crown Him with many [A]crowns, the [D]Lamb upon His [G]throne;
+[D]Hark! how the heavenly [A]anthem drowns [D]all music but its [A]own!
+A[D]wake, my soul, and [G]sing of Him who [D]died for [A]thee,
+And [D]hail Him as thy [G]matchless [A]King through [D]all eter[A]ni[D]ty.`),
+
+  S('onward-christian-soldiers', 'Onward, Christian Soldiers', 'G', 'Recessional', `
+{Verse 1}
+[G]Onward, Christian [D]soldiers, [G]marching as to [D]war,
+With the [G]cross of Jesus [C]going on be[G]fore;
+[G]Christ, the royal [D]Master, [G]leads against the [D]foe;
+For[G]ward into [C]battle, [D]see His [G]banners go.
+{Refrain}
+[G]Onward, Christian [D]soldiers, [G]marching as to [D]war,
+With the [G]cross of Jesus [C]going on be[D]fore. [G]`),
+
+  S('swing-low', 'Swing Low, Sweet Chariot', 'G', 'Spirituals', `
+{Chorus}
+[G]Swing low, sweet [C]chariot, [G]coming for to carry me [D]home,
+[G]Swing low, sweet [C]chariot, [G]coming for to [D]carry me [G]home.
+{Verse 1}
+I [G]looked over Jordan, and [C]what did I [G]see
+Coming for to carry me [D]home?
+A [G]band of angels [C]coming after [G]me,
+Coming for to [D]carry me [G]home.`, 'song'),
+
+  S('michael-row-the-boat', 'Michael, Row the Boat Ashore', 'G', 'Spirituals', `
+{Verse 1}
+[G]Michael, row the boat a[C]shore, [G]Alle[D]luia;
+[G]Michael, row the boat a[C]shore, [G]Alle[D]lu[G]ia.
+[G]Sister, help to trim the [C]sail, [G]Alle[D]luia;
+[G]Sister, help to trim the [C]sail, [G]Alle[D]lu[G]ia.`, 'song'),
+
+  S('when-the-saints', 'When the Saints Go Marching In', 'C', 'Spirituals', `
+{Verse 1}
+Oh, [C]when the saints go marching in,
+Oh, when the saints go [G]marching in,
+Oh Lord, I want to be in that [C]number,
+When the saints go [G]marching [C]in.
+{Verse 2}
+Oh, [C]when the sun refuse to shine,
+Oh, when the sun refuse to [G]shine,
+Oh Lord, I want to be in that [C]number,
+When the sun refuse to [G]shine. [C]`, 'song'),
+
+  S('jesus-christ-is-risen-today', 'Jesus Christ Is Risen Today', 'D', 'Easter', `
+{Verse 1}
+[D]Jesus Christ is [A]risen to[D]day, Alle[A]lu[D]ia!
+Our tri[D]umphant [G]holy [D]day, Alle[A]lu[D]ia!
+Who did [D]once upon the [A]cross, Alle[D]lu[A]ia!
+[D]Suffer to re[G]deem our [A]loss, Alle[D]lu[A]ia! [D]`),
+
+  S('christ-the-lord-is-risen-today', 'Christ the Lord Is Risen Today', 'D', 'Easter', `
+{Verse 1}
+[D]Christ the Lord is [A]risen to[D]day, Alle[A]lu[D]ia!
+Sons of [D]men and [G]angels [D]say, Alle[A]lu[D]ia!
+Raise your [D]joys and tri[A]umphs [D]high, Alle[A]lu[D]ia!
+Sing, ye [D]heavens, and [G]earth, re[A]ply, Alle[D]lu[A]ia! [D]`),
+
+  S('good-king-wenceslas', 'Good King Wenceslas', 'G', 'Christmas', `
+{Verse 1}
+[G]Good King Wences[D]las looked [G]out
+On the [C]feast of [G]Ste[D]phen,
+When the [G]snow lay [D]round a[G]bout,
+Deep and [C]crisp and [G]e[D]ven;
+[G]Brightly shone the [D]moon that [G]night,
+Though the [C]frost was [G]cru[D]el,
+When a [G]poor man [D]came in [G]sight,
+Gath'ring [C]win[D]ter [G]fuel.`),
+
+  S('god-rest-ye-merry-gentlemen', 'God Rest Ye Merry, Gentlemen', 'Em', 'Christmas', `
+{Verse 1}
+[Em]God rest ye merry, [Am]gentlemen, [Em]let nothing you dis[B7]may,
+[Em]Remember Christ our [Am]Saviour was [Em]born on Christmas [B7]day,
+To [Em]save us all from [G]Satan's power when [D]we were gone a[Em]stray;
+O [G]tidings of com[D]fort and [Em]joy, com[B7]fort and [Em]joy,
+O [G]tidings of com[D]fort and [Em]joy.`),
+
+  S('it-came-upon-the-midnight-clear', 'It Came Upon the Midnight Clear', 'G', 'Christmas', `
+{Verse 1}
+It [G]came upon the [D]midnight [G]clear, that [C]glorious [G]song of [D]old,
+From [G]angels bending [D]near the [G]earth to [C]touch their [G]harps of [D]gold;
+"[G]Peace on the earth, good [D]will to [G]men, from [C]heaven's [G]all-gra[D]cious [G]King."
+The [G]world in solemn [D]stillness [G]lay to [C]hear the [G]angels [D]sing. [G]`),
+
+  S('come-ye-thankful-people', 'Come, Ye Thankful People, Come', 'G', 'Thanksgiving', `
+{Verse 1}
+[G]Come, ye thankful [D]people, [G]come,
+[G]Raise the song of [C]harvest [D]home;
+[G]All is safely [D]gathered [G]in,
+Ere the [C]winter [G]storms be[D]gin;
+[G]God our Maker [D]doth pro[G]vide
+For our [C]wants to [G]be sup[D]plied;
+[G]Come to God's own [D]temple, [G]come,
+Raise the [C]song of [D]harvest [G]home.`),
+
+  S('we-plough-the-fields', 'We Plough the Fields and Scatter', 'G', 'Thanksgiving', `
+{Verse 1}
+We [G]plough the fields and [C]scatter the [G]good seed on the [D]land,
+But [G]it is fed and [C]watered by [G]God's al[D]mighty [G]hand;
+He [G]sends the snow in [C]winter, the [G]warmth to swell the [D]grain,
+The [G]breezes and the [C]sunshine, and [G]soft re[D]freshing [G]rain.
+{Refrain}
+All [G]good gifts around us are [C]sent from [G]heaven a[D]bove;
+Then [G]thank the Lord, O [C]thank the Lord, for [G]all His [D]love. [G]`),
+
+  S('now-thank-we-all-our-god', 'Now Thank We All Our God', 'G', 'Thanksgiving', `
+{Verse 1}
+[G]Now thank we all our [D]God, with [G]heart and hands and [D]voices,
+[G]Who wondrous things hath [C]done, in [G]whom His world re[D]joices;
+[G]Who, from our mothers' [D]arms, hath [G]blessed us on our [D]way
+With [G]countless gifts of [C]love, and [G]still is [D]ours to[G]day.`),
+
+  S('for-the-beauty-of-the-earth', 'For the Beauty of the Earth', 'D', 'Thanksgiving', `
+{Verse 1}
+[D]For the beauty of the [G]earth, [D]for the beauty of the [A]skies,
+[D]For the love which from our [G]birth [D]over and around us [A]lies;
+[D]Lord of all, to Thee we [G]raise [D]this our hymn of grate[A]ful [D]praise.`),
+
+  S('fairest-lord-jesus', 'Fairest Lord Jesus', 'D', 'Communion', `
+{Verse 1}
+[D]Fairest Lord Jesus, [A]Ruler of all [D]nature,
+O [G]Thou of God and [D]man the [A]Son,
+[D]Thee will I cherish, [A]Thee will I [D]honour,
+Thou, [G]my soul's glory, [A]joy and [D]crown.`),
+
+  S('o-worship-the-king', 'O Worship the King', 'D', 'Entrance', `
+{Verse 1}
+[D]O worship the King, [A]all glorious a[D]bove,
+[D]O gratefully sing His [G]power and His [D]love;
+Our [D]Shield and De[A]fender, the [D]Ancient of Days,
+[D]Pavilioned in [G]splendour, and [A]girded with [D]praise.`),
+
+  S('savior-like-a-shepherd', 'Savior, Like a Shepherd Lead Us', 'G', 'Communion', `
+{Verse 1}
+[G]Saviour, like a [C]shepherd [G]lead us, [D]much we [G]need Thy [D]tender [G]care;
+In Thy [G]pleasant [C]pastures [G]feed us, [D]for our [G]use Thy [D]folds pre[G]pare.
+{Refrain}
+[G]Blessed Jesus, [C]blessed Jesus, [G]Thou hast [D]bought us, [G]Thine we [D]are;
+[G]Blessed Jesus, [C]blessed Jesus, [G]Thou hast [D]bought us, [G]Thine we [D]are. [G]`),
+
+  S('i-need-thee-every-hour', 'I Need Thee Every Hour', 'G', 'Communion', `
+{Verse 1}
+[G]I need Thee every [C]hour, most [G]gracious [D]Lord;
+[G]No tender voice like [C]Thine can [D]peace af[G]ford.
+{Refrain}
+I [G]need Thee, O I [C]need Thee, [G]every hour I [D]need Thee;
+O [G]bless me now, my [C]Saviour, [G]I come to [D]Thee. [G]`),
+
+  S('softly-and-tenderly', 'Softly and Tenderly', 'G', 'Communion', `
+{Verse 1}
+[G]Softly and tenderly [D]Jesus is [G]calling,
+[G]Calling for you and for [D]me;
+[G]See, on the portals He's [C]waiting and [G]watching,
+[G]Watching for you and for [D]me. [G]
+{Refrain}
+[G]Come home, come home, [D]ye who are [G]weary, come home;
+[G]Earnestly, tenderly, [C]Jesus is [G]calling,
+[G]Calling, O [D]sinner, come [G]home!`),
+
+  S('old-rugged-cross', 'The Old Rugged Cross', 'D', 'Communion', `
+{Verse 1}
+On a [D]hill far away stood an [G]old rugged [D]cross,
+The em[D]blem of suffering and [A]shame;
+And I [D]love that old cross where the [G]dearest and [D]best
+For a [D]world of lost sinners was [A]slain. [D]
+{Refrain}
+So I'll [D]cherish the old rugged [G]cross, [D]
+Till my [D]trophies at last I lay [A]down;
+I will [D]cling to the old rugged [G]cross, [D]
+And ex[D]change it some day for a [A]crown. [D]`),
+
+  S('twinkle-twinkle', 'Twinkle, Twinkle, Little Star', 'C', 'Children', `
+{Verse 1}
+[C]Twinkle, twinkle, [F]little [C]star,
+[F]How I [C]wonder [G]what you [C]are!
+[C]Up above the [F]world so [C]high,
+[F]Like a [C]diamond [G]in the [C]sky.
+[C]Twinkle, twinkle, [F]little [C]star,
+[F]How I [C]wonder [G]what you [C]are!`, 'song'),
+
+  S('row-row-row-your-boat', 'Row, Row, Row Your Boat', 'C', 'Children', `
+{Verse 1}
+[C]Row, row, row your boat,
+Gently down the [G]stream;
+Merrily, merrily, [C]merrily, [G]merrily,
+Life is but a [C]dream.`, 'song'),
+
+  S('mary-had-a-little-lamb', 'Mary Had a Little Lamb', 'C', 'Children', `
+{Verse 1}
+[C]Mary had a little lamb, [G]little lamb, [C]little lamb,
+[C]Mary had a little lamb, its [G]fleece was white as [C]snow.
+[C]Everywhere that Mary went, [G]Mary went, [C]Mary went,
+[C]Everywhere that Mary went, the [G]lamb was sure to [C]go.`, 'song'),
+
+  S('old-macdonald', 'Old MacDonald Had a Farm', 'G', 'Children', `
+{Verse 1}
+[G]Old MacDonald had a farm, E-I-E-I-[D]O;
+And [G]on his farm he had a cow, E-I-E-I-[G]O.
+With a [G]moo-moo here, and a [C]moo-moo there,
+[G]Here a moo, there a moo, [D]everywhere a moo-moo,
+[G]Old MacDonald had a farm, E-I-E-I-[D]O. [G]`, 'song'),
 ];

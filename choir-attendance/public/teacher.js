@@ -108,6 +108,7 @@ async function loadGamesHub() {
     <div id="practiceBox"></div>
     <div id="subsBox"></div>`;
   $('#games').querySelectorAll('[data-game]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.game)));
+  call('teacher/chord-requests').then((r) => { if (r.requests.length) $('#games').querySelector('[data-game="chordbook"] .muted').insertAdjacentHTML('beforeend', ` <b style="color:var(--brand)">· ${r.requests.length} song request${r.requests.length === 1 ? '' : 's'}</b>`); }).catch(() => {});
   call('teacher/vocals-subs').then((s) => { $('#subsBox').innerHTML = subsPanelHtml(s); }).catch(() => {});
   call('teacher/practice').then((r) => {
     $('#practiceBox').innerHTML = `
@@ -126,35 +127,57 @@ const sheetPreview = (body) => parseSheet(normaliseSheet(body)).map((l) => (l.ki
 
 let chordTab = 'mine'; // mine | free
 async function loadChordBook() {
-  const [r, pub, free] = await Promise.all([call('teacher/chords'), call('public'), call('teacher/free-chords')]);
+  const [r, pub, free, reqs] = await Promise.all([call('teacher/chords'), call('public'), call('teacher/free-chords'), call('teacher/chord-requests')]);
   const on = pub.settings?.chordsEnabled;
   const todo = free.songs.filter((f) => !f.inLibrary).length;
-  const head = `
+  const headTop = `
     <div class="card"><div class="row between"><div><h2 style="margin:0">Chord Book</h2><div class="muted">${r.songs.length} song${r.songs.length === 1 ? '' : 's'} in the library. Students search these, add them to their own songs and build set lists.</div></div>
       <button class="btn primary" id="addChord">＋ Add song</button></div>
-      <div class="alert ${on ? 'ok' : 'warn'}" style="margin-top:10px">${on ? 'Switched on for parents. It is part of the paid version, with the same free trial as the games.' : 'Switched off for parents. Add your songs first, then switch it on in More → Settings.'}</div></div>
-    <div class="cb-tabs" role="tablist"><button role="tab" data-ctab="mine" class="${chordTab === 'mine' ? 'on' : ''}">My library · ${r.songs.length}</button><button role="tab" data-ctab="free" class="${chordTab === 'free' ? 'on' : ''}">Free library · ${free.songs.length}</button></div>`;
+      <div class="alert ${on ? 'ok' : 'warn'}" style="margin-top:10px">${on ? 'Switched on for parents. It is part of the paid version, with the same free trial as the games.' : 'Switched off for parents. Add your songs first, then switch it on in More → Settings.'}</div></div>`;
+  const head = headTop;
+  const tabsHtml = `<div class="cb-tabs" role="tablist"><button role="tab" data-ctab="mine" class="${chordTab === 'mine' ? 'on' : ''}">My library · ${r.songs.length}</button><button role="tab" data-ctab="free" class="${chordTab === 'free' ? 'on' : ''}">Free library · ${free.songs.length}</button></div>`;
   const mineHtml = `
-    <label class="field"><span class="sr">Search</span><input id="chordQ" type="search" placeholder="Search your library…" autocomplete="off"></label>
     <div id="chordList">${r.songs.map((s) => `
       <div class="card row between" data-ct="${esc(s.title.toLowerCase())}"><span class="row" style="gap:10px"><span class="cb-key">${esc(s.key || '–')}</span><span><b>${esc(s.title)}</b><div class="muted">${s.kind === 'hymn' ? 'Hymn' : 'Song'}${s.category ? ` · ${esc(s.category)}` : ''} · ${esc(s.chords.join(' '))}</div></span></span>
         <button class="ibtn" data-edit-chord="${esc(s.id)}" title="Edit" aria-label="Edit ${esc(s.title)}">✎</button></div>`).join('') || '<div class="empty">No songs yet. Tap “＋ Add song”, or open the <b>Free library</b> and save some with one tap.</div>'}</div>`;
   const freeHtml = `
     <div class="card"><div class="row between"><div><b>Free library</b><div class="muted">Hymns, carols and children's songs in the public domain, with chords. Tap ＋ Save to put one in your library, then edit it if you like. Check the chords against your own hymn book.</div></div>
       ${todo ? `<button class="btn small" id="saveAllFree">＋ Save all ${todo}</button>` : ''}</div></div>
-    <label class="field"><span class="sr">Search</span><input id="freeQ" type="search" placeholder="Search the free library…" autocomplete="off"></label>
     <div id="freeList">${free.songs.map((f) => `
       <details class="card free-song" data-ft="${esc(f.title.toLowerCase())}">
         <summary class="row between"><span class="row" style="gap:10px;min-width:0"><span class="cb-key">${esc(f.key)}</span><span style="min-width:0"><b>${esc(f.title)}</b><div class="muted">${f.kind === 'hymn' ? 'Hymn' : 'Song'} · ${esc(f.category)} · ${esc(f.chords.join(' '))}</div></span></span>
           ${f.inLibrary ? '<span class="badge ok">✓ In library</span>' : `<button type="button" class="btn small primary" data-save-free="${esc(f.id)}">＋ Save</button>`}</summary>
         <div class="cb-sheet" style="--cb-size:.9rem">${sheetPreview(f.body)}</div>
       </details>`).join('')}</div>`;
-  $('#chordbook').innerHTML = head + (chordTab === 'mine' ? mineHtml : freeHtml);
+  const reqHtml = reqs.requests.length ? `
+    <details class="card" open><summary><b>Song requests · ${reqs.requests.length}</b><span class="muted"> students asked for these</span></summary>
+      ${reqs.requests.map((q) => `<div class="row between" style="border-top:1px solid var(--line);padding:8px 0"><span><b>${esc(q.title)}</b><div class="muted">${q.count} student${q.count === 1 ? '' : 's'}: ${esc(q.names.slice(0, 4).join(', '))}${q.names.length > 4 ? '…' : ''}</div></span>
+        <span class="row" style="gap:6px"><button class="btn small primary" data-req-add="${esc(q.id)}">Add chords</button><button class="ibtn" data-req-del="${esc(q.id)}" title="Dismiss" aria-label="Dismiss this request">✕</button></span></div>`).join('')}
+    </details>` : '';
+  $('#chordbook').innerHTML = `${head}${reqHtml}
+    <label class="field"><span class="sr">Search</span><input id="allQ" type="search" placeholder="Search any song: your library and the free library…" autocomplete="off"></label>
+    <div id="allRes" hidden></div><div id="cbTabsBox">${tabsHtml}${chordTab === 'mine' ? mineHtml : freeHtml}</div>`;
   $('#chordbook').querySelectorAll('[data-ctab]').forEach((b) => b.addEventListener('click', () => { chordTab = b.dataset.ctab; run(loadChordBook); }));
   $('#addChord').addEventListener('click', () => openChordEditor(null, r));
-  const filter = (input, list, attr) => $(input)?.addEventListener('input', (e) => { const q = e.target.value.trim().toLowerCase(); $(list).querySelectorAll(`[${attr}]`).forEach((c) => { c.hidden = Boolean(q) && !c.getAttribute(attr).includes(q); }); });
-  filter('#chordQ', '#chordList', 'data-ct');
-  filter('#freeQ', '#freeList', 'data-ft');
+  // one search box for everything: your own songs, the free library, and a way to add what is not found
+  $('#allQ').addEventListener('input', (e) => {
+    const raw = e.target.value.trim(), q = raw.toLowerCase();
+    $('#allRes').hidden = !q; $('#cbTabsBox').hidden = Boolean(q);
+    if (!q) return;
+    const mineHit = r.songs.filter((x) => x.title.toLowerCase().includes(q));
+    const freeHit = free.songs.filter((x) => !x.inLibrary && x.title.toLowerCase().includes(q));
+    $('#allRes').innerHTML = `
+      ${mineHit.length ? `<h3 style="margin:8px 0 4px">In your library</h3>${mineHit.map((x) => `<div class="card row between"><span class="row" style="gap:10px"><span class="cb-key">${esc(x.key || '–')}</span><span><b>${esc(x.title)}</b><div class="muted">${esc(x.chords.join(' '))}</div></span></span><button class="ibtn" data-edit-chord="${esc(x.id)}" aria-label="Edit ${esc(x.title)}">✎</button></div>`).join('')}` : ''}
+      ${freeHit.length ? `<h3 style="margin:8px 0 4px">In the free library</h3>${freeHit.map((x) => `<details class="card free-song"><summary class="row between"><span class="row" style="gap:10px;min-width:0"><span class="cb-key">${esc(x.key)}</span><span style="min-width:0"><b>${esc(x.title)}</b><div class="muted">${esc(x.chords.join(' '))}</div></span></span><button type="button" class="btn small primary" data-save-free="${esc(x.id)}">＋ Save</button></summary><div class="cb-sheet" style="--cb-size:.9rem">${sheetPreview(x.body)}</div></details>`).join('')}` : ''}
+      ${!mineHit.length && !freeHit.length ? `<div class="empty">Nothing called “${esc(raw)}” yet.</div>` : ''}
+      <div class="card"><b>Not what you wanted?</b><div class="muted">Songs still under copyright are not in the free library. Paste the chords yourself (from a hymn book or a licensed service) and it is saved for everyone.</div>
+        <button class="btn small" id="addNamed" style="margin-top:8px">＋ Add “${esc(raw)}” with my own chords</button></div>`;
+    $('#addNamed').addEventListener('click', () => openChordEditor(null, r, { title: raw }));
+    $('#allRes').querySelectorAll('[data-edit-chord]').forEach((b) => b.addEventListener('click', () => openChordEditor(r.songs.find((x) => x.id === b.dataset.editChord), r)));
+    $('#allRes').querySelectorAll('[data-save-free]').forEach((b) => b.addEventListener('click', (ev) => { ev.preventDefault(); ev.stopPropagation(); run(async () => { b.disabled = true; await call(`teacher/free-chords/${b.dataset.saveFree}`, { method: 'POST', body: {} }); flash('Saved to your library', 'ok'); await loadChordBook(); }); }));
+  });
+  $('#chordbook').querySelectorAll('[data-req-add]').forEach((b) => b.addEventListener('click', () => openChordEditor(null, r, { title: reqs.requests.find((x) => x.id === b.dataset.reqAdd).title })));
+  $('#chordbook').querySelectorAll('[data-req-del]').forEach((b) => b.addEventListener('click', () => run(async () => { await call(`teacher/chord-requests/${b.dataset.reqDel}`, { method: 'DELETE' }); await loadChordBook(); })));
   $('#chordbook').querySelectorAll('[data-edit-chord]').forEach((b) => b.addEventListener('click', () => openChordEditor(r.songs.find((x) => x.id === b.dataset.editChord), r)));
   $('#chordbook').querySelectorAll('[data-save-free]').forEach((b) => b.addEventListener('click', (ev) => {
     ev.preventDefault(); ev.stopPropagation();
@@ -167,12 +190,12 @@ async function loadChordBook() {
   }));
 }
 
-function openChordEditor(song, r) {
+function openChordEditor(song, r, preset = {}) {
   const cats = [...new Set([...r.songs.map((s) => s.category).filter(Boolean), 'Entrance', 'Gloria', 'Response', 'Offertory', 'Communion', 'Recessional'])];
   $('#dlgBody').innerHTML = `
     <div class="row between"><h2 style="margin:0">${song ? 'Edit song' : 'Add a song'}</h2><button class="btn small" id="close" aria-label="Close">✕</button></div>
     <form id="chordForm">
-      <label class="field">Title<input name="title" required maxlength="80" value="${esc(song?.title ?? '')}"></label>
+      <label class="field">Title<input name="title" required maxlength="80" value="${esc(song?.title ?? preset.title ?? '')}"></label>
       <div class="row" style="gap:8px;flex-wrap:wrap">
         <label class="field grow">Type<select name="kind"><option value="hymn"${song?.kind === 'song' ? '' : ' selected'}>Hymn</option><option value="song"${song?.kind === 'song' ? ' selected' : ''}>Song</option></select></label>
         <label class="field" style="width:90px">Key<input name="key" maxlength="4" placeholder="G" value="${esc(song?.key ?? '')}"></label></div>

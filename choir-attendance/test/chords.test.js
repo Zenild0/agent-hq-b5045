@@ -157,3 +157,26 @@ test('the free library holds public-domain sheets that are all well-formed, and 
   assert.equal(all.data.added, FREE_CHORDS.length - 1);
   assert.ok((await j('/api/teacher/free-chords')).data.songs.every((f) => f.inLibrary));
 });
+
+test('a student can request a song that is missing; the teacher sees one line per song and adding it answers the request', async () => {
+  const kids = [];
+  for (const name of ['Req One', 'Req Two']) { const c = (await j('/api/teacher/children', { method: 'POST', body: { name } })).data; await j(`/api/teacher/children/${c.id}/game`, { method: 'PUT', body: { paid: true } }); kids.push(c); }
+  const ask = (c, title) => j('/api/me/chords/request', { method: 'POST', code: c.code, body: { title } });
+  assert.equal((await ask(kids[0], 'Oceans (Where Feet May Fail)')).status, 200);
+  assert.equal((await ask(kids[1], 'oceans where feet may fail')).data.count, 2, 'the same song asked twice is one line with two names');
+  assert.equal((await ask(kids[1], 'x')).status, 400);
+  assert.equal((await ask(kids[0], 'Silent Night')).status, 409, 'already in the book');
+  const list = (await j('/api/teacher/chord-requests')).data.requests;
+  assert.equal(list.length, 1);
+  assert.deepEqual(list[0].names.sort(), ['Req One', 'Req Two']);
+  assert.deepEqual((await j('/api/me/chords', { code: kids[0].code })).data.requested, ['Oceans (Where Feet May Fail)']);
+  for (let i = 0; i < 4; i++) await ask(kids[0], `Song number ${i}`);
+  assert.equal((await ask(kids[0], 'One too many')).status, 400, 'five waiting songs at most per child');
+  const dismissed = await j(`/api/teacher/chord-requests/${list[0].id}`, { method: 'DELETE' });
+  assert.equal(dismissed.data.requests.length, 4);
+  const mine = (await j('/api/teacher/chord-requests')).data.requests.find((r) => r.title === 'Song number 0');
+  assert.equal((await j('/api/teacher/chords', { method: 'POST', body: { title: 'song number 0', kind: 'song', body: '[G]La la' } })).status, 201);
+  assert.ok(!(await j('/api/teacher/chord-requests')).data.requests.some((r) => r.id === mine.id), 'adding the song clears its request');
+  const out = (await j('/api/teacher/children', { method: 'POST', body: { name: 'Unpaid Req' } })).data;
+  assert.equal((await ask(out, 'Anything')).status, 402);
+});

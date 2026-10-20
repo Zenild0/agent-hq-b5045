@@ -814,3 +814,4 @@ body.cb-playing { overflow: hidden; }
 .free-song > summary { list-style: none; cursor: pointer; }
 .free-song > summary::-webkit-details-marker { display: none; }
 .free-song .cb-sheet { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 8px; }
+.cb-ask { text-align: center; }

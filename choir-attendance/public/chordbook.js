@@ -119,6 +119,14 @@ export function mountChordBook(host, { code, access }) {
       <span class="grow"><b>${esc(s.title)}</b><span class="cb-chs">${esc((s.chords || chordsOf(s, 0, 0).slice(0, 8)).join('  '))}</span></span>
       ${inMine === null ? '' : inMine ? '<button class="btn small cb-in" data-act="open" aria-label="Open">✓ Added</button>' : `<button class="btn small primary" data-act="add" data-id="${esc(s.id)}">＋ Add</button>`}
     </div>`;
+  const wasAsked = (t) => (lib?.requested || []).some((x) => x.toLowerCase() === t.toLowerCase());
+  // when a search finds little, a student can ask the teacher for the song
+  const reqCard = () => {
+    const t = q.trim();
+    if (view !== 'lib' || locked || offline || t.length < 2 || filt(lib?.songs ?? []).length > 3) return '';
+    return wasAsked(t) ? `<div class="card cb-ask">✓ You asked for <b>${esc(t)}</b>. Your teacher will add it when they can.</div>`
+      : `<div class="card cb-ask"><b>Can't find “${esc(t)}”?</b><div class="muted">Ask your teacher to add it to the Chord Book.</div><button class="btn small primary" data-act="ask" style="margin-top:8px">＋ Request this song</button></div>`;
+  };
   const filt = (list) => list.filter((s) => (kind === 'all' || s.kind === kind) && (!cat || s.category === cat) && (!q || `${s.title} ${s.category || ''}`.toLowerCase().includes(q.toLowerCase())));
   const filters = (cats) => `
     <label class="cb-search"><span class="sr">Search</span><input id="cbq" type="search" placeholder="Search a song or hymn…" value="${esc(q)}" autocomplete="off"></label>
@@ -139,7 +147,7 @@ export function mountChordBook(host, { code, access }) {
       return `${tabs()}${offline ? '<div class="alert warn">No signal. Showing the last library this phone saw.</div>' : ''}
         ${lib?.trial && !lib.paid && lib.trial.active ? `<div class="muted cb-trial">🎁 Free trial: ${lib.trial.daysLeft} day${lib.trial.daysLeft === 1 ? '' : 's'} left</div>` : ''}
         ${filters(lib?.categories ?? [])}
-        <div id="cbList">${list.map((s) => row(s, Boolean(data.mine[s.id]))).join('') || `<div class="empty">${lib?.songs?.length ? 'No song matches.' : 'Your teacher has not added any chords yet.'}</div>`}</div>`;
+        <div id="cbList">${list.map((s) => row(s, Boolean(data.mine[s.id]))).join('') || `<div class="empty">${lib?.songs?.length ? 'No song matches.' : 'Your teacher has not added any chords yet.'}</div>`}</div><div id="cbReq">${reqCard()}</div>`;
     }
     if (view === 'mine') {
       const list = filt(mine());
@@ -212,7 +220,7 @@ export function mountChordBook(host, { code, access }) {
 
   // ---- events ----
   root.addEventListener('input', (e) => {
-    if (e.target.id === 'cbq') { q = e.target.value; const list = view === 'lib' ? filt(lib?.songs ?? []) : filt(mine()); root.querySelector('#cbList').innerHTML = list.map((s) => row(s, view === 'lib' ? Boolean(data.mine[s.id]) : null)).join('') || '<div class="empty">No song matches.</div>'; }
+    if (e.target.id === 'cbq') { q = e.target.value; const list = view === 'lib' ? filt(lib?.songs ?? []) : filt(mine()); root.querySelector('#cbList').innerHTML = list.map((s) => row(s, view === 'lib' ? Boolean(data.mine[s.id]) : null)).join('') || '<div class="empty">No song matches.</div>'; const rq = root.querySelector('#cbReq'); if (rq) rq.innerHTML = reqCard(); }
   });
   root.addEventListener('change', (e) => {
     const st = data.sets.find((x) => x.id === setId);
@@ -238,6 +246,7 @@ export function mountChordBook(host, { code, access }) {
     const songsOf = () => (st ? st.songs.filter((id) => data.mine[id]) : []);
     const cur = view === 'play' ? data.mine[songsOf()[playAt]] : current();
     if (act === 'add') { e.stopPropagation(); a.disabled = true; try { await addToMine(a.dataset.id); draw(); } catch (err) { a.disabled = false; alert(err.status ? err.message : 'No signal. Try again when you are online.'); } return; }
+    if (act === 'ask') { a.disabled = true; try { const r = await api('me/chords/request', { method: 'POST', code, body: { title: q.trim() } }); (lib.requested ||= []).push(r.title); draw(); } catch (err) { a.disabled = false; alert(err.status ? err.message : 'No signal. Try again when you are online.'); } return; }
     if (act === 'open') return openSong(rowEl.dataset.song);
     if (act === 'keep') { try { const s = adhoc.song; data.mine[s.id] = { ...s, semi: adhoc.semi, capo: adhoc.capo, size: adhoc.size }; save(); adhoc = null; draw(); } catch { /* ignore */ } return; }
     if (act === 'drop') { if (confirm(`Remove ${cur.title} from My songs? It also leaves your set lists.`)) { removeFromMine(cur.id); go('mine'); } return; }
