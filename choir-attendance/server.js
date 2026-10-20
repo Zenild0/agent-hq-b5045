@@ -12,6 +12,7 @@ import {
 } from './lib/logic.js';
 import { openStore, newCode } from './lib/store.js';
 import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, setPaid, resetWarmups, resetAllWarmups, isPaid, hasFull, trialOf, startTrial, TRIAL_DAYS, paidUntilOf, daysLeft, wasPaid, warmupsLeft, useWarmup, GameError, PaywallError } from './lib/game.js';
+import { FREE_CHORDS } from './lib/freechords.js';
 import { isChord, chordsUsed, normaliseSheet, sheetKey } from './public/chordpro.js';
 import { LEVELS, DAILY_COUNT, STAGES, stageSpec, isTimed } from './public/levels.js';
 import { istNow, isDate, isTime, toMinutes, scheduleDays, nextPractice, shiftDate, rulesOf } from './lib/schedule.js';
@@ -776,6 +777,16 @@ function saveChord(c, body) {
   return { ...chordSummary(item), body: item.body };
 }
 
+// The starter library of public-domain chord sheets: the teacher saves any of them with one tap.
+const hasChordTitle = (f) => store.db.chords.some((c) => c.kind === f.kind && c.title.toLowerCase() === f.title.toLowerCase());
+const freeChordList = () => FREE_CHORDS.map((f) => ({ id: f.id, title: f.title, key: f.key, kind: f.kind, category: f.category, chords: chordsUsed(f.body).slice(0, 8), body: f.body, inLibrary: hasChordTitle(f) }));
+function saveFreeChord(id) {
+  const f = FREE_CHORDS.find((x) => x.id === id);
+  if (!f) throw new HttpError(404, 'That song is not in the free library');
+  if (hasChordTitle(f)) throw new HttpError(409, `${f.title} is already in your Chord Book`);
+  return saveChord(null, { title: f.title, key: f.key, kind: f.kind, category: f.category, body: f.body });
+}
+
 function chordLibrary(child) {
   const { db } = store;
   if (!db.settings.chordsEnabled) throw new HttpError(403, 'The Chord Book is switched off right now');
@@ -1295,6 +1306,7 @@ async function teacherApi(req, res, q, parts) {
       });
     }
     if (b === 'guests') return send(res, 200, guestsView());
+    if (b === 'free-chords') return send(res, 200, { songs: freeChordList() });
     if (b === 'chords') return send(res, 200, { songs: store.db.chords.slice().sort((a, b) => a.title.localeCompare(b.title)).map((c) => ({ ...chordSummary(c), body: c.body })), hymns: store.db.hymns.map((h) => ({ id: h.id, title: h.title })) });
     if (b === 'occasion-practices') return send(res, 200, { practices: upcomingOccasionPractices() });
     if (b === 'lyrics') return send(res, 200, await searchLyrics(q.get('q')));
@@ -1318,6 +1330,14 @@ async function teacherApi(req, res, q, parts) {
   if (req.method === 'PUT' && b === 'mark') { mark(body); return send(res, 200, { ok: true }); }
   if (req.method === 'POST' && b === 'mark-all-present') { markAllPresent(body); return send(res, 200, { ok: true }); }
   if (req.method === 'POST' && b === 'bulk-children') return send(res, 201, bulkAdd(body));
+  if (req.method === 'POST' && b === 'free-chords') {
+    if (id === 'all') { // save every sheet that is not in the Chord Book yet
+      const todo = FREE_CHORDS.filter((f) => !hasChordTitle(f));
+      for (const f of todo) saveFreeChord(f.id);
+      return send(res, 201, { added: todo.length });
+    }
+    return send(res, 201, saveFreeChord(id));
+  }
   if (b === 'chords') {
     const song = id ? store.db.chords.find((c) => c.id === id) : null;
     if (id && !song) throw new HttpError(404, 'Song not found');

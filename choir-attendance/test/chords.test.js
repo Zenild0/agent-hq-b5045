@@ -16,6 +16,7 @@ process.env.CHOIR_DATA = join(mkdtempSync(join(tmpdir(), 'choir-chords-')), 'db.
 process.env.CHOIR_TRIAL_DAYS = '0'; // members have no trial here, so only a paid child gets in
 delete process.env.CHOIR_PIN;
 const { server } = await import('../server.js');
+const { FREE_CHORDS } = await import('../lib/freechords.js');
 const { transposeChord, keyAfter, parseSheet, chordsUsed, normaliseSheet, chordShape, isChord } = await import('../public/chordpro.js');
 let base;
 before(() => new Promise((ok) => server.listen(0, () => { base = `http://localhost:${server.address().port}`; ok(); })));
@@ -132,4 +133,27 @@ test('the teacher can pull a chord sheet from a link; the spacing that lines the
   assert.equal(none.status, 400);
   assert.match(none.data.error, /copy the chords and paste/);
   assert.equal((await j('/api/teacher/chord-link', { method: 'POST', body: { url: 'nope' } })).status, 400);
+});
+
+test('the free library holds public-domain sheets that are all well-formed, and saves with one tap', async () => {
+  assert.ok(FREE_CHORDS.length >= 25);
+  assert.equal(new Set(FREE_CHORDS.map((f) => f.id)).size, FREE_CHORDS.length, 'unique ids');
+  for (const f of FREE_CHORDS) {
+    assert.ok(isChord(f.key), `${f.title}: key`);
+    assert.ok(f.body.length < 12000);
+    const inside = [...f.body.matchAll(/\[([^\]]*)\]/g)].map((m) => m[1]);
+    assert.ok(inside.length >= 4 && inside.every(isChord), `${f.title}: every bracket is a chord`);
+    assert.equal(normaliseSheet(f.body), f.body, `${f.title}: already in the stored shape`);
+  }
+  const list = (await j('/api/teacher/free-chords')).data.songs;
+  assert.equal(list.length, FREE_CHORDS.length);
+  assert.ok(list.every((f) => f.inLibrary === false || f.title === 'Shout to the Lord'));
+  const one = await j('/api/teacher/free-chords/silent-night', { method: 'POST', body: {} });
+  assert.equal(one.status, 201);
+  assert.equal(one.data.title, 'Silent Night');
+  assert.equal((await j('/api/teacher/free-chords/silent-night', { method: 'POST', body: {} })).status, 409, 'not twice');
+  assert.equal((await j('/api/teacher/free-chords/nope', { method: 'POST', body: {} })).status, 404);
+  const all = await j('/api/teacher/free-chords/all', { method: 'POST', body: {} });
+  assert.equal(all.data.added, FREE_CHORDS.length - 1);
+  assert.ok((await j('/api/teacher/free-chords')).data.songs.every((f) => f.inLibrary));
 });

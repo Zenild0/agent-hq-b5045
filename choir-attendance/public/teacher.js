@@ -124,20 +124,47 @@ async function loadGamesHub() {
 // ---- Chord Book: the teacher adds the chord sheets students can search ----
 const sheetPreview = (body) => parseSheet(normaliseSheet(body)).map((l) => (l.kind === 'blank' ? '<div class="cp-gap"></div>' : l.kind === 'section' ? `<div class="cp-sec">${esc(l.text)}</div>` : `<div class="cp-line">${l.segs.map((g) => `<span class="cp-seg"><span class="cp-c">${esc(g.chord) || '&nbsp;'}</span><span class="cp-l">${esc(g.text) || '&nbsp;'}</span></span>`).join('')}</div>`)).join('');
 
+let chordTab = 'mine'; // mine | free
 async function loadChordBook() {
-  const [r, pub] = await Promise.all([call('teacher/chords'), call('public')]);
+  const [r, pub, free] = await Promise.all([call('teacher/chords'), call('public'), call('teacher/free-chords')]);
   const on = pub.settings?.chordsEnabled;
-  $('#chordbook').innerHTML = `
+  const todo = free.songs.filter((f) => !f.inLibrary).length;
+  const head = `
     <div class="card"><div class="row between"><div><h2 style="margin:0">Chord Book</h2><div class="muted">${r.songs.length} song${r.songs.length === 1 ? '' : 's'} in the library. Students search these, add them to their own songs and build set lists.</div></div>
       <button class="btn primary" id="addChord">＋ Add song</button></div>
       <div class="alert ${on ? 'ok' : 'warn'}" style="margin-top:10px">${on ? 'Switched on for parents. It is part of the paid version, with the same free trial as the games.' : 'Switched off for parents. Add your songs first, then switch it on in More → Settings.'}</div></div>
-    <label class="field"><span class="sr">Search</span><input id="chordQ" type="search" placeholder="Search the library…" autocomplete="off"></label>
+    <div class="cb-tabs" role="tablist"><button role="tab" data-ctab="mine" class="${chordTab === 'mine' ? 'on' : ''}">My library · ${r.songs.length}</button><button role="tab" data-ctab="free" class="${chordTab === 'free' ? 'on' : ''}">Free library · ${free.songs.length}</button></div>`;
+  const mineHtml = `
+    <label class="field"><span class="sr">Search</span><input id="chordQ" type="search" placeholder="Search your library…" autocomplete="off"></label>
     <div id="chordList">${r.songs.map((s) => `
       <div class="card row between" data-ct="${esc(s.title.toLowerCase())}"><span class="row" style="gap:10px"><span class="cb-key">${esc(s.key || '–')}</span><span><b>${esc(s.title)}</b><div class="muted">${s.kind === 'hymn' ? 'Hymn' : 'Song'}${s.category ? ` · ${esc(s.category)}` : ''} · ${esc(s.chords.join(' '))}</div></span></span>
-        <button class="ibtn" data-edit-chord="${esc(s.id)}" title="Edit" aria-label="Edit ${esc(s.title)}">✎</button></div>`).join('') || '<div class="empty">No songs yet. Tap “＋ Add song”.</div>'}</div>`;
-  $('#chordQ').addEventListener('input', (e) => { const q = e.target.value.trim().toLowerCase(); $('#chordList').querySelectorAll('[data-ct]').forEach((c) => { c.hidden = Boolean(q) && !c.dataset.ct.includes(q); }); });
+        <button class="ibtn" data-edit-chord="${esc(s.id)}" title="Edit" aria-label="Edit ${esc(s.title)}">✎</button></div>`).join('') || '<div class="empty">No songs yet. Tap “＋ Add song”, or open the <b>Free library</b> and save some with one tap.</div>'}</div>`;
+  const freeHtml = `
+    <div class="card"><div class="row between"><div><b>Free library</b><div class="muted">Hymns, carols and children's songs in the public domain, with chords. Tap ＋ Save to put one in your library, then edit it if you like. Check the chords against your own hymn book.</div></div>
+      ${todo ? `<button class="btn small" id="saveAllFree">＋ Save all ${todo}</button>` : ''}</div></div>
+    <label class="field"><span class="sr">Search</span><input id="freeQ" type="search" placeholder="Search the free library…" autocomplete="off"></label>
+    <div id="freeList">${free.songs.map((f) => `
+      <details class="card free-song" data-ft="${esc(f.title.toLowerCase())}">
+        <summary class="row between"><span class="row" style="gap:10px;min-width:0"><span class="cb-key">${esc(f.key)}</span><span style="min-width:0"><b>${esc(f.title)}</b><div class="muted">${f.kind === 'hymn' ? 'Hymn' : 'Song'} · ${esc(f.category)} · ${esc(f.chords.join(' '))}</div></span></span>
+          ${f.inLibrary ? '<span class="badge ok">✓ In library</span>' : `<button type="button" class="btn small primary" data-save-free="${esc(f.id)}">＋ Save</button>`}</summary>
+        <div class="cb-sheet" style="--cb-size:.9rem">${sheetPreview(f.body)}</div>
+      </details>`).join('')}</div>`;
+  $('#chordbook').innerHTML = head + (chordTab === 'mine' ? mineHtml : freeHtml);
+  $('#chordbook').querySelectorAll('[data-ctab]').forEach((b) => b.addEventListener('click', () => { chordTab = b.dataset.ctab; run(loadChordBook); }));
   $('#addChord').addEventListener('click', () => openChordEditor(null, r));
+  const filter = (input, list, attr) => $(input)?.addEventListener('input', (e) => { const q = e.target.value.trim().toLowerCase(); $(list).querySelectorAll(`[${attr}]`).forEach((c) => { c.hidden = Boolean(q) && !c.getAttribute(attr).includes(q); }); });
+  filter('#chordQ', '#chordList', 'data-ct');
+  filter('#freeQ', '#freeList', 'data-ft');
   $('#chordbook').querySelectorAll('[data-edit-chord]').forEach((b) => b.addEventListener('click', () => openChordEditor(r.songs.find((x) => x.id === b.dataset.editChord), r)));
+  $('#chordbook').querySelectorAll('[data-save-free]').forEach((b) => b.addEventListener('click', (ev) => {
+    ev.preventDefault(); ev.stopPropagation();
+    run(async () => { b.disabled = true; await call(`teacher/free-chords/${b.dataset.saveFree}`, { method: 'POST', body: {} }); flash('Saved to your library', 'ok'); await loadChordBook(); });
+  }));
+  $('#saveAllFree')?.addEventListener('click', () => run(async () => {
+    if (!confirm(`Save all ${todo} songs to your library? You can edit or delete any of them afterwards.`)) return;
+    const a = await call('teacher/free-chords/all', { method: 'POST', body: {} });
+    flash(`${a.added} songs saved`, 'ok'); await loadChordBook();
+  }));
 }
 
 function openChordEditor(song, r) {
@@ -150,13 +177,13 @@ function openChordEditor(song, r) {
         <label class="field grow">Type<select name="kind"><option value="hymn"${song?.kind === 'song' ? '' : ' selected'}>Hymn</option><option value="song"${song?.kind === 'song' ? ' selected' : ''}>Song</option></select></label>
         <label class="field" style="width:90px">Key<input name="key" maxlength="4" placeholder="G" value="${esc(song?.key ?? '')}"></label></div>
       <label class="field">Category (optional)<input name="category" maxlength="40" list="chordCats" value="${esc(song?.category ?? '')}"><datalist id="chordCats">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist></label>
-      <div class="card" style="padding:10px;margin:0 0 10px">
-        <b>Find the chords online</b>
+      <details class="card" style="padding:10px;margin:0 0 10px">
+        <summary><b>More ways: search online or import from a link</b></summary>
         <div class="row" style="gap:6px;flex-wrap:wrap;margin:6px 0"><a class="btn small" id="srchUg" target="_blank" rel="noopener noreferrer" href="#">🔎 Ultimate Guitar</a><a class="btn small" id="srchGo" target="_blank" rel="noopener noreferrer" href="#">🔎 Google</a><a class="btn small" id="srchEc" target="_blank" rel="noopener noreferrer" href="#">🔎 E-Chords</a></div>
         <div class="muted">Open the page, copy the chords and lyrics, and paste them in the box below. Either style works. Or paste the page link here and tap Import (some sites block this).</div>
         <div class="row" style="gap:6px;margin-top:6px"><input id="chLink" type="url" placeholder="https://…" aria-label="Link to a chord sheet" style="flex:1;min-width:0"><button type="button" class="btn small" id="chImport">Import</button></div>
         <div id="chLinkMsg" class="muted" aria-live="polite"></div>
-      </div>
+      </details>
       <label class="field">Chords and lyrics
         <textarea name="body" rows="10" required maxlength="12000" spellcheck="false" style="font-family:ui-monospace,Menlo,monospace" placeholder="{Verse 1}&#10;[G]Amazing grace, how [C]sweet the [G]sound">${esc(song?.body ?? '')}</textarea></label>
       <div class="muted">Either way works: paste the chords <b>above the words</b>, or type them <b>before the words</b> in [brackets], like [G]Amazing [C]grace. You can mix both. Headings like [Verse 1] or [Chorus] on their own line are kept as headings. The preview shows exactly what students will see.</div>
