@@ -1,6 +1,6 @@
 import { pickPhotos, pickProfilePhoto } from './photo.js';
 import { nextCardHtml } from './home.js';
-import { parseSheet, normaliseSheet } from './chordpro.js';
+import { parseSheet, normaliseSheet, detectKey } from './chordpro.js';
 import { initBack, noteVisit } from './nav.js';
 import { applyLook, lookCardHtml, wireLook, configure } from './theme.js';
 
@@ -198,7 +198,8 @@ function openChordEditor(song, r, preset = {}) {
       <label class="field">Title<input name="title" required maxlength="80" value="${esc(song?.title ?? preset.title ?? '')}"></label>
       <div class="row" style="gap:8px;flex-wrap:wrap">
         <label class="field grow">Type<select name="kind"><option value="hymn"${song?.kind === 'song' ? '' : ' selected'}>Hymn</option><option value="song"${song?.kind === 'song' ? ' selected' : ''}>Song</option></select></label>
-        <label class="field" style="width:90px">Key<input name="key" maxlength="4" placeholder="G" value="${esc(song?.key ?? '')}"></label></div>
+        <label class="field" style="width:96px">Key<input name="key" maxlength="4" placeholder="auto" value="${esc(song?.key ?? '')}"></label></div>
+      <div class="muted" id="keyHint" style="margin:-6px 0 8px"></div>
       <label class="field">Category (optional)<input name="category" maxlength="40" list="chordCats" value="${esc(song?.category ?? '')}"><datalist id="chordCats">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist></label>
       <details class="card" style="padding:10px;margin:0 0 10px">
         <summary><b>More ways: search online or import from a link</b></summary>
@@ -217,7 +218,15 @@ function openChordEditor(song, r, preset = {}) {
   if (!dlg.open) dlg.showModal();
   const form = $('#chordForm');
   const prev = () => { $('#chordPrev').innerHTML = sheetPreview(form.body.value) || '<span class="muted">Your song shows here as you type.</span>'; };
-  form.body.addEventListener('input', prev); prev();
+  // the key is worked out from the chords as they are typed or pasted, until you type a key yourself
+  let keyTouched = Boolean(song?.key) ;
+  const autoKey = () => {
+    const k = detectKey(normaliseSheet(form.body.value));
+    $('#keyHint').textContent = k ? (keyTouched ? `The chords look like the key of ${k}.` : `Key worked out from the chords: ${k}. Type a key to change it.`) : '';
+    if (!keyTouched && k) form.key.value = k;
+  };
+  form.key.addEventListener('input', () => { keyTouched = form.key.value.trim() !== ''; autoKey(); });
+  form.body.addEventListener('input', () => { prev(); autoKey(); }); prev(); autoKey();
   const q = () => encodeURIComponent(form.title.value.trim());
   const links = () => {
     $('#srchUg').href = `https://www.ultimate-guitar.com/search.php?search_type=title&value=${q()}`;

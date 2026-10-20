@@ -17,7 +17,7 @@ process.env.CHOIR_TRIAL_DAYS = '0'; // members have no trial here, so only a pai
 delete process.env.CHOIR_PIN;
 const { server } = await import('../server.js');
 const { FREE_CHORDS } = await import('../lib/freechords.js');
-const { transposeChord, keyAfter, parseSheet, chordsUsed, normaliseSheet, chordShape, isChord } = await import('../public/chordpro.js');
+const { detectKey, fingersFor, chordSvg, transposeChord, keyAfter, parseSheet, chordsUsed, normaliseSheet, chordShape, isChord } = await import('../public/chordpro.js');
 let base;
 before(() => new Promise((ok) => server.listen(0, () => { base = `http://localhost:${server.address().port}`; ok(); })));
 after(() => { server.close(); fake.close(); });
@@ -179,4 +179,31 @@ test('a student can request a song that is missing; the teacher sees one line pe
   assert.ok(!(await j('/api/teacher/chord-requests')).data.requests.some((r) => r.id === mine.id), 'adding the song clears its request');
   const out = (await j('/api/teacher/children', { method: 'POST', body: { name: 'Unpaid Req' } })).data;
   assert.equal((await ask(out, 'Anything')).status, 402);
+});
+
+test('the key is worked out from the chords, and the fingering has numbered fingers and barres', async () => {
+  const key = (s) => detectKey(s.split(' ').map((c) => `[${c}]`).join(''));
+  assert.equal(key('G C D Em G'), 'G');
+  assert.equal(key('D G A Bm D'), 'D');
+  assert.equal(key('Am F C G Am'), 'Am', 'a minor song that starts and ends on Am');
+  assert.equal(key('Em C G D Em'), 'Em');
+  assert.equal(key('Eb Bb Cm Ab Eb'), 'Eb');
+  assert.equal(key('Dm Bb F C Dm'), 'Dm');
+  assert.equal(key('G G7 C G Em D G'), 'G', 'seventh chords do not confuse it');
+  assert.equal(detectKey('no chords at all'), '');
+  // every free sheet is detected as its stated key, or its relative key
+  const REL = { Em: 'G', Cm: 'Eb', Am: 'C', Dm: 'F', Bm: 'D', Gm: 'Bb' };
+  let same = 0;
+  for (const f of FREE_CHORDS) { const k = detectKey(f.body); if (k === f.key || REL[k] === f.key || REL[f.key] === k) same += 1; }
+  assert.ok(same >= FREE_CHORDS.length - 3, `detected the key of ${same} of ${FREE_CHORDS.length} sheets`);
+  // the key is filled in on the server when it is left empty
+  const r = await j('/api/teacher/chords', { method: 'POST', body: { title: 'Key Test', kind: 'song', body: '[D]a [G]b [A]c [Bm]d [D]e' } });
+  assert.equal(r.data.key, 'D');
+  const d = fingersFor([-1, -1, 0, 2, 3, 2]);
+  assert.deepEqual(d.fingers, [0, 0, 0, 1, 3, 2]);
+  assert.equal(d.barre, null);
+  const f = fingersFor([1, 3, 3, 2, 1, 1]);
+  assert.deepEqual(f.barre, { fret: 1, from: 0, to: 5 });
+  assert.equal(f.fingers[0], 1);
+  assert.match(chordSvg({ frets: [-1, 2, 4, 4, 3, 2], label: 'Bm' }), /<rect[^>]+rx="5"/, 'a barre is drawn as a bar');
 });

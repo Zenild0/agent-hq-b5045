@@ -91,6 +91,46 @@ export function parseSheet(body) {
 export const chordsUsed = (body) => [...new Set([...String(body ?? '').matchAll(/\[([^\]]+)\]/g)].map((m) => m[1].trim()).filter(isChord))];
 export const sheetKey = (body) => chordsUsed(body)[0] || '';
 
+// ---- key detection: which key do the chords of this sheet belong to? ----
+const MAJOR_NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+const MINOR_NAMES = ['Cm', 'C#m', 'Dm', 'Ebm', 'Em', 'Fm', 'F#m', 'Gm', 'G#m', 'Am', 'Bbm', 'Bm'];
+function chordKind(c) {
+  const m = /^([A-G][#b]?)([^/]*)/.exec(c);
+  if (!m) return null;
+  const q = m[2];
+  const minor = /^(m(?!aj)|min|-)/.test(q);
+  const dim = /^(dim|°)/.test(q);
+  return { pc: rootAt(m[1]), kind: dim ? 'dim' : minor ? 'min' : 'maj', dom7: /^7/.test(q) || /^9|^11|^13/.test(q) };
+}
+// Each chord of the song scores for a key when it belongs to that key (I ii iii IV V vi for a major key; i III iv v VI VII
+// and the major V for a minor key). The first and last chords and the tonic chord itself count extra.
+export function detectKey(body) {
+  const seq = [...String(body ?? '').matchAll(/\[([^\]]+)\]/g)].map((m) => m[1].trim()).filter(isChord).map(chordKind).filter(Boolean);
+  if (!seq.length) return '';
+  const MAJ = new Map([[0, 'maj'], [2, 'min'], [4, 'min'], [5, 'maj'], [7, 'maj'], [9, 'min'], [11, 'dim']]);
+  const MIN = new Map([[0, 'min'], [2, 'dim'], [3, 'maj'], [5, 'min'], [7, 'min'], [8, 'maj'], [10, 'maj']]);
+  let best = { score: -1e9, key: '' };
+  for (const minor of [false, true]) {
+    for (let t = 0; t < 12; t++) {
+      const table = minor ? MIN : MAJ;
+      let score = 0;
+      seq.forEach((c, i) => {
+        const deg = (c.pc - t + 12) % 12;
+        const want = table.get(deg);
+        if (want === c.kind) score += c.dom7 && deg !== 7 ? 0.4 : 1;
+        else if (minor && deg === 7 && c.kind === 'maj') score += 0.8; // the major V of a minor key
+        else if (want && c.kind === 'maj' && c.dom7) score += 0.3;
+        else score -= 0.5;
+        if (deg === 0 && c.kind === (minor ? 'min' : 'maj')) score += 0.5;
+        if (i === 0 && deg === 0 && c.kind === (minor ? 'min' : 'maj')) score += 2;
+        if (i === seq.length - 1 && deg === 0 && c.kind === (minor ? 'min' : 'maj')) score += 1.5;
+      });
+      if (score > best.score + 1e-9) best = { score, key: minor ? MINOR_NAMES[t] : MAJOR_NAMES[t] };
+    }
+  }
+  return best.key;
+}
+
 // ---- guitar fingering: open shapes for the common chords, a moveable barre shape for the rest ----
 // Six numbers, low E to high e: fret, or -1 when that string is not played.
 const OPEN = {
@@ -121,20 +161,43 @@ export function chordShape(name) {
   if (n === 0 && !OPEN[root + q]) return null;
   return { frets: shape.map((f) => (f < 0 ? -1 : f + n)), label: name };
 }
+// Which finger plays each fretted string. A barre chord (no open strings) lays finger 1 across the lowest fret;
+// otherwise the fingers go 1, 2, 3, 4 from the lowest fret up (and from the low string within one fret).
+export function fingersFor(frets) {
+  const f = frets.map(() => 0);
+  const notes = frets.map((fr, i) => ({ i, fr })).filter((n) => n.fr > 0);
+  if (!notes.length) return { fingers: f, barre: null };
+  const minF = Math.min(...notes.map((n) => n.fr));
+  const low = notes.filter((n) => n.fr === minF);
+  const played = frets.filter((x) => x >= 0);
+  const barre = low.length >= 2 && !played.includes(0) ? { fret: minF, from: low[0].i, to: low.at(-1).i } : null;
+  let next = barre ? 2 : 1;
+  if (barre) for (const n of low) f[n.i] = 1;
+  for (const n of notes.filter((x) => !barre || x.fr !== minF).sort((a, b) => a.fr - b.fr || a.i - b.i)) f[n.i] = Math.min(4, next++);
+  return { fingers: f, barre };
+}
+
+// A guitar fingering picture: x = not played, o = open string, numbered dots for the fingers, a bar for a barre.
 export function chordSvg(shape) {
   const frets = shape.frets;
-  const played = frets.filter((f) => f > 0);
-  const low = played.length ? Math.min(...played) : 1;
-  const base = Math.max(...frets) <= 5 ? 1 : low;
-  const X = (i) => 14 + i * 20, Y = (f) => 22 + f * 20;
-  let s = `<svg viewBox="0 0 130 128" width="130" height="128" role="img" aria-label="${shape.label} fingering">`;
-  for (let i = 0; i < 6; i++) s += `<line x1="${X(i)}" y1="${Y(0)}" x2="${X(i)}" y2="${Y(5)}" stroke="currentColor" stroke-width="1.2" opacity=".6"/>`;
-  for (let f = 0; f <= 5; f++) s += `<line x1="${X(0)}" y1="${Y(f)}" x2="${X(5)}" y2="${Y(f)}" stroke="currentColor" stroke-width="${f === 0 && base === 1 ? 4 : 1.2}" opacity="${f === 0 && base === 1 ? 1 : 0.6}"/>`;
-  if (base > 1) s += `<text x="${X(5) + 6}" y="${Y(1) - 5}" font-size="11" fill="currentColor">${base}fr</text>`;
-  frets.forEach((f, i) => {
-    if (f < 0) s += `<text x="${X(i)}" y="14" font-size="12" text-anchor="middle" fill="currentColor">×</text>`;
-    else if (f === 0) s += `<circle cx="${X(i)}" cy="10" r="4" fill="none" stroke="currentColor" stroke-width="1.5"/>`;
-    else s += `<circle cx="${X(i)}" cy="${Y(f - base + 1) - 10}" r="7" fill="#C8FF3D" stroke="#0E0B1F" stroke-width="1"/>`;
+  const { fingers, barre } = fingersFor(frets);
+  const played = frets.filter((x) => x > 0);
+  const base = played.length && Math.max(...played) > 5 ? Math.min(...played) : 1;
+  const X = (i) => 12 + i * 13.4, Y = (row) => 28 + row * 17; // row 0 is the nut
+  const rowOf = (fr) => fr - base + 1;
+  let o = `<svg viewBox="0 0 90 122" width="90" height="122" role="img" aria-label="${shape.label} fingering" class="cb-svg">`;
+  frets.forEach((fr, i) => {
+    if (fr < 0) o += `<text x="${X(i)}" y="18" font-size="12" font-weight="700" text-anchor="middle" fill="currentColor">×</text>`;
+    else if (fr === 0) o += `<circle cx="${X(i)}" cy="14" r="3.8" fill="none" stroke="currentColor" stroke-width="1.5"/>`;
   });
-  return `${s}</svg>`;
+  for (let i = 0; i < 6; i++) o += `<line x1="${X(i)}" y1="${Y(0)}" x2="${X(i)}" y2="${Y(5)}" stroke="currentColor" stroke-width="1.1" opacity=".55"/>`;
+  for (let r = 0; r <= 5; r++) o += `<line x1="${X(0)}" y1="${Y(r)}" x2="${X(5)}" y2="${Y(r)}" stroke="currentColor" stroke-width="${r === 0 && base === 1 ? 4 : 1.1}" opacity="${r === 0 && base === 1 ? 1 : 0.55}"/>`;
+  if (base > 1) o += `<text x="${X(5) + 4}" y="${Y(1) - 4}" font-size="10" font-weight="700" fill="currentColor">${base}</text>`;
+  if (barre) o += `<rect x="${X(barre.from) - 5}" y="${Y(rowOf(barre.fret)) - 12}" width="${X(barre.to) - X(barre.from) + 10}" height="10" rx="5" fill="currentColor"/>`;
+  frets.forEach((fr, i) => {
+    if (fr <= 0 || (barre && fr === barre.fret)) return;
+    o += `<circle cx="${X(i)}" cy="${Y(rowOf(fr)) - 8.5}" r="6.4" fill="currentColor"/><text x="${X(i)}" y="${Y(rowOf(fr)) - 4.6}" font-size="9.5" font-weight="800" text-anchor="middle" fill="var(--card, #fff)">${fingers[i]}</text>`;
+  });
+  if (barre) o += `<text x="${X(barre.from) + 0}" y="${Y(rowOf(barre.fret)) - 4}" font-size="9" font-weight="800" fill="var(--card, #fff)" text-anchor="middle">1</text>`;
+  return `${o}</svg>`;
 }

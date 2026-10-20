@@ -90,11 +90,8 @@ export function mountChordBook(host, { code, access }) {
     const flats = preferFlats(keyAfter(s.key, semi - capo));
     return [...new Set([...s.body.matchAll(/\[([^\]]+)\]/g)].map((m) => m[1].trim()).filter(isChord).map((c) => transposeChord(c, semi - capo, flats)))];
   };
-  const diagramHtml = () => {
-    if (!showChord) return '';
-    const sh = chordShape(showChord);
-    return `<div class="cb-diagram">${sh ? chordSvg(sh) : ''}<div><b>${esc(showChord)}</b><div class="muted">${sh ? 'Guitar, standard tuning. × = do not play, ○ = open string.' : 'No fingering picture for this chord yet.'}</div></div><button class="btn small" data-act="hidechord" aria-label="Close">✕</button></div>`;
-  };
+  // every chord of the song as a fingering picture, in a row that scrolls sideways
+  const diagramsHtml = (s) => `<div class="cb-diagrams" aria-label="Chord fingerings">${chordsOf(s, s.semi || 0, s.capo || 0).map((c) => { const sh = chordShape(c); return `<div class="cb-dtile" data-d="${esc(c)}"><b>${esc(c)}</b>${sh ? chordSvg(sh) : '<div class="muted cb-nodia">no picture</div>'}</div>`; }).join('')}</div>`;
 
   const current = () => (data.mine[songId] ?? (adhoc?.song.id === songId ? { ...adhoc.song, semi: adhoc.semi, capo: adhoc.capo, size: adhoc.size } : null));
   const setPref = (k, v) => {
@@ -166,8 +163,7 @@ export function mountChordBook(host, { code, access }) {
       return `<div class="cb-bar"><button class="btn small" data-act="back">‹ Back</button><span class="grow"></span>${kept ? `<select id="addToSet" aria-label="Add to a set list"><option value="">＋ Add to a set list…</option>${data.sets.map((st) => `<option value="${esc(st.id)}">${esc(st.name)}</option>`).join('')}</select>` : '<button class="btn small primary" data-act="keep">＋ Add to my songs</button>'}</div>
         <h2 class="cb-title">${esc(s.title)}</h2>
         ${controls(s)}
-        <div class="cb-chordstrip">${chordsOf(s, s.semi, s.capo).map((c) => `<button data-chord="${esc(c)}" class="${showChord === c ? 'on' : ''}">${esc(c)}</button>`).join('')}<span class="muted">tap for fingering</span></div>
-        ${diagramHtml()}
+        ${diagramsHtml(s)}
         <div class="cb-sheet" style="--cb-size:${s.size || 1}rem">${sheetHtml(s, s.semi || 0, s.capo || 0)}</div>
         ${kept ? '<div style="margin-top:14px"><button class="btn small danger" data-act="drop">Remove from my songs</button></div>' : ''}`;
     }
@@ -235,7 +231,7 @@ export function mountChordBook(host, { code, access }) {
     if (tabB) { q = ''; kind = 'all'; cat = ''; return go(tabB.dataset.tab); }
     const kB = t.closest('[data-kind]'); if (kB) { kind = kB.dataset.kind; return draw(); }
     const cB = t.closest('[data-cat]'); if (cB) { cat = cat === cB.dataset.cat ? '' : cB.dataset.cat; return draw(); }
-    const ch = t.closest('[data-chord]'); if (ch) { showChord = showChord === ch.dataset.chord ? '' : ch.dataset.chord; return draw(); }
+    const ch = t.closest('[data-chord]'); if (ch) { const tile = [...root.querySelectorAll('.cb-dtile')].find((x) => x.dataset.d === ch.dataset.chord); if (tile) { tile.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }); tile.classList.add('flash'); setTimeout(() => tile.classList.remove('flash'), 900); } return; }
     const setB = t.closest('[data-set]'); if (setB) { setId = setB.dataset.set; return go('set'); }
     const a = t.closest('[data-act]');
     const rowEl = t.closest('[data-song]');
@@ -251,7 +247,6 @@ export function mountChordBook(host, { code, access }) {
     if (act === 'keep') { try { const s = adhoc.song; data.mine[s.id] = { ...s, semi: adhoc.semi, capo: adhoc.capo, size: adhoc.size }; save(); adhoc = null; draw(); } catch { /* ignore */ } return; }
     if (act === 'drop') { if (confirm(`Remove ${cur.title} from My songs? It also leaves your set lists.`)) { removeFromMine(cur.id); go('mine'); } return; }
     if (act === 'back') return go(view === 'song' ? tab : 'sets');
-    if (act === 'hidechord') { showChord = ''; return draw(); }
     if (act === 'semi' && cur) { const v = clampN((cur.semi || 0) + Number(a.dataset.d), -11, 11); if (view === 'song') setPref('semi', v); else { data.mine[cur.id].semi = v; save(); } return draw(); }
     if (act === 'capo' && cur) { const v = clampN((cur.capo || 0) + Number(a.dataset.d), 0, 9); setPref('capo', v); return draw(); }
     if (act === 'size' && cur) { const v = clampN(Math.round(((cur.size || 1) + Number(a.dataset.d)) * 10) / 10, 0.7, 2.2); if (view === 'song') setPref('size', v); else { data.mine[cur.id].size = v; save(); } return draw(); }

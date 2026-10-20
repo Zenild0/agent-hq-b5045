@@ -815,3 +815,9 @@ body.cb-playing { overflow: hidden; }
 .free-song > summary::-webkit-details-marker { display: none; }
 .free-song .cb-sheet { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 8px; }
 .cb-ask { text-align: center; }
+
+.cb-diagrams { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 8px; -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; }
+.cb-dtile { flex: none; scroll-snap-align: start; display: grid; justify-items: center; gap: 2px; padding: 6px 8px 4px; border: 1px solid var(--line); background: var(--card); border-radius: 14px; }
+.cb-dtile b { font: 800 .95rem ui-monospace, Menlo, monospace; }
+.cb-dtile.flash { outline: 2px solid #e0357f; }
+.cb-nodia { width: 90px; height: 100px; display: grid; place-items: center; }

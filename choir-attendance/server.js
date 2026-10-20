@@ -13,7 +13,7 @@ import {
 import { openStore, newCode } from './lib/store.js';
 import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, setPaid, resetWarmups, resetAllWarmups, isPaid, hasFull, trialOf, startTrial, TRIAL_DAYS, paidUntilOf, daysLeft, wasPaid, warmupsLeft, useWarmup, GameError, PaywallError } from './lib/game.js';
 import { FREE_CHORDS } from './lib/freechords.js';
-import { isChord, chordsUsed, normaliseSheet, sheetKey } from './public/chordpro.js';
+import { isChord, chordsUsed, normaliseSheet, detectKey } from './public/chordpro.js';
 import { LEVELS, DAILY_COUNT, STAGES, stageSpec, isTimed } from './public/levels.js';
 import { istNow, isDate, isTime, toMinutes, scheduleDays, nextPractice, shiftDate, rulesOf } from './lib/schedule.js';
 import { createTar, readTar } from './lib/tar.js';
@@ -763,7 +763,7 @@ function applyChord(c, body) {
     c.body = sheet;
   }
   if ('key' in body) { const k = String(body.key ?? '').trim(); if (k && !isChord(k)) throw new HttpError(400, 'The key should look like G or Am'); c.key = k; }
-  if (!c.key) c.key = sheetKey(c.body); // no key given: the first chord is a good guess
+  if (!c.key) c.key = detectKey(c.body); // no key given: it is worked out from the chords
   if (store.db.chords.some((x) => x !== c && x.kind === c.kind && x.title.toLowerCase() === c.title.toLowerCase())) throw new HttpError(409, `${c.title} is already in the Chord Book`);
   c.updated = Date.now();
 }
