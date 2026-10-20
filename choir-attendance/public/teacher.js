@@ -150,6 +150,13 @@ function openChordEditor(song, r) {
         <label class="field grow">Type<select name="kind"><option value="hymn"${song?.kind === 'song' ? '' : ' selected'}>Hymn</option><option value="song"${song?.kind === 'song' ? ' selected' : ''}>Song</option></select></label>
         <label class="field" style="width:90px">Key<input name="key" maxlength="4" placeholder="G" value="${esc(song?.key ?? '')}"></label></div>
       <label class="field">Category (optional)<input name="category" maxlength="40" list="chordCats" value="${esc(song?.category ?? '')}"><datalist id="chordCats">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist></label>
+      <div class="card" style="padding:10px;margin:0 0 10px">
+        <b>Find the chords online</b>
+        <div class="row" style="gap:6px;flex-wrap:wrap;margin:6px 0"><a class="btn small" id="srchUg" target="_blank" rel="noopener noreferrer" href="#">🔎 Ultimate Guitar</a><a class="btn small" id="srchGo" target="_blank" rel="noopener noreferrer" href="#">🔎 Google</a><a class="btn small" id="srchEc" target="_blank" rel="noopener noreferrer" href="#">🔎 E-Chords</a></div>
+        <div class="muted">Open the page, copy the chords and lyrics, and paste them in the box below. Either style works. Or paste the page link here and tap Import (some sites block this).</div>
+        <div class="row" style="gap:6px;margin-top:6px"><input id="chLink" type="url" placeholder="https://…" aria-label="Link to a chord sheet" style="flex:1;min-width:0"><button type="button" class="btn small" id="chImport">Import</button></div>
+        <div id="chLinkMsg" class="muted" aria-live="polite"></div>
+      </div>
       <label class="field">Chords and lyrics
         <textarea name="body" rows="10" required maxlength="12000" spellcheck="false" style="font-family:ui-monospace,Menlo,monospace" placeholder="{Verse 1}&#10;[G]Amazing grace, how [C]sweet the [G]sound">${esc(song?.body ?? '')}</textarea></label>
       <div class="muted">Either way works: paste the chords <b>above the words</b>, or type them <b>before the words</b> in [brackets], like [G]Amazing [C]grace. You can mix both. Headings like [Verse 1] or [Chorus] on their own line are kept as headings. The preview shows exactly what students will see.</div>
@@ -161,6 +168,25 @@ function openChordEditor(song, r) {
   const form = $('#chordForm');
   const prev = () => { $('#chordPrev').innerHTML = sheetPreview(form.body.value) || '<span class="muted">Your song shows here as you type.</span>'; };
   form.body.addEventListener('input', prev); prev();
+  const q = () => encodeURIComponent(form.title.value.trim());
+  const links = () => {
+    $('#srchUg').href = `https://www.ultimate-guitar.com/search.php?search_type=title&value=${q()}`;
+    $('#srchGo').href = `https://www.google.com/search?q=${q()}+chords`;
+    $('#srchEc').href = `https://www.e-chords.com/search-all/${q()}`;
+  };
+  form.title.addEventListener('input', links); links();
+  $('#chImport').addEventListener('click', async () => {
+    const url = $('#chLink').value.trim();
+    if (!url) { $('#chLinkMsg').textContent = 'Paste a link first.'; return; }
+    if (form.body.value.trim() && !confirm('Replace the chords already in the box?')) return;
+    $('#chLinkMsg').textContent = 'Reading the page…';
+    try {
+      const r = await call('teacher/chord-link', { method: 'POST', body: { url } });
+      form.body.value = r.text; prev();
+      if (!form.title.value.trim() && r.title) { form.title.value = r.title.replace(/\s*(chords?|tabs?|lyrics).*$/i, '').trim(); links(); }
+      $('#chLinkMsg').textContent = `Read from ${r.host}.${r.cut ? ' It was long, so the end was cut.' : ''} Check the preview, fix anything that looks off, then save.`;
+    } catch (err) { $('#chLinkMsg').textContent = `⚠️ ${err.message}`; }
+  });
   $('#close').addEventListener('click', () => dlg.close());
   form.addEventListener('submit', async (e) => {
     e.preventDefault();

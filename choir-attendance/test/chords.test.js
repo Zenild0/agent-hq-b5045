@@ -1,9 +1,17 @@
 import { test, before, after } from 'node:test';
+import http from 'node:http';
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+const fake = http.createServer((req, res) => {
+  res.writeHead(200, { 'content-type': 'text/html' });
+  if (req.url.startsWith('/nopre')) return res.end('<html><title>Plain</title><body><p>Just words, no chords here</p></body></html>');
+  res.end('<html><head><title>Amazing Grace Chords | Sheets</title></head><body><nav>menu</nav><pre>short</pre><pre>G        C\nAmazing grace, how <b>sweet</b>\nD        G\nthe sound &amp; more</pre><script>var x = 1</script></body></html>');
+});
+await new Promise((ok) => fake.listen(0, ok));
+process.env.CHOIR_ALLOW_PRIVATE_FETCH = '1'; // the pretend site is on this machine
 process.env.CHOIR_DATA = join(mkdtempSync(join(tmpdir(), 'choir-chords-')), 'db.json');
 process.env.CHOIR_TRIAL_DAYS = '0'; // members have no trial here, so only a paid child gets in
 delete process.env.CHOIR_PIN;
@@ -11,7 +19,7 @@ const { server } = await import('../server.js');
 const { transposeChord, keyAfter, parseSheet, chordsUsed, normaliseSheet, chordShape, isChord } = await import('../public/chordpro.js');
 let base;
 before(() => new Promise((ok) => server.listen(0, () => { base = `http://localhost:${server.address().port}`; ok(); })));
-after(() => server.close());
+after(() => { server.close(); fake.close(); });
 const j = async (path, { method = 'GET', body, code } = {}) => {
   const res = await fetch(base + path, { method, headers: { ...(body ? { 'content-type': 'application/json' } : {}), ...(code ? { 'x-code': code } : {}) }, body: body ? JSON.stringify(body) : undefined });
   return { status: res.status, data: await res.json().catch(() => null) };
@@ -111,4 +119,17 @@ test('a guest gets the short free trial of the Chord Book', async () => {
   const r = (await j('/api/me/chords', { code: g.code })).data;
   assert.equal(r.locked, false);
   assert.equal(r.trial.active, true);
+});
+
+test('the teacher can pull a chord sheet from a link; the spacing that lines the chords up is kept', async () => {
+  const url = `http://localhost:${fake.address().port}/sheet`;
+  const r = await j('/api/teacher/chord-link', { method: 'POST', body: { url } });
+  assert.equal(r.status, 200);
+  assert.match(r.data.title, /Amazing Grace Chords/);
+  assert.match(r.data.text, /^G {8}C\nAmazing grace, how sweet\nD {8}G\nthe sound & more$/);
+  assert.match(normaliseSheet(r.data.text), /^\[G\]Amazing \[C\]grace/);
+  const none = await j('/api/teacher/chord-link', { method: 'POST', body: { url: `http://localhost:${fake.address().port}/nopre` } });
+  assert.equal(none.status, 400);
+  assert.match(none.data.error, /copy the chords and paste/);
+  assert.equal((await j('/api/teacher/chord-link', { method: 'POST', body: { url: 'nope' } })).status, 400);
 });

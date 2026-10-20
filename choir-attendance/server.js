@@ -1306,6 +1306,10 @@ async function teacherApi(req, res, q, parts) {
     const body = await readBody(req);
     try { return send(res, 200, await fetchPageText(body.url)); } catch (e) { throw e instanceof PageError ? new HttpError(400, e.message) : e; }
   }
+  if (req.method === 'POST' && b === 'chord-link') {
+    const body = await readBody(req);
+    try { return send(res, 200, await fetchPageText(body.url, { chords: true })); } catch (e) { throw e instanceof PageError ? new HttpError(400, e.message) : e; }
+  }
   if (req.method === 'POST' && b === 'restore') return send(res, 200, await restoreBackup(req));
 
   const body = await readBody(req, (b === 'children' && action === 'photo') || (b === 'profile' && id === 'photo') ? 1_500_000 : 100_000);

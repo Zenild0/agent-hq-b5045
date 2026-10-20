@@ -51,6 +51,16 @@ async function readLimited(res) {
   return Buffer.concat(chunks).toString('utf8');
 }
 
+// Chord pages keep their spacing inside <pre> blocks (that is how the chords line up over the words), so the
+// longest <pre> that holds chords is taken as it is. Tags inside it (bold chords, links) are dropped.
+export function extractChordSheet(html) {
+  const clean = html.replace(/<!--[\s\S]*?-->/g, '').replace(/<(script|style|noscript|svg)\b[\s\S]*?<\/\1>/gi, '');
+  const blocks = [...clean.matchAll(/<pre\b[^>]*>([\s\S]*?)<\/pre>/gi)].map((m) => decode(m[1].replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')).replace(/\r/g, '').replace(/\t/g, '    '));
+  const chordy = (t) => (t.match(/(^|\s)[A-G][#b]?(m|maj7|7|sus4|dim)?(?=\s|$)/g) || []).length;
+  const best = blocks.filter((b) => chordy(b) >= 2).sort((a, b) => b.length - a.length)[0];
+  return best ? best.replace(/\n{3,}/g, '\n\n').trim() : '';
+}
+
 export function extractText(html) {
   const meta = (re) => decode((re.exec(html)?.[1] ?? '').replace(/\s+/g, ' ').trim());
   const title = meta(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i) || meta(/<title[^>]*>([\s\S]*?)<\/title>/i) || meta(/<h1[^>]*>([\s\S]*?)<\/h1>/i).replace(/<[^>]+>/g, '');
@@ -71,7 +81,7 @@ export function extractText(html) {
   return { title: title.replace(/\s*[|–—-]\s*[^|–—-]*$/, '').trim() || title, text };
 }
 
-export async function fetchPageText(rawUrl) {
+export async function fetchPageText(rawUrl, { chords = false } = {}) {
   let url;
   try { url = new URL(String(rawUrl ?? '').trim()); } catch { throw new PageError('Please paste a full web link, like https://divinehymns.com/…'); }
   let res;
@@ -94,6 +104,11 @@ export async function fetchPageText(rawUrl) {
   const type = res.headers.get('content-type') || '';
   if (!/text\/(html|plain)|application\/xhtml/i.test(type)) throw new PageError('That link is not a web page.');
   const body = await readLimited(res);
+  if (chords) {
+    const sheet = /text\/plain/i.test(type) ? body.trim() : extractChordSheet(body);
+    if (!sheet) throw new PageError('No chord sheet could be read from that page (many sites load it in a way that cannot be read from here). Open the page, copy the chords and paste them in the box.');
+    return { url: url.href, host: url.hostname, title: (extractText(body).title || '').slice(0, 120), text: sheet.slice(0, 12000), cut: sheet.length > 12000 };
+  }
   const out = /text\/plain/i.test(type) ? { title: '', text: body.trim() } : extractText(body);
   if (!out.text) throw new PageError('No words were found on that page. Copy and paste them instead.');
   return { url: url.href, host: url.hostname, title: out.title.slice(0, 120), lyrics: out.text.slice(0, 6000), cut: out.text.length > 6000 };
