@@ -12,6 +12,7 @@ import {
 } from './lib/logic.js';
 import { openStore, newCode } from './lib/store.js';
 import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, setPaid, resetWarmups, resetAllWarmups, isPaid, hasFull, trialOf, startTrial, TRIAL_DAYS, paidUntilOf, daysLeft, wasPaid, warmupsLeft, useWarmup, GameError, PaywallError } from './lib/game.js';
+import { isChord, chordsUsed, normaliseSheet, sheetKey } from './public/chordpro.js';
 import { LEVELS, DAILY_COUNT, STAGES, stageSpec, isTimed } from './public/levels.js';
 import { istNow, isDate, isTime, toMinutes, scheduleDays, nextPractice, shiftDate, rulesOf } from './lib/schedule.js';
 import { createTar, readTar } from './lib/tar.js';
@@ -307,7 +308,7 @@ function accessFor(child) {
   const { db } = store;
   const today = istDate();
   const kid = (db.game.kids[child.id] ??= emptyKid());
-  const anyGame = db.settings.gameEnabled || db.settings.staffEnabled;
+  const anyGame = db.settings.gameEnabled || db.settings.staffEnabled || db.settings.chordsEnabled;
   if (anyGame && startTrial(db.game, child.id, today, child.guest ? Number(process.env.CHOIR_TRIAL_GUEST_DAYS ?? TRIAL_DAYS.guest) : Number(process.env.CHOIR_TRIAL_DAYS ?? TRIAL_DAYS.member))) store.save();
   const paid = isPaid(kid, today);
   const left = daysLeft(kid, today);
@@ -315,7 +316,7 @@ function accessFor(child) {
     full: hasFull(kid, today), paid, paidUntil: paidUntilOf(kid), expired: wasPaid(kid) && !paid,
     trial: trialOf(kid, today), guest: Boolean(child.guest),
     pay: !paid || left <= 30 ? { price: db.settings.gamePrice, mobile: db.settings.gamePayMobile, upi: db.settings.gameUpi } : null,
-    games: { vocals: Boolean(db.settings.gameEnabled), notation: Boolean(db.settings.staffEnabled) },
+    games: { vocals: Boolean(db.settings.gameEnabled), notation: Boolean(db.settings.staffEnabled), chords: Boolean(db.settings.chordsEnabled) },
   };
 }
 const roundGate = new Map(); // child id -> { last, day, n } to stop floods
@@ -426,7 +427,7 @@ function publicOverview(q) {
   const strip = (rows) => rows.map(({ id, name, photo, head, points, rank }) => ({ id, name, photo, head, points, rank }));
   return {
     season, seasonLabel: seasonLabel(season), seasons: seasonsWithData(db, today()),
-    settings: { satPoints: db.settings.satPoints, sunPoints: db.settings.sunPoints, feastPoints: db.settings.feastPoints, practicePoints: db.settings.practicePoints, remarkPenalty: db.settings.remarkPenalty, remarkBonus: db.settings.remarkBonus, gameEnabled: Boolean(db.settings.gameEnabled), staffEnabled: Boolean(db.settings.staffEnabled), trainingBoardEnabled: Boolean(db.settings.trainingBoardEnabled) },
+    settings: { satPoints: db.settings.satPoints, sunPoints: db.settings.sunPoints, feastPoints: db.settings.feastPoints, practicePoints: db.settings.practicePoints, remarkPenalty: db.settings.remarkPenalty, remarkBonus: db.settings.remarkBonus, gameEnabled: Boolean(db.settings.gameEnabled), staffEnabled: Boolean(db.settings.staffEnabled), chordsEnabled: Boolean(db.settings.chordsEnabled), trainingBoardEnabled: Boolean(db.settings.trainingBoardEnabled) },
     schedule: scheduleView(),
     month, monthLabel: monthLabel(month),
     monthBoard: strip(scoreboard(db, season, mr.start, mr.end, { hideOut: true })),
@@ -571,6 +572,7 @@ function updateSettings(body) {
   if ('remarkBonus' in body) s.remarkBonus = num(body.remarkBonus, 0, 5);
   if ('gameEnabled' in body) s.gameEnabled = Boolean(body.gameEnabled);
   if ('staffEnabled' in body) s.staffEnabled = Boolean(body.staffEnabled);
+  if ('chordsEnabled' in body) s.chordsEnabled = Boolean(body.chordsEnabled);
   if ('trainingBoardEnabled' in body) s.trainingBoardEnabled = Boolean(body.trainingBoardEnabled);
   if ('gamePrice' in body) s.gamePrice = Math.round(num(body.gamePrice, 0, 100000));
   if ('gamePayMobile' in body) s.gamePayMobile = phone(body.gamePayMobile ?? '', 'Payment number');
@@ -739,6 +741,56 @@ function guestToEvent(guestId, eventId) {
   occ.members.push(guest.id);
   store.save();
   return { ok: true };
+}
+
+// ---- Chord Book: chord sheets the teacher adds; students keep their own library and set lists on their phone ----
+
+const CHORD_KINDS = ['hymn', 'song'];
+const chordSummary = (c) => ({ id: c.id, title: c.title, key: c.key, kind: c.kind, category: c.category, hymnId: c.hymnId || '', chords: chordsUsed(c.body).slice(0, 8), v: c.updated });
+
+function applyChord(c, body) {
+  if ('title' in body) c.title = text(body.title, 80, 'Title');
+  if (!c.title) throw new HttpError(400, 'Give the song a title');
+  if ('kind' in body) { if (!CHORD_KINDS.includes(body.kind)) throw new HttpError(400, 'Choose Hymn or Song'); c.kind = body.kind; }
+  if ('category' in body) c.category = text(body.category ?? '', 40, 'Category');
+  if ('hymnId' in body) c.hymnId = store.db.hymns.some((h) => h.id === body.hymnId) ? body.hymnId : '';
+  if ('body' in body) {
+    const sheet = normaliseSheet(body.body);
+    if (!sheet) throw new HttpError(400, 'Type or paste the chords and lyrics');
+    if (sheet.length > 12000) throw new HttpError(400, 'That sheet is too long (12,000 characters at most)');
+    if (!chordsUsed(sheet).length) throw new HttpError(400, 'No chords found. Put each chord in [brackets] where it changes, like [G]Amazing [C]grace');
+    c.body = sheet;
+  }
+  if ('key' in body) { const k = String(body.key ?? '').trim(); if (k && !isChord(k)) throw new HttpError(400, 'The key should look like G or Am'); c.key = k; }
+  if (!c.key) c.key = sheetKey(c.body); // no key given: the first chord is a good guess
+  if (store.db.chords.some((x) => x !== c && x.kind === c.kind && x.title.toLowerCase() === c.title.toLowerCase())) throw new HttpError(409, `${c.title} is already in the Chord Book`);
+  c.updated = Date.now();
+}
+
+function saveChord(c, body) {
+  const fresh = !c;
+  const item = c ?? { id: randomUUID().slice(0, 8), title: '', key: '', kind: 'hymn', category: '', hymnId: '', body: '', updated: 0, addedOn: today() };
+  applyChord(item, body);
+  if (fresh) store.db.chords.push(item);
+  store.save();
+  return { ...chordSummary(item), body: item.body };
+}
+
+function chordLibrary(child) {
+  const { db } = store;
+  if (!db.settings.chordsEnabled) throw new HttpError(403, 'The Chord Book is switched off right now');
+  const acc = accessFor(child);
+  const list = db.chords.slice().sort((a, b) => a.title.localeCompare(b.title));
+  if (!acc.full) return { locked: true, count: list.length, trial: acc.trial, expired: acc.expired, pay: acc.pay ?? { price: db.settings.gamePrice, mobile: db.settings.gamePayMobile, upi: db.settings.gameUpi } };
+  return { locked: false, trial: acc.trial, paid: acc.paid, categories: [...new Set(list.map((c) => c.category).filter(Boolean))].sort(), songs: list.map(chordSummary) };
+}
+
+function chordSong(child, id) {
+  if (!store.db.settings.chordsEnabled) throw new HttpError(403, 'The Chord Book is switched off right now');
+  if (!accessFor(child).full) throw new HttpError(402, 'The Chord Book is part of the paid version');
+  const c = store.db.chords.find((x) => x.id === id);
+  if (!c) throw new HttpError(404, 'That song is not in the Chord Book any more');
+  return { ...chordSummary(c), body: c.body };
 }
 
 // ---- scheduled practices of an occasion (their own dates and times, separate from the regular schedule) ----
@@ -1243,6 +1295,7 @@ async function teacherApi(req, res, q, parts) {
       });
     }
     if (b === 'guests') return send(res, 200, guestsView());
+    if (b === 'chords') return send(res, 200, { songs: store.db.chords.slice().sort((a, b) => a.title.localeCompare(b.title)).map((c) => ({ ...chordSummary(c), body: c.body })), hymns: store.db.hymns.map((h) => ({ id: h.id, title: h.title })) });
     if (b === 'occasion-practices') return send(res, 200, { practices: upcomingOccasionPractices() });
     if (b === 'lyrics') return send(res, 200, await searchLyrics(q.get('q')));
     throw new HttpError(404, 'Not found');
@@ -1261,6 +1314,13 @@ async function teacherApi(req, res, q, parts) {
   if (req.method === 'PUT' && b === 'mark') { mark(body); return send(res, 200, { ok: true }); }
   if (req.method === 'POST' && b === 'mark-all-present') { markAllPresent(body); return send(res, 200, { ok: true }); }
   if (req.method === 'POST' && b === 'bulk-children') return send(res, 201, bulkAdd(body));
+  if (b === 'chords') {
+    const song = id ? store.db.chords.find((c) => c.id === id) : null;
+    if (id && !song) throw new HttpError(404, 'Song not found');
+    if (req.method === 'POST' && !id) return send(res, 201, saveChord(null, body));
+    if (req.method === 'PUT' && song) return send(res, 200, saveChord(song, body));
+    if (req.method === 'DELETE' && song) { store.db.chords = store.db.chords.filter((c) => c !== song); store.save(); return send(res, 200, { ok: true }); }
+  }
   if (req.method === 'POST' && b === 'guests' && !id) return send(res, 201, addGuests(body));
   if (req.method === 'POST' && b === 'guests' && id && action === 'event') return send(res, 200, guestToEvent(id, body.eventId));
   if (b === 'occasions') {
@@ -1362,6 +1422,7 @@ async function api(req, res, url) {
     }
     if (req.method === 'GET' && b === 'access') return send(res, 200, { ...accessFor(child), board: Boolean(store.db.settings.trainingBoardEnabled) });
     if (req.method === 'GET' && b === 'xp-board') return send(res, 200, xpBoardFor(child));
+    if (req.method === 'GET' && b === 'chords') return send(res, 200, parts[2] ? chordSong(child, parts[2]) : chordLibrary(child));
     if (req.method === 'POST' && b === 'xp') return send(res, 200, xpReport(child, await readBody(req, 5_000)));
     if (req.method === 'PUT' && b === 'schedule') { // a guest chooses whether to see the main choir's practice times
       const body = await readBody(req);

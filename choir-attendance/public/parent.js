@@ -444,7 +444,7 @@ show(tab);
 cachedApi('public')
   .then((o) => {
     overview = o;
-    $('#gamesTab').hidden = !(o.settings?.gameEnabled || o.settings?.staffEnabled);
+    $('#gamesTab').hidden = !(o.settings?.gameEnabled || o.settings?.staffEnabled || o.settings?.chordsEnabled);
     boardTab();
     achTab();
     hymnsTab();

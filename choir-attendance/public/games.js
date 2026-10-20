@@ -66,10 +66,11 @@ export function mountGames(host, { code }) {
       <div class="tg-list">
         ${g.vocals ? `<button class="tg-card" data-game="vocals"><span class="tg-n">1</span><span class="grow"><b>Vocal trainer</b><span class="muted">Hear a note, then sing it. Levels from beginner to legend, a daily challenge and badges.</span></span><span>›</span></button>` : ''}
         ${g.notation ? `<button class="tg-card" data-game="notation"><span class="tg-n">2</span><span class="grow"><b>Notation trainer</b><span class="muted">Learn to read music. See a note on the staff and sing it. 20 levels, treble and bass clef.</span></span><span>›</span></button>` : ''}
+        ${g.chords ? `<button class="tg-card" data-game="chords"><span class="tg-n">4</span><span class="grow"><b>Chord Book</b><span class="muted">Search chords for songs and hymns, keep your own songs and build set lists to play.</span></span><span>›</span></button>` : ''}
         <div class="tg-card soon"><span class="tg-n">3</span><span class="grow"><b>Rhythm trainer</b><span class="muted">Clap and tap the beat. Coming soon.</span></span></div>
       </div>
       <details class="card set-sec"><summary><span class="grow"><b>My badges</b><span class="muted">${xp.view().badges.filter((b) => b.got).length} of ${xp.view().badges.length} earned</span></span><span class="chev" aria-hidden="true">▾</span></summary><div class="set-body">${badgesHtml(xp.view())}</div></details>
-      ${!g.vocals && !g.notation ? '<div class="empty">Your teacher has not switched any game on yet.</div>' : ''}`;
+      ${!g.vocals && !g.notation && !g.chords ? '<div class="empty">Your teacher has not switched any game on yet.</div>' : ''}`;
   }
 
   async function open(which) {
@@ -80,6 +81,7 @@ export function mountGames(host, { code }) {
       root.innerHTML = '<div class="games-bar"><button class="btn small" data-g="hub">‹ Training games</button></div><div id="gbox"></div>';
       const box = root.querySelector('#gbox');
       if (which === 'vocals') { const m = await import('./game.js'); ctl = m.mountGame(box, { code, xp }); }
+      else if (which === 'chords') { const m = await import('./chordbook.js'); ctl = m.mountChordBook(box, { code, access }); }
       else { const m = await import('./staffgame.js'); ctl = m.mountStaffGame(box, { access, xp }); }
     } catch (e) { root.innerHTML = `<div class="card"><div class="alert bad">${esc(e.message)}</div><button class="btn" data-g="hub">‹ Back</button></div>`; }
   }

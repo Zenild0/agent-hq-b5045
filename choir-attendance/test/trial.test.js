@@ -28,7 +28,7 @@ test('every game is free for 7 days for members and 3 for guests, then paid; pay
   assert.equal(m.trial.daysLeft, 7);
   assert.equal(m.full, true);
   assert.equal(m.paid, false);
-  assert.deepEqual(m.games, { vocals: true, notation: true });
+  assert.deepEqual(m.games, { vocals: true, notation: true, chords: false });
   const g = (await j('/api/me/access', { code: guest.code })).data;
   assert.equal(g.trial.days, 3);
   assert.equal(g.trial.daysLeft, 3);
@@ -47,7 +47,7 @@ test('a bad code is refused and the games switch hides the games list', async ()
   await j('/api/teacher/settings', { method: 'PUT', body: { gameEnabled: false, staffEnabled: false } });
   const c = (await j('/api/teacher/children', { method: 'POST', body: { name: 'Third Child' } })).data;
   const a = (await j('/api/me/access', { code: c.code })).data;
-  assert.deepEqual(a.games, { vocals: false, notation: false });
+  assert.deepEqual(a.games, { vocals: false, notation: false, chords: false });
   assert.equal(a.trial.started, false, 'the trial only starts once a game is switched on and opened');
 });
 

@@ -1,5 +1,6 @@
 import { pickPhotos, pickProfilePhoto } from './photo.js';
 import { nextCardHtml } from './home.js';
+import { parseSheet, normaliseSheet } from './chordpro.js';
 import { initBack, noteVisit } from './nav.js';
 import { applyLook, lookCardHtml, wireLook, configure } from './theme.js';
 
@@ -38,6 +39,7 @@ app.innerHTML = `
     <section id="games" hidden></section>
     <section id="vocals" hidden></section>
     <section id="staffgame" hidden></section>
+    <section id="chordbook" hidden></section>
     <section id="board" hidden></section>
     <section id="settings" hidden></section>
   </main>
@@ -73,8 +75,8 @@ function lockOut(message) {
   app.querySelector('main').innerHTML = `<div class="card"><h2 style="margin-top:0">🔒 Teacher area</h2><p>${esc(message)}</p><p class="muted">Open <b>http://localhost:3000/teacher</b> on the computer running the app. Parents use the main link and their child's code.</p><a class="btn" href="/">Go to the parent page</a></div>`;
 }
 
-const tabs = ['home', 'more', 'games', 'staffgame', 'attendance', 'schedule', 'occasions', 'children', 'hymns', 'vocals', 'board', 'settings'];
-const loaders = { games: loadGamesHub, staffgame: loadStaffGame, home: loadHome, more: loadMore, attendance: loadAttendance, schedule: loadSchedule, occasions: loadOccasions, children: loadChildren, hymns: loadHymns, vocals: loadVocals, board: loadBoard, settings: loadSettings };
+const tabs = ['home', 'more', 'games', 'staffgame', 'chordbook', 'attendance', 'schedule', 'occasions', 'children', 'hymns', 'vocals', 'board', 'settings'];
+const loaders = { games: loadGamesHub, staffgame: loadStaffGame, chordbook: loadChordBook, home: loadHome, more: loadMore, attendance: loadAttendance, schedule: loadSchedule, occasions: loadOccasions, children: loadChildren, hymns: loadHymns, vocals: loadVocals, board: loadBoard, settings: loadSettings };
 // The teacher's own copy of Vocals: every level and the paid features are open, and progress stays on this device.
 let vocals = null;
 function subsPanelHtml(subs) {
@@ -100,6 +102,7 @@ async function loadGamesHub() {
     <div class="tg-list">
       <button class="tg-card" data-game="vocals"><span class="tg-n">1</span><span class="grow"><b>Vocal trainer</b><span class="muted">Hear a note, sing it. Levels, daily challenge, badges.</span></span><span>›</span></button>
       <button class="tg-card" data-game="staffgame"><span class="tg-n">2</span><span class="grow"><b>Notation trainer</b><span class="muted">Learn to read music: 20 levels, treble and bass clef.</span></span><span>›</span></button>
+      <button class="tg-card" data-game="chordbook"><span class="tg-n">4</span><span class="grow"><b>Chord Book</b><span class="muted">Add chord sheets for hymns and songs. Students search them, keep their own songs and build set lists.</span></span><span>›</span></button>
       <div class="tg-card soon"><span class="tg-n">3</span><span class="grow"><b>Rhythm trainer</b><span class="muted">Coming soon.</span></span></div>
     </div>
     <div id="practiceBox"></div>
@@ -116,6 +119,59 @@ async function loadGamesHub() {
         ${r.quiet.length ? `<div class="muted" style="margin-top:8px"><b>Not practised for a week:</b> ${esc(r.quiet.slice(0, 12).join(', '))}${r.quiet.length > 12 ? '…' : ''}</div>` : ''}` : ''}
       </div>`;
   }).catch(() => {});
+}
+
+// ---- Chord Book: the teacher adds the chord sheets students can search ----
+const sheetPreview = (body) => parseSheet(normaliseSheet(body)).map((l) => (l.kind === 'blank' ? '<div class="cp-gap"></div>' : l.kind === 'section' ? `<div class="cp-sec">${esc(l.text)}</div>` : `<div class="cp-line">${l.segs.map((g) => `<span class="cp-seg"><span class="cp-c">${esc(g.chord) || '&nbsp;'}</span><span class="cp-l">${esc(g.text) || '&nbsp;'}</span></span>`).join('')}</div>`)).join('');
+
+async function loadChordBook() {
+  const [r, pub] = await Promise.all([call('teacher/chords'), call('public')]);
+  const on = pub.settings?.chordsEnabled;
+  $('#chordbook').innerHTML = `
+    <div class="card"><div class="row between"><div><h2 style="margin:0">Chord Book</h2><div class="muted">${r.songs.length} song${r.songs.length === 1 ? '' : 's'} in the library. Students search these, add them to their own songs and build set lists.</div></div>
+      <button class="btn primary" id="addChord">＋ Add song</button></div>
+      <div class="alert ${on ? 'ok' : 'warn'}" style="margin-top:10px">${on ? 'Switched on for parents. It is part of the paid version, with the same free trial as the games.' : 'Switched off for parents. Add your songs first, then switch it on in More → Settings.'}</div></div>
+    <label class="field"><span class="sr">Search</span><input id="chordQ" type="search" placeholder="Search the library…" autocomplete="off"></label>
+    <div id="chordList">${r.songs.map((s) => `
+      <div class="card row between" data-ct="${esc(s.title.toLowerCase())}"><span class="row" style="gap:10px"><span class="cb-key">${esc(s.key || '–')}</span><span><b>${esc(s.title)}</b><div class="muted">${s.kind === 'hymn' ? 'Hymn' : 'Song'}${s.category ? ` · ${esc(s.category)}` : ''} · ${esc(s.chords.join(' '))}</div></span></span>
+        <button class="ibtn" data-edit-chord="${esc(s.id)}" title="Edit" aria-label="Edit ${esc(s.title)}">✎</button></div>`).join('') || '<div class="empty">No songs yet. Tap “＋ Add song”.</div>'}</div>`;
+  $('#chordQ').addEventListener('input', (e) => { const q = e.target.value.trim().toLowerCase(); $('#chordList').querySelectorAll('[data-ct]').forEach((c) => { c.hidden = Boolean(q) && !c.dataset.ct.includes(q); }); });
+  $('#addChord').addEventListener('click', () => openChordEditor(null, r));
+  $('#chordbook').querySelectorAll('[data-edit-chord]').forEach((b) => b.addEventListener('click', () => openChordEditor(r.songs.find((x) => x.id === b.dataset.editChord), r)));
+}
+
+function openChordEditor(song, r) {
+  const cats = [...new Set([...r.songs.map((s) => s.category).filter(Boolean), 'Entrance', 'Gloria', 'Response', 'Offertory', 'Communion', 'Recessional'])];
+  $('#dlgBody').innerHTML = `
+    <div class="row between"><h2 style="margin:0">${song ? 'Edit song' : 'Add a song'}</h2><button class="btn small" id="close" aria-label="Close">✕</button></div>
+    <form id="chordForm">
+      <label class="field">Title<input name="title" required maxlength="80" value="${esc(song?.title ?? '')}"></label>
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <label class="field grow">Type<select name="kind"><option value="hymn"${song?.kind === 'song' ? '' : ' selected'}>Hymn</option><option value="song"${song?.kind === 'song' ? ' selected' : ''}>Song</option></select></label>
+        <label class="field" style="width:90px">Key<input name="key" maxlength="4" placeholder="G" value="${esc(song?.key ?? '')}"></label></div>
+      <label class="field">Category (optional)<input name="category" maxlength="40" list="chordCats" value="${esc(song?.category ?? '')}"><datalist id="chordCats">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist></label>
+      <label class="field">Chords and lyrics
+        <textarea name="body" rows="10" required maxlength="12000" spellcheck="false" style="font-family:ui-monospace,Menlo,monospace" placeholder="{Verse 1}&#10;[G]Amazing grace, how [C]sweet the [G]sound">${esc(song?.body ?? '')}</textarea></label>
+      <div class="muted">Put each chord in [brackets] right where it changes. A line like {Chorus} makes a heading. Pasting chords above the words works too: they are converted when you save.</div>
+      <div class="muted" style="margin-top:10px"><b>Preview</b></div><div class="card cb-sheet" id="chordPrev" style="--cb-size:.95rem"></div>
+      <div class="alert warn" style="margin:8px 0">Add only chords you may share: public-domain hymns or your own arrangements. Songs still under copyright need the owner's permission.</div>
+      <div class="row"><button class="btn primary">${song ? 'Save changes' : 'Publish to library'}</button>${song ? '<button type="button" class="btn danger" id="delChord">Delete</button>' : ''}<span id="chordMsg" class="muted" aria-live="polite"></span></div>
+    </form>`;
+  if (!dlg.open) dlg.showModal();
+  const form = $('#chordForm');
+  const prev = () => { $('#chordPrev').innerHTML = sheetPreview(form.body.value) || '<span class="muted">Your song shows here as you type.</span>'; };
+  form.body.addEventListener('input', prev); prev();
+  $('#close').addEventListener('click', () => dlg.close());
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(form));
+    try { await call(song ? `teacher/chords/${song.id}` : 'teacher/chords', { method: song ? 'PUT' : 'POST', body }); dlg.close(); await loadChordBook(); } catch (err) { $('#chordMsg').textContent = `⚠️ ${err.message}`; }
+  });
+  $('#delChord')?.addEventListener('click', () => run(async () => {
+    if (!confirm(`Delete ${song.title} from the library? Students who already added it keep their copy.`)) return;
+    await call(`teacher/chords/${song.id}`, { method: 'DELETE' });
+    dlg.close(); await loadChordBook();
+  }));
 }
 
 let staffTest = null;
@@ -141,7 +197,7 @@ function showTab(name, fromBack = false) {
   if (name !== 'staffgame' && staffTest) { staffTest.destroy?.(); staffTest = null; $('#staffgame').innerHTML = ''; }
   if (name !== 'vocals' && vocals) { vocals.destroy?.(); vocals = null; $('#vocals').innerHTML = ''; } // stops the microphone
   tabs.forEach((t) => { $(`#${t}`).hidden = t !== name; });
-  const inGame = name === 'vocals' || name === 'staffgame'; // these two sit under Training games
+  const inGame = name === 'vocals' || name === 'staffgame' || name === 'chordbook'; // these sit under Training games
   const underMore = inGame || MORE_PAGES.some((p) => p.id === name);
   app.querySelectorAll('nav.tabbar button').forEach((x) => x.classList.toggle('on', x.dataset.tab === (underMore ? 'more' : name)));
   $('#backbar').hidden = !underMore;
@@ -150,7 +206,7 @@ function showTab(name, fromBack = false) {
   return run(loaders[name]);
 }
 app.querySelectorAll('nav.tabbar button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
-$('#backMore').addEventListener('click', () => showTab(currentTab === 'vocals' || currentTab === 'staffgame' ? 'games' : 'more'));
+$('#backMore').addEventListener('click', () => showTab(currentTab === 'vocals' || currentTab === 'staffgame' || currentTab === 'chordbook' ? 'games' : 'more'));
 
 
 // ======================= Home and More =======================
@@ -1087,6 +1143,7 @@ async function loadSettings() {
         <div class="muted" style="margin-bottom:4px"><b>Training games for parents.</b> Switch each game on when you are ready, one at a time. Everyone gets every game free for 7 days (guests 3 days); one payment then unlocks all the games.</div>
         <label class="chk"><input name="gameEnabled" type="checkbox"${s.gameEnabled ? ' checked' : ''}> 🎤 Vocal trainer (game 1) is on for parents</label>
         <label class="chk"><input name="staffEnabled" type="checkbox"${s.staffEnabled ? ' checked' : ''}> 🎼 Notation trainer (game 2) is on for parents</label>
+        <label class="chk"><input name="chordsEnabled" type="checkbox"${s.chordsEnabled ? ' checked' : ''}> 🎸 Chord Book (game 4) is on for parents</label>
         <label class="chk"><input name="trainingBoardEnabled" type="checkbox"${s.trainingBoardEnabled ? ' checked' : ''}> 🏆 Training XP leaderboard (shown only to children with a paid year; off until you switch it on)</label>
         <div class="muted" style="margin:8px 0">The first levels stay free. Parents pay you directly, then you unlock their child for a year (Children → the child → Vocals game), and that opens all the games. After 365 days they pay again.</div>
         <label class="field">Price for one year (₹)<input name="gamePrice" type="number" min="0" step="1" value="${s.gamePrice ?? 500}"></label>
@@ -1148,6 +1205,7 @@ async function loadSettings() {
       body.countSundayAbsences = f.get('countSundayAbsences') === 'on';
       body.gameEnabled = f.get('gameEnabled') === 'on';
       body.staffEnabled = f.get('staffEnabled') === 'on';
+      body.chordsEnabled = f.get('chordsEnabled') === 'on';
       body.trainingBoardEnabled = f.get('trainingBoardEnabled') === 'on';
       body.gamePrice = f.get('gamePrice');
       body.gamePayMobile = f.get('gamePayMobile') || '';
