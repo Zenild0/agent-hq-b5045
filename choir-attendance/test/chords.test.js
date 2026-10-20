@@ -40,6 +40,36 @@ test('a sheet pasted with chords above the words becomes [bracketed] and parses 
   assert.deepEqual(lines[0].segs.map((s) => s.chord), ['G', 'C', 'G']);
 });
 
+test('chords above the words, chords before the words, or a mix of both all work (the pasted sheet that failed)', () => {
+  const pasted = `[Verse 1]
+G              D              Em
+  Seeking You as a precious jewel
+                Bm          C
+Lord to give up, I'd be a fool
+            Dsus4 D  Gsus4   G
+You are my all   in all
+
+[Chorus]
+G D Em Bm`;
+  const sheet = normaliseSheet(pasted);
+  assert.match(sheet, /^\{Verse 1\}\n\[G\]/);
+  assert.match(sheet, /\{Chorus\}\n\[G\] \[D\] \[Em\] \[Bm\]$/, 'a chord-only line stays as chords');
+  assert.deepEqual(chordsUsed(sheet), ['G', 'D', 'Em', 'Bm', 'C', 'Dsus4', 'Gsus4']);
+  const lines = parseSheet(sheet);
+  assert.equal(lines[0].kind, 'section');
+  assert.equal(lines[1].segs.filter((g) => g.chord).length, 3, 'three chords sit on the first lyric line');
+  assert.ok(!lines.some((l) => l.kind === 'line' && l.segs.some((g) => g.chord === 'Verse 1')), 'a [Verse 1] label is a heading, not a chord');
+  // already in brackets: left alone; mixed: only the chord-over-words part is converted
+  assert.equal(normaliseSheet('[G]Amazing [C]grace'), '[G]Amazing [C]grace');
+  assert.equal(normaliseSheet('[G]Amazing grace\nD    G\nhow sweet'), '[G]Amazing grace\n[D]how [G]sweet');
+  // a chord that lands a letter or two into a word moves to the word start; one in the middle stays
+  assert.equal(normaliseSheet('C\nSeeking'), '[C]Seeking');
+  assert.equal(normaliseSheet('  G\nSeeking You'), '[G]Seeking You');
+  assert.equal(normaliseSheet('    G\nA-ma-zing'), 'A-ma[G]-zing');
+  assert.equal(normaliseSheet('G D\nHi'), '[G]Hi[D]');
+  assert.equal(normaliseSheet('G  D\nOh'), '[G]Oh [D]', 'chords past the last word hang after one space');
+});
+
 test('the teacher builds the library; students need the paid version and the teacher switch', async () => {
   const kid = (await j('/api/teacher/children', { method: 'POST', body: { name: 'Chord Kid' } })).data;
   assert.equal((await j('/api/me/chords', { code: kid.code })).status, 403, 'switched off by default');

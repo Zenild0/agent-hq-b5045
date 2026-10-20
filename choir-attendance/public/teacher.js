@@ -152,7 +152,7 @@ function openChordEditor(song, r) {
       <label class="field">Category (optional)<input name="category" maxlength="40" list="chordCats" value="${esc(song?.category ?? '')}"><datalist id="chordCats">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist></label>
       <label class="field">Chords and lyrics
         <textarea name="body" rows="10" required maxlength="12000" spellcheck="false" style="font-family:ui-monospace,Menlo,monospace" placeholder="{Verse 1}&#10;[G]Amazing grace, how [C]sweet the [G]sound">${esc(song?.body ?? '')}</textarea></label>
-      <div class="muted">Put each chord in [brackets] right where it changes. A line like {Chorus} makes a heading. Pasting chords above the words works too: they are converted when you save.</div>
+      <div class="muted">Either way works: paste the chords <b>above the words</b>, or type them <b>before the words</b> in [brackets], like [G]Amazing [C]grace. You can mix both. Headings like [Verse 1] or [Chorus] on their own line are kept as headings. The preview shows exactly what students will see.</div>
       <div class="muted" style="margin-top:10px"><b>Preview</b></div><div class="card cb-sheet" id="chordPrev" style="--cb-size:.95rem"></div>
       <div class="alert warn" style="margin:8px 0">Add only chords you may share: public-domain hymns or your own arrangements. Songs still under copyright need the owner's permission.</div>
       <div class="row"><button class="btn primary">${song ? 'Save changes' : 'Publish to library'}</button>${song ? '<button type="button" class="btn danger" id="delChord">Delete</button>' : ''}<span id="chordMsg" class="muted" aria-live="polite"></span></div>

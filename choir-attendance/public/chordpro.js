@@ -24,26 +24,49 @@ export const keyAfter = (key, semi) => {
   return preferFlats(flat) ? flat : transposeChord(key, semi, false);
 };
 
-// A line is a chord line when every word on it is a chord (used to turn "chords above lyrics" pastes into [brackets]).
-const chordLine = (l) => { const w = l.trim().split(/\s+/).filter(Boolean); return w.length > 0 && w.every(isChord); };
+// A line is a chord line when every word on it is a chord (bar lines and "x2" are allowed between them).
+const FILLER = new Set(['|', '||', '/', '-', 'x2', 'x3', 'x4', '(x2)', '(x3)', 'N.C.', 'NC']);
+const chordLine = (l) => { const w = l.trim().split(/\s+/).filter(Boolean); return w.some(isChord) && w.every((t) => isChord(t) || FILLER.has(t)); };
+const isLabel = (l) => { const m = /^\[([^\]]+)\]$/.exec(l.trim()); return m && !isChord(m[1].trim()) ? m[1].trim() : ''; }; // "[Verse 1]" on its own line
+// A chord typed over the middle of a word is moved to the start of that word when it is only a letter or two in
+// (columns drift when a sheet is pasted); further in, it stays where it was, so a split like "A-ma-zing" survives.
+function snapColumn(line, col) {
+  if (col >= line.length) return col;
+  if (line[col] === ' ') { let j = col; while (j < line.length && line[j] === ' ') j++; return j < line.length && j - col <= 3 ? j : col; }
+  let k = col; while (k > 0 && line[k - 1] !== ' ') k--;
+  return col - k <= 2 ? k : col;
+}
+// Accepts a sheet written either way, or a mix of both: chords above the words become [chords] before the words,
+// and a line such as [Chorus] becomes a {Chorus} heading.
 export function fromChordsOverLyrics(text) {
   const lines = String(text).replace(/\r/g, '').split('\n');
+  const bracketed = (l) => l.trim().split(/\s+/).filter((t) => isChord(t)).map((c) => `[${c}]`).join(' ');
   const out = [];
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
-    if (chordLine(l) && lines[i + 1] !== undefined && lines[i + 1].trim() && !chordLine(lines[i + 1])) {
-      let lyric = lines[i + 1].padEnd(l.length + 1);
-      const marks = [...l.matchAll(/\S+/g)].map((m) => ({ at: m.index, chord: m[0] })).reverse();
-      for (const { at, chord } of marks) lyric = `${lyric.slice(0, at)}[${chord}]${lyric.slice(at)}`;
-      out.push(lyric.trimEnd());
-      i += 1;
-    } else if (chordLine(l)) out.push(l.trim().split(/\s+/).map((c) => `[${c}]`).join(' ')); // an instrumental line
-    else out.push(l);
+    const label = isLabel(l);
+    if (label) { out.push(`{${label}}`); continue; }
+    if (!l.includes('[') && chordLine(l)) {
+      const next = lines[i + 1];
+      if (next !== undefined && next.trim() && !chordLine(next) && !isLabel(next) && !/^\{.*\}$/.test(next.trim())) {
+        const lyric0 = next.padEnd(l.length + 1);
+        const at = new Map(); // column in the words -> the chords that sit there, left to right
+        for (const m of l.matchAll(/\S+/g)) {
+          if (!isChord(m[0])) continue;
+          const col = snapColumn(lyric0, m.index);
+          at.set(col, [...(at.get(col) || []), m[0]]);
+        }
+        let lyric = lyric0;
+        for (const col of [...at.keys()].sort((a, b) => b - a)) lyric = `${lyric.slice(0, col)}${at.get(col).map((c) => `[${c}]`).join('')}${lyric.slice(col)}`;
+        out.push(lyric.replace(/^\s+(?=\[)/, '').replace(/ {2,}((?:\[[^\]]+\])+)\s*$/, ' $1').trimEnd()); // chords past the last word hang after one space
+        i += 1;
+      } else out.push(bracketed(l)); // chords with no words under them (an intro or an instrumental line)
+    } else out.push(l);
   }
   return out.join('\n');
 }
 // What the teacher types or pastes becomes the stored sheet.
-export const normaliseSheet = (text) => { const t = String(text ?? '').replace(/\r/g, '').replace(/[ \t]+$/gm, '').trim(); return t.includes('[') ? t : fromChordsOverLyrics(t); };
+export const normaliseSheet = (text) => fromChordsOverLyrics(String(text ?? '').replace(/[ \t]+$/gm, '')).replace(/^\s+|\s+$/g, '');
 
 const SECTION = /^(verse|chorus|pre-?chorus|bridge|intro|outro|interlude|tag|refrain|instrumental|coda|ending)\b[^[\]]*:?$/i;
 // A sheet becomes lines of pieces: { chord, text }. The chord sits above the words that follow it.
@@ -51,6 +74,8 @@ export function parseSheet(body) {
   return String(body ?? '').replace(/\r/g, '').split('\n').map((raw) => {
     const l = raw.trimEnd();
     if (!l.trim()) return { kind: 'blank' };
+    const lone = /^\[([^\]]+)\]$/.exec(l.trim());
+    if (lone && !isChord(lone[1].trim())) return { kind: 'section', text: lone[1].trim() };
     const braces = /^\{(.+)\}$/.exec(l.trim());
     if (braces) return { kind: 'section', text: braces[1].replace(/^(?:c|comment|soc|start_of_chorus)\s*:\s*/i, '').trim() };
     if (!l.includes('[') && SECTION.test(l.trim())) return { kind: 'section', text: l.trim().replace(/:$/, '') };

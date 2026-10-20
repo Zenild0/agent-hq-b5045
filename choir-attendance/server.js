@@ -758,7 +758,7 @@ function applyChord(c, body) {
     const sheet = normaliseSheet(body.body);
     if (!sheet) throw new HttpError(400, 'Type or paste the chords and lyrics');
     if (sheet.length > 12000) throw new HttpError(400, 'That sheet is too long (12,000 characters at most)');
-    if (!chordsUsed(sheet).length) throw new HttpError(400, 'No chords found. Put each chord in [brackets] where it changes, like [G]Amazing [C]grace');
+    if (!chordsUsed(sheet).length) throw new HttpError(400, 'No chords found. Put the chords above the words, or in [brackets] before them, like [G]Amazing [C]grace');
     c.body = sheet;
   }
   if ('key' in body) { const k = String(body.key ?? '').trim(); if (k && !isChord(k)) throw new HttpError(400, 'The key should look like G or Am'); c.key = k; }
