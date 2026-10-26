@@ -1,0 +1,18 @@
+{
+  "name": "irctc-assistant",
+  "version": "0.1.0",
+  "description": "Human-in-the-loop IRCTC booking assistant: you say which train, it arms for the 8 AM window, fills the forms, and hands you to UPI. It never sees or stores your password, captcha, OTP or UPI details.",
+  "type": "module",
+  "private": true,
+  "bin": { "irctc-assistant": "bin/irctc-assistant.js" },
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node bin/irctc-assistant.js ui",
+    "doctor": "node bin/irctc-assistant.js doctor",
+    "demo": "node bin/irctc-assistant.js demo",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "playwright-core": "^1.63.0"
+  }
+}
