@@ -1,8 +1,12 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { normalizeStore, type Store } from './engine';
 
-export const DATA_DIR = path.resolve(process.env.DATA_DIR ?? './data');
+// Default: the project's own `data` folder — NOT relative to wherever the command was started from,
+// so starting the app from a different folder can never silently open an empty set of auctions.
+const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+export const DATA_DIR = path.resolve(process.env.DATA_DIR ?? path.join(PROJECT_ROOT, 'data'));
 const EVENTS_DIR = path.join(DATA_DIR, 'events');
 export const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 
@@ -25,7 +29,11 @@ export function loadAll(): Map<string, Store> {
 
 const timers = new Map<string, NodeJS.Timeout>();
 
-/** Debounced atomic write: a burst of bids becomes one disk write. */
+/**
+ * Atomic write, coalesced within the same tick. It used to wait 250 ms to batch bursts, but that
+ * meant a bid made just before the app was stopped or restarted could be lost (Windows does not
+ * run shutdown handlers when a dev server restarts). An auction file is small, so write right away.
+ */
 export function saveSoon(store: Store): void {
   const code = store.data.code;
   if (timers.has(code)) return;
@@ -34,7 +42,7 @@ export function saveSoon(store: Store): void {
     setTimeout(() => {
       timers.delete(code);
       saveNow(store);
-    }, 250),
+    }, 0),
   );
 }
 

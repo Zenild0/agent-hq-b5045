@@ -10,7 +10,7 @@ export default defineConfig({
   build: { outDir: '../dist/web', emptyOutDir: true },
   server: {
     port: 5173,
-    host: true,
+    strictPort: true, // never quietly hop to another port: browsers keep saved links per address
     fs: { allow: [path.resolve('.')] },
     proxy: { '/api': { target: API, ws: true }, '/uploads': API },
   },

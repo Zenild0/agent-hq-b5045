@@ -14,6 +14,12 @@ const MAX_UPLOADS_PER_AUCTION = 1000;
 
 const events = loadAll();
 console.log(`ZenoBid · data in ${DATA_DIR} · ${events.size} auction(s) loaded`);
+if (process.env.NODE_ENV !== 'production' && events.size > 0) {
+  // On your own computer, show how to get back into each auction (the browser forgets them if the
+  // address changes, e.g. localhost:5173 → :5174). Not printed on a production server.
+  console.log('Your auctions — open on whichever address shows the app:');
+  for (const s of events.values()) console.log(`  ${s.data.code}  ${s.data.settings.name}  →  /e/${s.data.code}/admin?k=${s.secrets.adminKey}`);
+}
 
 // ---------------------------------------------------------------------------------------------
 // Live connections
@@ -306,6 +312,12 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 const server = app.listen(PORT, () => console.log(`ZenoBid listening on http://localhost:${PORT}`));
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`\n✗ Port ${PORT} is already in use — another copy of ZenoBid is probably still running.\n  Close the other terminal window (Ctrl+C) and start again. Auctions are saved on disk, nothing is lost.\n`);
+  } else console.error(err);
+  process.exit(1);
+});
 
 // ---------------------------------------------------------------------------------------------
 // WebSocket live updates.
