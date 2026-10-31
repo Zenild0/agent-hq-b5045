@@ -380,16 +380,26 @@ on('player.update', 'admin', ({ data }, p) => {
   if (patch.basePrice !== undefined) pl.basePrice = num(patch.basePrice, pl.basePrice, 0);
 });
 
-on('player.remove', 'admin', ({ data }, p) => {
+const resetPlayer = (pl: Player) => Object.assign(pl, { status: 'available', teamId: null, price: 0, soldRound: 0 });
+
+/** If `id` is the player on screen, wipe the screen (bids are discarded; the player's own status is untouched). */
+function dropFromBlock(d: EventData, id: string, now: number): boolean {
+  if (d.live.playerId !== id || d.live.phase === 'idle') return false;
+  clearBlock(d);
+  emit(d, 'idle', now);
+  return true;
+}
+
+on('player.remove', 'admin', ({ data }, p, _a, now) => {
   const pl = getPlayer(data, p.id);
-  if (data.live.playerId === pl.id && data.live.phase !== 'idle') throw new AuctionError('This player is on the block right now');
+  dropFromBlock(data, pl.id, now);
   data.players = data.players.filter((x) => x.id !== pl.id);
 });
 
 on('player.assign', 'admin', ({ data }, p, _a, now) => {
   const pl = getPlayer(data, p.id);
-  if (data.live.playerId === pl.id && data.live.phase !== 'idle') throw new AuctionError('This player is on the block right now');
   const c = getCaptain(data, p.captainId);
+  dropFromBlock(data, pl.id, now);
   pl.status = 'sold';
   pl.teamId = c.id;
   pl.price = num(p.price, effectiveBase(data.settings, pl), 0);
@@ -399,13 +409,39 @@ on('player.assign', 'admin', ({ data }, p, _a, now) => {
 
 on('player.release', 'admin', ({ data }, p, _a, now) => {
   const pl = getPlayer(data, p.id);
-  if (data.live.playerId === pl.id && data.live.phase === 'bidding') throw new AuctionError('This player is on the block right now');
-  Object.assign(pl, { status: 'available', teamId: null, price: 0, soldRound: 0 });
-  if (data.live.playerId === pl.id) {
-    data.live = { ...emptyLive(), screen: data.live.screen, seq: data.live.seq, lastEvent: data.live.lastEvent };
-    emit(data, 'idle', now);
-  }
+  dropFromBlock(data, pl.id, now);
+  resetPlayer(pl);
   note(data, `${pl.name} released back to the pool`, now);
+});
+
+/**
+ * Admin override: put any player into any state. (Sold goes through `player.assign` because it
+ * needs a team and a price.) Moving a player out of "sold" refunds their team.
+ */
+on('player.setStatus', 'admin', ({ data }, p, _a, now) => {
+  const pl = getPlayer(data, p.id);
+  switch (p.status) {
+    case 'available':
+      dropFromBlock(data, pl.id, now);
+      resetPlayer(pl);
+      note(data, `${pl.name} set to: in the pool`, now);
+      break;
+    case 'unsold':
+      dropFromBlock(data, pl.id, now);
+      resetPlayer(pl);
+      pl.status = 'unsold';
+      note(data, `${pl.name} set to: unsold`, now);
+      break;
+    case 'block':
+      if (data.captains.length < 2) throw new AuctionError('Add at least two teams before starting');
+      // Whoever is on screen right now is dropped (back to the pool if they were mid-bidding).
+      if (pl.status === 'sold') resetPlayer(pl);
+      putOnBlock(data, pl, null, now);
+      note(data, `${pl.name} put on the block`, now);
+      break;
+    default:
+      throw new AuctionError('Choose in the pool, on the block or unsold — use Assign to mark someone sold');
+  }
 });
 
 // ---- the live auction ------------------------------------------------------------------------
@@ -568,6 +604,17 @@ on('reopen', 'host', ({ data }, _p, _a, now) => {
   live.call = 0;
   emit(data, 'undo', now);
   note(data, `${player.name} re-opened for bidding`, now);
+});
+
+/** "Wrong player / start over": send whoever is on screen back to the pool and reset the screen. */
+on('unblock', 'host', ({ data }, _p, _a, now) => {
+  const pl = currentPlayer(data);
+  if (data.live.phase === 'idle' || !pl) throw new AuctionError('Nobody is on the block');
+  const hadBids = data.live.bids.length;
+  if (pl.status !== 'available') resetPlayer(pl); // a sold player is refunded, an unsold one rejoins the pool
+  clearBlock(data);
+  emit(data, 'idle', now);
+  note(data, `${pl.name} sent back to the pool${hadBids ? ` (${hadBids} bid${hadBids === 1 ? '' : 's'} discarded)` : ''}`, now);
 });
 
 on('round.next', 'host', ({ data }, _p, _a, now) => {

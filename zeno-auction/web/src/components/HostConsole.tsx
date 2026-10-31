@@ -119,6 +119,25 @@ export function HostConsole({ snap, room, tickSound }: { snap: Snapshot; room: R
             </button>
           )}
 
+          {player && (spinning || bidding || finished) && (
+            <button
+              className="btn-danger w-full !text-xs"
+              disabled={busy}
+              onClick={() => {
+                const n = live.bids.length;
+                const sold = live.phase === 'sold';
+                const warn = sold
+                  ? `Undo the sale and send ${player.name} back to the pool? ${snap.captains.find((c) => c.id === live.result?.captainId)?.team ?? 'The team'} gets the money back.`
+                  : n > 0
+                    ? `Send ${player.name} back to the pool? The ${n} bid${n === 1 ? '' : 's'} so far will be discarded.`
+                    : '';
+                if (!warn || confirm(warn)) run('unblock');
+              }}
+            >
+              <Undo2 className="h-4 w-4" /> Send {player.name} back to the pool &amp; reset the screen
+            </button>
+          )}
+
           {canDraw && pool.length > 0 && (
             <div className="flex items-center gap-2">
               <Shuffle className="h-4 w-4 shrink-0 text-slate-400" />

@@ -1,4 +1,4 @@
-import { Camera, ClipboardPaste, Download, FileSpreadsheet, FileUp, ImagePlus, Pencil, Plus, Search, Trash2, UserCheck, Undo2 } from 'lucide-react';
+import { Camera, ClipboardPaste, Download, FileSpreadsheet, FileUp, ImagePlus, Pencil, Plus, Search, Trash2, UserCheck } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { formatMoney } from '../../../../shared/money';
 import { effectiveBase, teamStats } from '../../../../shared/rules';
@@ -175,26 +175,32 @@ export function PlayersTab({ snap, room, adminKey }: { snap: Snapshot; room: Roo
                       <td className="p-2.5 text-slate-300">{p.role || '—'}</td>
                       <td className="p-2.5 text-slate-300">{formatMoney(effectiveBase(settings, p), settings)}</td>
                       <td className="p-2.5">
-                        {live ? (
-                          <span className="chip border-gold/40 bg-gold/10 text-gold">On the block</span>
-                        ) : p.status === 'sold' && team ? (
-                          <span className="inline-flex items-center gap-2 font-semibold">
+                        <select
+                          aria-label={`Status of ${p.name}`}
+                          className={`input !w-auto !py-1.5 !pr-7 !text-xs font-semibold ${
+                            live ? '!border-gold/60 !text-gold' : p.status === 'sold' ? '!text-emerald-300' : p.status === 'unsold' ? '!text-red-300' : ''
+                          }`}
+                          value={live ? 'block' : p.status}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (v === 'sold') setAssigning(p);
+                            else void room.act('player.setStatus', { id: p.id, status: v });
+                          }}
+                        >
+                          <option value="available">In pool</option>
+                          <option value="block">On the block</option>
+                          <option value="unsold">Unsold</option>
+                          <option value="sold">{p.status === 'sold' ? 'Sold (change team…)' : 'Sold — pick team…'}</option>
+                        </select>
+                        {p.status === 'sold' && team && !live && (
+                          <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold">
                             <TeamDot captain={team} /> {team.team} <span className="text-gold">{formatMoney(p.price, settings)}</span>
-                          </span>
-                        ) : p.status === 'unsold' ? (
-                          <span className="chip border-red-400/30 bg-red-500/10 text-red-300">Unsold</span>
-                        ) : (
-                          <span className="chip">In pool</span>
+                          </div>
                         )}
                       </td>
                       <td className="p-2.5">
                         <div className="flex justify-end gap-1.5">
-                          {p.status === 'sold' ? (
-                            <button className="btn-ghost !px-2.5 !py-1.5 !text-xs" disabled={live} title="Return to the pool and refund the team" onClick={() => room.act('player.release', { id: p.id })}>
-                              <Undo2 className="h-3.5 w-3.5" /> Release
-                            </button>
-                          ) : null}
-                          <button className="btn-ghost !px-2.5 !py-1.5 !text-xs" disabled={live || snap.captains.length === 0} title="Record this player as already bought" onClick={() => setAssigning(p)}>
+                          <button className="btn-ghost !px-2.5 !py-1.5 !text-xs" disabled={snap.captains.length === 0} title="Record this player as bought by a team" onClick={() => setAssigning(p)}>
                             <UserCheck className="h-3.5 w-3.5" /> {p.status === 'sold' ? 'Move' : 'Assign'}
                           </button>
                           <button className="btn-ghost !px-2.5 !py-1.5 !text-xs" aria-label="Edit" onClick={() => setEditing(p)}>
@@ -203,7 +209,6 @@ export function PlayersTab({ snap, room, adminKey }: { snap: Snapshot; room: Roo
                           <button
                             className="btn-danger !px-2.5 !py-1.5 !text-xs"
                             aria-label="Delete"
-                            disabled={live}
                             onClick={() => confirm(`Delete ${p.name}?`) && room.act('player.remove', { id: p.id })}
                           >
                             <Trash2 className="h-3.5 w-3.5" />

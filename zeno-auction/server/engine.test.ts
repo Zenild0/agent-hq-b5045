@@ -280,3 +280,86 @@ test('re-importing the same names updates players instead of duplicating them', 
   const alex = s.data.players.find((p) => p.name === 'Alex')!;
   assert.equal(alex.status, 'available'); // an empty Team cell does not release anyone
 });
+
+test('auctioneer can send the player on screen back to the pool and reset the screen', () => {
+  const { s, teams } = setup();
+  const p = s.data.players[0];
+
+  // mid-bidding: bids are discarded, the player is back in the pool, the screen is clear
+  runAction(s, HOST, 'pick', { playerId: p.id });
+  runAction(s, captain(s, teams[0]), 'bid', {});
+  runAction(s, HOST, 'unblock', {});
+  assert.equal(s.data.live.phase, 'idle');
+  assert.equal(s.data.live.playerId, null);
+  assert.equal(s.data.live.bids.length, 0);
+  assert.equal(p.status, 'available');
+  throwsAuction(() => runAction(s, HOST, 'unblock', {}), /Nobody/);
+
+  // while the wheel is still spinning
+  const t0 = 5_000_000;
+  const spin = createStore('SPIN01', { drawMode: 'random' });
+  for (const team of ['A', 'B']) runAction(spin, ADMIN, 'captain.add', { team });
+  runAction(spin, ADMIN, 'player.add', { name: 'Only One' });
+  runAction(spin, HOST, 'draw', {}, t0);
+  assert.equal(spin.data.live.phase, 'spinning');
+  runAction(spin, HOST, 'unblock', {}, t0 + 100);
+  assert.equal(spin.data.live.phase, 'idle');
+  tick(spin, t0 + SPIN_MS + 1000); // the stale spin timer must not reopen bidding
+  assert.equal(spin.data.live.phase, 'idle');
+
+  // right after SOLD: the sale is undone and the team refunded
+  runAction(s, HOST, 'pick', { playerId: p.id });
+  runAction(s, captain(s, teams[1]), 'bid', { amount: 2 * CR });
+  runAction(s, HOST, 'sold', {});
+  runAction(s, HOST, 'unblock', {});
+  assert.equal(p.status, 'available');
+  assert.equal(teamStats(s.data, s.data.captains[1]).remaining, 12 * CR);
+  assert.equal(s.data.live.phase, 'idle');
+
+  // captains cannot do it
+  runAction(s, HOST, 'pick', { playerId: p.id });
+  throwsAuction(() => runAction(s, captain(s, teams[0]), 'unblock', {}), /not allowed/);
+});
+
+test('admin can set any player to pool / unsold / on the block / sold', () => {
+  const { s, teams } = setup({}, 3);
+  const [a, b, c] = s.data.players;
+  const red = s.data.captains[0];
+
+  runAction(s, ADMIN, 'player.setStatus', { id: a.id, status: 'unsold' });
+  assert.equal(a.status, 'unsold');
+
+  // put on the block (from unsold), bid, then switch to another player mid-bidding
+  runAction(s, ADMIN, 'player.setStatus', { id: a.id, status: 'block' });
+  assert.equal(s.data.live.playerId, a.id);
+  assert.equal(s.data.live.phase, 'bidding');
+  runAction(s, captain(s, teams[0]), 'bid', {});
+  runAction(s, ADMIN, 'player.setStatus', { id: b.id, status: 'block' });
+  assert.equal(s.data.live.playerId, b.id);
+  assert.equal(s.data.live.bids.length, 0);
+  assert.equal(a.status, 'unsold'); // untouched — the admin only moved the spotlight
+
+  // set the player on screen straight to "in the pool": screen clears
+  runAction(s, ADMIN, 'player.setStatus', { id: b.id, status: 'available' });
+  assert.equal(s.data.live.phase, 'idle');
+  assert.equal(b.status, 'available');
+
+  // sold -> unsold refunds; assigning the on-block player replaces the screen instead of failing
+  runAction(s, ADMIN, 'player.assign', { id: c.id, captainId: teams[0], price: 3 * CR });
+  assert.equal(teamStats(s.data, red).remaining, 9 * CR);
+  runAction(s, ADMIN, 'player.setStatus', { id: c.id, status: 'unsold' });
+  assert.equal(c.status, 'unsold');
+  assert.equal(teamStats(s.data, red).remaining, 12 * CR);
+  runAction(s, ADMIN, 'player.setStatus', { id: c.id, status: 'block' });
+  runAction(s, ADMIN, 'player.assign', { id: c.id, captainId: teams[1], price: 1 * CR });
+  assert.equal(s.data.live.phase, 'idle');
+  assert.equal(c.status, 'sold');
+
+  // a sold player can be put straight back on the block (refunded first)
+  runAction(s, ADMIN, 'player.setStatus', { id: c.id, status: 'block' });
+  assert.equal(s.data.live.playerId, c.id);
+  assert.equal(c.status, 'available');
+
+  throwsAuction(() => runAction(s, ADMIN, 'player.setStatus', { id: c.id, status: 'sold' }), /Assign/);
+  throwsAuction(() => runAction(s, HOST, 'player.setStatus', { id: c.id, status: 'available' }), /not allowed/);
+});
