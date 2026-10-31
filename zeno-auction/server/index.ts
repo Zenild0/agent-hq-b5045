@@ -5,6 +5,7 @@ import path from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { Me, Snapshot } from '../shared/types';
 import { AuctionError, createStore, nextDue, randomCode, runAction, tick, type Actor, type Store } from './engine';
+import { clientIp } from './net';
 import { DATA_DIR, flushAll, loadAll, saveSoon, UPLOADS_DIR } from './persist';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -340,7 +341,7 @@ server.on('upgrade', (req, socket, head) => {
   }
   let actor: ReturnType<typeof authorize>;
   try {
-    actor = authorize(req.socket.remoteAddress ?? '', store, url.searchParams.get('key'));
+    actor = authorize(clientIp(req.socket.remoteAddress, req.headers['x-forwarded-for'], !!process.env.TRUST_PROXY), store, url.searchParams.get('key'));
   } catch {
     socket.write('HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n');
     socket.destroy();

@@ -1,0 +1,23 @@
+# Use this instead of docker-compose.yml when the server ALREADY runs nginx/Apache for other sites
+# (so ports 80/443 are taken). The app listens only on 127.0.0.1:8787; put deploy/nginx.example.conf
+# in front of it and add HTTPS with certbot.
+#   docker compose -f docker-compose.behind-nginx.yml up -d --build
+name: zenobid
+
+services:
+  app:
+    build:
+      context: ..
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "8787"
+      DATA_DIR: /data
+      TRUST_PROXY: "true"
+    volumes:
+      - zenobid-data:/data
+    ports:
+      - "127.0.0.1:8787:8787"
+
+volumes:
+  zenobid-data:

@@ -65,18 +65,22 @@ npm run typecheck
 
 ## Deploy
 
-ZenoBid needs a **long-running Node process** (it streams live updates over Server-Sent Events), so use a
-container / VM host such as Render, Railway, Fly.io or a VPS — not a serverless/edge platform.
+ZenoBid needs a **long-running Node process** (live updates use WebSockets), so use a VPS / container host such
+as Hetzner, DigitalOcean, Render, Railway or Fly.io — not a serverless/edge platform or "cPanel" shared hosting.
 
+**On your own server and domain → follow [`deploy/README.md`](./deploy/README.md)**: point a DNS record at the
+server, run `docker compose up -d --build`, and you get `https://auction.yourdomain.com` with automatic HTTPS,
+persistent data, health checks and a backup script. (Includes an nginx variant and a no-Docker/systemd path.)
+
+Quick local production run:
 ```bash
-npm run build && npm start               # serves the app + API on $PORT (default 8787)
-# or
+npm run build && npm start               # http://localhost:8787
 docker build -t zenobid . && docker run -p 8787:8787 -v zenobid-data:/data zenobid
 ```
 
-* `DATA_DIR` (default `./data`) holds every auction (`events/*.json`) and uploaded photos (`uploads/`). **Mount a persistent disk there.**
-* `PORT` (default `8787`), `MAX_EVENTS` (default `2000`).
-* One server process = one source of truth, which is what keeps bids strictly ordered. Scale it vertically; run a single instance per data directory.
+* `DATA_DIR` (default: the project's `data/` folder) holds every auction (`events/*.json`) and uploaded photos (`uploads/`). **Keep it on a persistent disk and back it up.**
+* `PORT` (default `8787`), `MAX_EVENTS` (default `2000`), `BAD_KEY_LIMIT` (default `120`), `TRUST_PROXY=true` when behind Caddy/nginx.
+* One server process = one source of truth, which is what keeps bids strictly ordered. Run a single instance per data directory.
 
 ## Architecture
 
