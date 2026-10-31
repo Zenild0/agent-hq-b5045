@@ -234,6 +234,13 @@ body::before {
   background: rgba(160, 190, 255, 0.3);
 }
 
+/* A tab nobody is looking at doesn't animate (saves battery when many tabs are open). */
+html.tab-hidden *,
+html.tab-hidden *::before,
+html.tab-hidden *::after {
+  animation-play-state: paused !important;
+}
+
 /* People who ask their system for less motion get a calm, static interface. */
 @media (prefers-reduced-motion: reduce) {
   *,

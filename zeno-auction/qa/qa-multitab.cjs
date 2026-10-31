@@ -21,7 +21,8 @@ const TABS = Number(process.argv[2] || 10);
   let outcome;
   try {
     await last.waitForSelector('button:has-text("BID")', { timeout: 6000 });
-    await last.click('button:has-text("BID")', { timeout: 3000 });
+    // the BID button pulses by design, so don't wait for it to hold still (a person doesn't either)
+    await last.click('button:has-text("BID")', { timeout: 3000, force: true });
     await last.waitForFunction(() => /You hold the top bid/.test(document.body.innerText), null, { timeout: 8000 });
     outcome = `OK — bid landed in ${Date.now() - t0} ms`;
   } catch (e) { outcome = 'FAILED — ' + e.message.split('\n')[0]; }

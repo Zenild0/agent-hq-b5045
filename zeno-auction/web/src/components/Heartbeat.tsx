@@ -8,19 +8,9 @@ export function Heartbeat({ tempo, className = '', color = '#f2b84b' }: { tempo:
   return (
     <svg viewBox="0 0 260 40" preserveAspectRatio="none" className={className} aria-hidden style={{ ['--beat' as string]: `${tempo.beat}s` } as CSSProperties}>
       <path d={d} fill="none" stroke={color} strokeOpacity="0.18" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-      <path
-        d={d}
-        pathLength={260}
-        fill="none"
-        stroke={color}
-        strokeWidth="2.4"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-        strokeDasharray="46 214"
-        className="animate-ecg"
-        style={{ filter: `drop-shadow(0 0 5px ${color})` }}
-        vectorEffect="non-scaling-stroke"
-      />
+      {/* the glow is a wider, fainter copy of the trace (cheap) rather than an animated SVG filter (costly) */}
+      <path d={d} pathLength={260} fill="none" stroke={color} strokeOpacity="0.28" strokeWidth="7" strokeLinejoin="round" strokeLinecap="round" strokeDasharray="46 214" className="animate-ecg" vectorEffect="non-scaling-stroke" />
+      <path d={d} pathLength={260} fill="none" stroke={color} strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" strokeDasharray="46 214" className="animate-ecg" vectorEffect="non-scaling-stroke" />
     </svg>
   );
 }
