@@ -259,3 +259,24 @@ test('cannot start the auction with fewer than two teams', () => {
   runAction(s, ADMIN, 'player.add', { name: 'P' });
   throwsAuction(() => runAction(s, HOST, 'draw', {}), /two teams/);
 });
+
+test('re-importing the same names updates players instead of duplicating them', () => {
+  const { s, teams } = setup({}, 0);
+  runAction(s, ADMIN, 'players.import', { rows: [{ name: 'Sam', role: 'Batter' }, { name: 'Alex' }] });
+  assert.equal(s.data.players.length, 2);
+  const res = runAction(s, ADMIN, 'players.import', {
+    rows: [
+      { name: 'sam', description: 'Now with a bio', team: 'Red', price: 5 * CR },
+      { name: 'Alex' },
+      { name: 'New Kid' },
+    ],
+  }) as { added: number; updated: number; assigned: number };
+  assert.deepEqual([res.added, res.updated, res.assigned], [1, 2, 1]);
+  assert.equal(s.data.players.length, 3);
+  const sam = s.data.players.find((p) => p.name === 'Sam')!;
+  assert.equal(sam.role, 'Batter'); // untouched: blank cells never erase data
+  assert.equal(sam.description, 'Now with a bio');
+  assert.equal(sam.teamId, teams[0]);
+  const alex = s.data.players.find((p) => p.name === 'Alex')!;
+  assert.equal(alex.status, 'available'); // an empty Team cell does not release anyone
+});

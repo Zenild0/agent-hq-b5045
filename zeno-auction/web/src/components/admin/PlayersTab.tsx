@@ -1,14 +1,17 @@
-import { Camera, ClipboardPaste, ImagePlus, Pencil, Plus, Search, Trash2, UserCheck, Undo2 } from 'lucide-react';
+import { Camera, ClipboardPaste, Download, FileSpreadsheet, FileUp, ImagePlus, Pencil, Plus, Search, Trash2, UserCheck, Undo2 } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { formatMoney } from '../../../../shared/money';
 import { effectiveBase, teamStats } from '../../../../shared/rules';
 import type { Player, Snapshot } from '../../../../shared/types';
+import type { ParsedWorkbook } from '../../../../shared/excel';
 import { uploadImage } from '../../lib/api';
+import { downloadTemplate, exportAuction, parseFile } from '../../lib/excelClient';
 import { parseImport } from '../../lib/csv';
 import { normaliseName, resizeImage } from '../../lib/image';
 import type { Room } from '../../lib/useRoom';
 import { MoneyInput } from '../MoneyInput';
 import { Field, Modal, PlayerAvatar, TeamDot, useToast } from '../ui';
+import { ExcelImportModal } from './ExcelImportModal';
 
 type Filter = 'all' | 'available' | 'sold' | 'unsold';
 
@@ -21,6 +24,8 @@ export function PlayersTab({ snap, room, adminKey }: { snap: Snapshot; room: Roo
   const [assigning, setAssigning] = useState<Player | null>(null);
   const [importing, setImporting] = useState(false);
   const bulkPhotos = useRef<HTMLInputElement>(null);
+  const excelFile = useRef<HTMLInputElement>(null);
+  const [excelImport, setExcelImport] = useState<{ parsed: ParsedWorkbook; name: string } | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
 
   const counts = useMemo(
@@ -83,6 +88,31 @@ export function PlayersTab({ snap, room, adminKey }: { snap: Snapshot; room: Roo
         <button className="btn-ghost" disabled={photoBusy || snap.players.length === 0} onClick={() => bulkPhotos.current?.click()} title="Name each file after the player, e.g. aarav-mehta.jpg">
           <Camera className="h-4 w-4" /> {photoBusy ? 'Uploading…' : 'Bulk photos'}
         </button>
+        <input
+          ref={excelFile}
+          type="file"
+          accept=".xlsx,.csv"
+          hidden
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (!f) return;
+            try {
+              setExcelImport({ parsed: await parseFile(f), name: f.name });
+            } catch (err) {
+              toast(`Couldn't read that file: ${(err as Error).message}`, 'error');
+            }
+          }}
+        />
+        <button className="btn-ghost" onClick={() => excelFile.current?.click()} title="Import players and teams from an Excel (.xlsx) or CSV file">
+          <FileUp className="h-4 w-4" /> Import Excel
+        </button>
+        <button className="btn-ghost" disabled={snap.players.length + snap.captains.length === 0} onClick={() => exportAuction(snap).catch((e) => toast(e.message, 'error'))} title="Download everything — players, teams, prices, purses — as .xlsx">
+          <Download className="h-4 w-4" /> Export Excel
+        </button>
+        <button className="btn-ghost" onClick={() => downloadTemplate(snap.settings).catch((e) => toast(e.message, 'error'))} title="A blank file with the right columns">
+          <FileSpreadsheet className="h-4 w-4" /> Template
+        </button>
         <div className="relative ml-auto">
           <Search className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
           <input className="input !w-56 !pl-9" placeholder="Search players" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -104,7 +134,7 @@ export function PlayersTab({ snap, room, adminKey }: { snap: Snapshot; room: Roo
       {snap.players.length === 0 ? (
         <div className="card p-10 text-center">
           <p className="text-lg font-semibold">No players yet</p>
-          <p className="mx-auto mt-1 max-w-md text-sm text-slate-400">Add them one by one, or paste a whole list from Excel / Google Sheets. Include a team and price column to bring in players who were already bought.</p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-slate-400">Add them one by one, import an Excel file, or paste a list from Google Sheets. Include Team and Price columns to bring in players who were already bought.</p>
           <div className="mt-5 flex justify-center gap-2">
             <button className="btn-primary" onClick={() => setImporting(true)}>
               <ClipboardPaste className="h-4 w-4" /> Paste a list
@@ -198,6 +228,7 @@ export function PlayersTab({ snap, room, adminKey }: { snap: Snapshot; room: Roo
 
       {editing && <PlayerModal snap={snap} room={room} adminKey={adminKey} player={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
       {assigning && <AssignModal snap={snap} room={room} player={assigning} onClose={() => setAssigning(null)} />}
+      {excelImport && <ExcelImportModal snap={snap} room={room} parsed={excelImport.parsed} fileName={excelImport.name} onClose={() => setExcelImport(null)} />}
       {importing && <ImportModal snap={snap} room={room} onClose={() => setImporting(false)} />}
     </div>
   );

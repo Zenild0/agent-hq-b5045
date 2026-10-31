@@ -311,24 +311,47 @@ on('player.add', 'admin', ({ data }, p) => {
 });
 
 /**
- * Bulk import. Rows may carry `team` + `price` to record a player who was already bought before
- * the app was used — that is how a half-finished auction is brought in.
+ * Bulk import (paste or Excel). Rows may carry `team` + `price` to record a player who was already
+ * bought before the app was used. A row whose name matches an existing player updates that player
+ * instead of adding a duplicate, so export → edit → re-import is safe.
  */
 on('players.import', 'admin', ({ data }, p, _a, now) => {
   const rows: Record<string, any>[] = Array.isArray(p.rows) ? p.rows : [];
   if (rows.length === 0) throw new AuctionError('Nothing to import');
-  if (data.players.length + rows.length > MAX_PLAYERS) throw new AuctionError(`Up to ${MAX_PLAYERS} players per auction`);
   const skipped: string[] = [];
   let added = 0;
+  let updated = 0;
   let assigned = 0;
   for (const row of rows) {
-    let pl: Player;
-    try {
-      pl = newPlayer(data, row);
-    } catch {
-      skipped.push(String(row?.name ?? '(blank)'));
+    const name = str(row?.name, '', 80);
+    if (!name) {
+      skipped.push('(a row without a name)');
       continue;
     }
+    const existing = data.players.find((x) => x.name.toLowerCase() === name.toLowerCase());
+    if (existing && data.live.playerId === existing.id && data.live.phase !== 'idle') {
+      skipped.push(`${name} (on the block right now)`);
+      continue;
+    }
+    if (!existing && data.players.length >= MAX_PLAYERS) {
+      skipped.push(`${name} (limit of ${MAX_PLAYERS} players reached)`);
+      continue;
+    }
+
+    let pl: Player;
+    if (existing) {
+      pl = existing;
+      if (str(row.role, '', 40)) pl.role = str(row.role, '', 40);
+      if (str(row.description, '', 400)) pl.description = str(row.description, '', 400);
+      if (str(row.photo, '', 400)) pl.photo = str(row.photo, '', 400);
+      if (num(row.basePrice, 0, 0) > 0) pl.basePrice = num(row.basePrice, 0, 0);
+      updated++;
+    } else {
+      pl = newPlayer(data, row);
+      data.players.push(pl);
+      added++;
+    }
+
     const teamName = str(row.team, '', 60).toLowerCase();
     if (teamName) {
       const c = data.captains.find((x) => x.team.toLowerCase() === teamName || x.name.toLowerCase() === teamName);
@@ -339,14 +362,12 @@ on('players.import', 'admin', ({ data }, p, _a, now) => {
         pl.soldRound = data.round;
         assigned++;
       } else {
-        skipped.push(`${pl.name} (team “${row.team}” not found — added as available)`);
+        skipped.push(`${pl.name} (team “${row.team}” not found — left unassigned)`);
       }
     }
-    data.players.push(pl);
-    added++;
   }
-  note(data, `Imported ${added} players${assigned ? ` (${assigned} already on teams)` : ''}`, now);
-  return { added, assigned, skipped };
+  note(data, `Imported players: ${added} added, ${updated} updated${assigned ? `, ${assigned} placed on teams` : ''}`, now);
+  return { added, updated, assigned, skipped };
 });
 
 on('player.update', 'admin', ({ data }, p) => {
