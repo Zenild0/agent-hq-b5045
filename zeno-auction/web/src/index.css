@@ -1,0 +1,66 @@
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+@import '@fontsource/anton/400.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  @apply bg-ink-950 font-sans text-slate-100 antialiased;
+  background-image: radial-gradient(900px 500px at 85% -10%, rgba(255, 61, 129, 0.16), transparent 60%),
+    radial-gradient(800px 500px at -10% 10%, rgba(41, 224, 255, 0.12), transparent 60%);
+  background-attachment: fixed;
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-white/10 bg-ink-800/80 backdrop-blur;
+  }
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition
+      active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100;
+  }
+  .btn-primary {
+    @apply btn bg-gold text-ink-950 hover:brightness-110;
+  }
+  .btn-hot {
+    @apply btn bg-hot text-white hover:brightness-110;
+  }
+  .btn-ghost {
+    @apply btn border border-white/15 bg-white/5 text-slate-100 hover:bg-white/10;
+  }
+  .btn-danger {
+    @apply btn border border-red-400/30 bg-red-500/10 text-red-300 hover:bg-red-500/20;
+  }
+  .input {
+    @apply w-full rounded-xl border border-white/10 bg-ink-900 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500
+      focus:border-gold/70 focus:outline-none focus:ring-2 focus:ring-gold/20;
+  }
+  .label {
+    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400;
+  }
+  .hint {
+    @apply mt-1 text-xs text-slate-500;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+}

@@ -1,0 +1,145 @@
+// Shared between the server (authoritative) and the web app (display only).
+
+export type DrawMode = 'random' | 'sequential' | 'manual';
+export type MoneyStyle = 'indian' | 'western';
+
+/** From `from` upwards (inclusive), every bid goes up by `step`. */
+export interface IncrementTier {
+  from: number;
+  step: number;
+}
+
+export interface DisplayOptions {
+  showPhoto: boolean;
+  showDescription: boolean;
+  showRole: boolean;
+  showBasePrice: boolean;
+}
+
+export interface EventSettings {
+  name: string;
+  sport: string;
+  tagline: string;
+  accent: string;
+  symbol: string;
+  moneyStyle: MoneyStyle;
+  defaultBudget: number;
+  defaultBasePrice: number;
+  increments: IncrementTier[];
+  display: DisplayOptions;
+  drawMode: DrawMode;
+  minSquad: number; // 0 = no minimum
+  maxSquad: number; // 0 = unlimited
+  reserveRule: boolean; // keep enough purse to still reach minSquad
+  totalRounds: number;
+}
+
+export type PlayerStatus = 'available' | 'sold' | 'unsold';
+
+export interface Player {
+  id: string;
+  name: string;
+  role: string;
+  description: string;
+  photo: string;
+  basePrice: number; // 0 = use the event default
+  status: PlayerStatus;
+  teamId: string | null;
+  price: number;
+  soldRound: number;
+  order: number;
+}
+
+export interface Captain {
+  id: string;
+  name: string;
+  team: string;
+  color: string;
+  logo: string;
+  budget: number; // total purse; spent is derived from sold players
+}
+
+export interface Bid {
+  captainId: string;
+  amount: number;
+  at: number;
+  byHost: boolean;
+}
+
+export type Phase = 'idle' | 'spinning' | 'bidding' | 'sold' | 'unsold';
+
+export interface SpinInfo {
+  targetId: string;
+  candidates: string[]; // player ids shown on the wheel
+  startedAt: number;
+  endsAt: number;
+}
+
+export interface LiveResult {
+  kind: 'sold' | 'unsold';
+  playerId: string;
+  captainId?: string;
+  price?: number;
+}
+
+export type LiveEventType = 'spin' | 'reveal' | 'bid' | 'call' | 'sold' | 'unsold' | 'undo' | 'idle' | 'round';
+
+export interface LiveEvent {
+  seq: number;
+  type: LiveEventType;
+  at: number;
+  playerId?: string;
+  captainId?: string;
+  amount?: number;
+  call?: number;
+}
+
+export interface LiveState {
+  phase: Phase;
+  playerId: string | null;
+  bids: Bid[];
+  call: 0 | 1 | 2 | 3;
+  spin: SpinInfo | null;
+  result: LiveResult | null;
+  screen: 'stage' | 'board';
+  seq: number;
+  lastEvent: LiveEvent | null;
+}
+
+export interface LogItem {
+  at: number;
+  text: string;
+}
+
+export interface EventData {
+  code: string;
+  createdAt: number;
+  settings: EventSettings;
+  players: Player[];
+  captains: Captain[];
+  round: number;
+  live: LiveState;
+  log: LogItem[];
+}
+
+export interface Secrets {
+  adminKey: string;
+  hostKey: string;
+  captainTokens: Record<string, string>;
+}
+
+export type Role = 'admin' | 'host' | 'captain' | 'viewer';
+
+export interface Me {
+  role: Role;
+  captainId?: string;
+}
+
+/** What every connected client receives. */
+export interface Snapshot extends EventData {
+  now: number;
+  me: Me;
+  presence: { captains: string[]; viewers: number };
+  /** Only sent to the admin. */
+  secrets?: Secrets;
+}

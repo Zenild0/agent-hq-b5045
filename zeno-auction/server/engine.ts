@@ -1,0 +1,623 @@
+import { randomBytes, randomInt } from 'node:crypto';
+import { formatMoney, type MoneyFmt } from '../shared/money';
+import { checkBid, effectiveBase, maxBid, nextBidAmount, sortedTiers, teamStats } from '../shared/rules';
+import type {
+  Captain,
+  EventData,
+  EventSettings,
+  LiveEventType,
+  Me,
+  Player,
+  Secrets,
+} from '../shared/types';
+
+export class AuctionError extends Error {
+  status: number;
+  constructor(message: string, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
+
+export interface Store {
+  data: EventData;
+  secrets: Secrets;
+}
+
+export const SPIN_MS = 7000; // 5.2 s of spinning + 1.8 s of the winner's name flashing
+export const MAX_PLAYERS = 500;
+export const MAX_CAPTAINS = 32;
+const WHEEL_SLICES = 24;
+
+const COLORS = ['#ff3d81', '#29e0ff', '#ffc933', '#7cf29a', '#b388ff', '#ff8a3d', '#4d8bff', '#f25cf0'];
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+export function randomCode(length: number): string {
+  let out = '';
+  for (let i = 0; i < length; i++) out += CODE_ALPHABET[randomInt(CODE_ALPHABET.length)];
+  return out;
+}
+
+const uid = () => randomBytes(4).toString('hex');
+const secretKey = () => randomBytes(12).toString('base64url');
+
+// ---------------------------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------------------------
+
+export const DEFAULT_SETTINGS: EventSettings = {
+  name: 'Office Premier League',
+  sport: 'Cricket',
+  tagline: 'The Zeno team auction',
+  accent: '#ffc933',
+  symbol: '₹',
+  moneyStyle: 'indian',
+  defaultBudget: 120_000_000, // 12 Cr
+  defaultBasePrice: 2_000_000, // 20 L
+  increments: [
+    { from: 0, step: 500_000 }, // +5 L
+    { from: 10_000_000, step: 1_000_000 }, // +10 L once the bid reaches 1 Cr
+  ],
+  display: { showPhoto: true, showDescription: true, showRole: true, showBasePrice: true },
+  drawMode: 'random',
+  minSquad: 0,
+  maxSquad: 0,
+  reserveRule: false,
+  totalRounds: 2,
+};
+
+const str = (v: unknown, fallback: string, max = 120): string =>
+  typeof v === 'string' ? v.trim().slice(0, max) : fallback;
+const num = (v: unknown, fallback: number, min = 0): number => {
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) && n >= min ? Math.round(n) : fallback;
+};
+const bool = (v: unknown, fallback: boolean): boolean => (typeof v === 'boolean' ? v : fallback);
+
+/** Merge a partial patch into settings, discarding anything invalid. */
+export function mergeSettings(base: EventSettings, patch: unknown): EventSettings {
+  const p = (patch && typeof patch === 'object' ? patch : {}) as Record<string, unknown>;
+  const next: EventSettings = { ...base, display: { ...base.display } };
+
+  next.name = str(p.name, base.name, 80) || base.name;
+  next.sport = str(p.sport, base.sport, 40) || base.sport;
+  next.tagline = str(p.tagline, base.tagline, 140);
+  if (typeof p.accent === 'string' && /^#[0-9a-fA-F]{6}$/.test(p.accent)) next.accent = p.accent;
+  next.symbol = str(p.symbol, base.symbol, 5);
+  if (p.moneyStyle === 'indian' || p.moneyStyle === 'western') next.moneyStyle = p.moneyStyle;
+  next.defaultBudget = num(p.defaultBudget, base.defaultBudget, 1);
+  next.defaultBasePrice = num(p.defaultBasePrice, base.defaultBasePrice, 1);
+  if (p.drawMode === 'random' || p.drawMode === 'sequential' || p.drawMode === 'manual') next.drawMode = p.drawMode;
+  next.minSquad = num(p.minSquad, base.minSquad, 0);
+  next.maxSquad = num(p.maxSquad, base.maxSquad, 0);
+  next.reserveRule = bool(p.reserveRule, base.reserveRule);
+  next.totalRounds = Math.max(1, num(p.totalRounds, base.totalRounds, 1));
+
+  if (p.display && typeof p.display === 'object') {
+    const d = p.display as Record<string, unknown>;
+    next.display = {
+      showPhoto: bool(d.showPhoto, base.display.showPhoto),
+      showDescription: bool(d.showDescription, base.display.showDescription),
+      showRole: bool(d.showRole, base.display.showRole),
+      showBasePrice: bool(d.showBasePrice, base.display.showBasePrice),
+    };
+  }
+
+  if (Array.isArray(p.increments)) {
+    const tiers = p.increments
+      .map((t) => ({ from: num((t as any)?.from, -1, 0), step: num((t as any)?.step, -1, 1) }))
+      .filter((t) => t.from >= 0 && t.step > 0);
+    if (tiers.length === 0) throw new AuctionError('Add at least one bid increment');
+    const sorted = sortedTiers(tiers);
+    if (sorted[0].from !== 0) sorted[0] = { ...sorted[0], from: 0 };
+    next.increments = sorted;
+  }
+  return next;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Creating and mutating events
+// ---------------------------------------------------------------------------------------------
+
+export function createStore(code: string, settingsPatch: unknown, now = Date.now()): Store {
+  const settings = mergeSettings(DEFAULT_SETTINGS, settingsPatch);
+  return {
+    data: {
+      code,
+      createdAt: now,
+      settings,
+      players: [],
+      captains: [],
+      round: 1,
+      live: emptyLive(),
+      log: [{ at: now, text: `Auction “${settings.name}” created` }],
+    },
+    secrets: { adminKey: secretKey(), hostKey: secretKey(), captainTokens: {} },
+  };
+}
+
+function emptyLive(): EventData['live'] {
+  return { phase: 'idle', playerId: null, bids: [], call: 0, spin: null, result: null, screen: 'stage', seq: 0, lastEvent: null };
+}
+
+function emit(d: EventData, type: LiveEventType, now: number, extra: Partial<EventData['live']['lastEvent'] & object> = {}) {
+  d.live.seq += 1;
+  d.live.lastEvent = { seq: d.live.seq, type, at: now, ...extra };
+}
+
+function note(d: EventData, text: string, now: number) {
+  d.log.push({ at: now, text });
+  if (d.log.length > 300) d.log.splice(0, d.log.length - 300);
+}
+
+const fmtOf = (d: EventData): MoneyFmt => d.settings;
+const money = (d: EventData, n: number) => formatMoney(n, fmtOf(d));
+
+function getPlayer(d: EventData, id: unknown): Player {
+  const p = d.players.find((x) => x.id === id);
+  if (!p) throw new AuctionError('Player not found', 404);
+  return p;
+}
+function getCaptain(d: EventData, id: unknown): Captain {
+  const c = d.captains.find((x) => x.id === id);
+  if (!c) throw new AuctionError('Team not found', 404);
+  return c;
+}
+
+function currentPlayer(d: EventData): Player | null {
+  return d.live.playerId ? (d.players.find((p) => p.id === d.live.playerId) ?? null) : null;
+}
+
+/** Time-driven transitions (the wheel stopping). Call before reading or acting on an event. */
+export function tick(store: Store, now: number): boolean {
+  const { live } = store.data;
+  if (live.phase === 'spinning' && live.spin && now >= live.spin.endsAt) {
+    live.phase = 'bidding';
+    emit(store.data, 'reveal', live.spin.endsAt, { playerId: live.playerId ?? undefined });
+    return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Actions
+// ---------------------------------------------------------------------------------------------
+
+export interface Actor {
+  role: Me['role'];
+  captainId?: string;
+}
+
+type Handler = (store: Store, p: Record<string, any>, actor: Actor, now: number) => unknown;
+type Access = 'admin' | 'host' | 'captain';
+
+const rank: Record<Actor['role'], number> = { viewer: 0, captain: 1, host: 2, admin: 3 };
+
+function allowed(actor: Actor, access: Access): boolean {
+  if (access === 'captain') return actor.role === 'captain' || actor.role === 'host' || actor.role === 'admin';
+  return rank[actor.role] >= rank[access];
+}
+
+const actions: Record<string, { access: Access; run: Handler }> = {};
+const on = (name: string, access: Access, run: Handler) => {
+  actions[name] = { access, run };
+};
+
+export function runAction(store: Store, actor: Actor, name: string, params: unknown, now = Date.now()): unknown {
+  const action = actions[name];
+  if (!action) throw new AuctionError(`Unknown action “${name}”`, 404);
+  if (!allowed(actor, action.access)) throw new AuctionError('You are not allowed to do that', 403);
+  tick(store, now);
+  const p = (params && typeof params === 'object' ? params : {}) as Record<string, any>;
+  return action.run(store, p, actor, now);
+}
+
+// ---- settings --------------------------------------------------------------------------------
+
+on('settings.update', 'admin', ({ data }, p) => {
+  data.settings = mergeSettings(data.settings, p.patch);
+});
+
+// ---- teams -----------------------------------------------------------------------------------
+
+on('captain.add', 'admin', ({ data, secrets }, p, _a, now) => {
+  if (data.captains.length >= MAX_CAPTAINS) throw new AuctionError(`Up to ${MAX_CAPTAINS} teams per auction`);
+  const team = str(p.team, '', 60);
+  if (!team) throw new AuctionError('Team name is required');
+  const c: Captain = {
+    id: uid(),
+    team,
+    name: str(p.name, '', 60),
+    color: typeof p.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(p.color) ? p.color : COLORS[data.captains.length % COLORS.length],
+    logo: str(p.logo, '', 300),
+    budget: num(p.budget, data.settings.defaultBudget, 0),
+  };
+  data.captains.push(c);
+  secrets.captainTokens[c.id] = randomCode(6);
+  note(data, `Team ${c.team} joined with ${money(data, c.budget)}`, now);
+  return { id: c.id };
+});
+
+on('captain.update', 'admin', ({ data }, p) => {
+  const c = getCaptain(data, p.id);
+  if (p.team !== undefined) c.team = str(p.team, c.team, 60) || c.team;
+  if (p.name !== undefined) c.name = str(p.name, c.name, 60);
+  if (p.logo !== undefined) c.logo = str(p.logo, c.logo, 300);
+  if (typeof p.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(p.color)) c.color = p.color;
+});
+
+on('captain.budget', 'admin', ({ data }, p, _a, now) => {
+  const c = getCaptain(data, p.id);
+  const amount = num(p.amount, NaN, 0);
+  if (!Number.isFinite(amount)) throw new AuctionError('Enter an amount');
+  const before = c.budget;
+  if (p.mode === 'add') c.budget += amount;
+  else if (p.mode === 'subtract') c.budget = Math.max(0, c.budget - amount);
+  else if (p.mode === 'set') c.budget = amount;
+  else throw new AuctionError('Unknown budget mode');
+  note(data, `${c.team} purse ${money(data, before)} → ${money(data, c.budget)}`, now);
+});
+
+on('captains.topup', 'admin', ({ data }, p, _a, now) => {
+  const amount = typeof p.amount === 'number' ? Math.round(p.amount) : NaN;
+  if (!Number.isFinite(amount) || amount === 0) throw new AuctionError('Enter an amount');
+  for (const c of data.captains) c.budget = Math.max(0, c.budget + amount);
+  note(data, `All purses ${amount > 0 ? 'increased' : 'reduced'} by ${money(data, Math.abs(amount))}`, now);
+});
+
+on('captain.rotateToken', 'admin', ({ data, secrets }, p) => {
+  const c = getCaptain(data, p.id);
+  secrets.captainTokens[c.id] = randomCode(6);
+});
+
+on('captain.remove', 'admin', ({ data, secrets }, p, _a, now) => {
+  const c = getCaptain(data, p.id);
+  const top = data.live.bids[data.live.bids.length - 1];
+  if (data.live.phase === 'bidding' && data.live.bids.some((b) => b.captainId === c.id) && top)
+    throw new AuctionError('This team has bids on the current player — undo them first');
+  for (const pl of data.players) {
+    if (pl.teamId === c.id) Object.assign(pl, { status: 'available', teamId: null, price: 0, soldRound: 0 });
+  }
+  data.captains = data.captains.filter((x) => x.id !== c.id);
+  delete secrets.captainTokens[c.id];
+  note(data, `Team ${c.team} removed`, now);
+});
+
+// ---- players ---------------------------------------------------------------------------------
+
+function newPlayer(d: EventData, src: Record<string, any>): Player {
+  const name = str(src.name, '', 80);
+  if (!name) throw new AuctionError('Player name is required');
+  return {
+    id: uid(),
+    name,
+    role: str(src.role, '', 40),
+    description: str(src.description, '', 400),
+    photo: str(src.photo, '', 400),
+    basePrice: num(src.basePrice, 0, 0),
+    status: 'available',
+    teamId: null,
+    price: 0,
+    soldRound: 0,
+    order: d.players.reduce((m, p) => Math.max(m, p.order), 0) + 1,
+  };
+}
+
+on('player.add', 'admin', ({ data }, p) => {
+  if (data.players.length >= MAX_PLAYERS) throw new AuctionError(`Up to ${MAX_PLAYERS} players per auction`);
+  const pl = newPlayer(data, p);
+  data.players.push(pl);
+  return { id: pl.id };
+});
+
+/**
+ * Bulk import. Rows may carry `team` + `price` to record a player who was already bought before
+ * the app was used — that is how a half-finished auction is brought in.
+ */
+on('players.import', 'admin', ({ data }, p, _a, now) => {
+  const rows: Record<string, any>[] = Array.isArray(p.rows) ? p.rows : [];
+  if (rows.length === 0) throw new AuctionError('Nothing to import');
+  if (data.players.length + rows.length > MAX_PLAYERS) throw new AuctionError(`Up to ${MAX_PLAYERS} players per auction`);
+  const skipped: string[] = [];
+  let added = 0;
+  let assigned = 0;
+  for (const row of rows) {
+    let pl: Player;
+    try {
+      pl = newPlayer(data, row);
+    } catch {
+      skipped.push(String(row?.name ?? '(blank)'));
+      continue;
+    }
+    const teamName = str(row.team, '', 60).toLowerCase();
+    if (teamName) {
+      const c = data.captains.find((x) => x.team.toLowerCase() === teamName || x.name.toLowerCase() === teamName);
+      if (c) {
+        pl.status = 'sold';
+        pl.teamId = c.id;
+        pl.price = num(row.price, effectiveBase(data.settings, pl), 0);
+        pl.soldRound = data.round;
+        assigned++;
+      } else {
+        skipped.push(`${pl.name} (team “${row.team}” not found — added as available)`);
+      }
+    }
+    data.players.push(pl);
+    added++;
+  }
+  note(data, `Imported ${added} players${assigned ? ` (${assigned} already on teams)` : ''}`, now);
+  return { added, assigned, skipped };
+});
+
+on('player.update', 'admin', ({ data }, p) => {
+  const pl = getPlayer(data, p.id);
+  const patch = (p.patch ?? {}) as Record<string, any>;
+  if (patch.name !== undefined) pl.name = str(patch.name, pl.name, 80) || pl.name;
+  if (patch.role !== undefined) pl.role = str(patch.role, pl.role, 40);
+  if (patch.description !== undefined) pl.description = str(patch.description, pl.description, 400);
+  if (patch.photo !== undefined) pl.photo = str(patch.photo, pl.photo, 400);
+  if (patch.basePrice !== undefined) pl.basePrice = num(patch.basePrice, pl.basePrice, 0);
+});
+
+on('player.remove', 'admin', ({ data }, p) => {
+  const pl = getPlayer(data, p.id);
+  if (data.live.playerId === pl.id && data.live.phase !== 'idle') throw new AuctionError('This player is on the block right now');
+  data.players = data.players.filter((x) => x.id !== pl.id);
+});
+
+on('player.assign', 'admin', ({ data }, p, _a, now) => {
+  const pl = getPlayer(data, p.id);
+  if (data.live.playerId === pl.id && data.live.phase !== 'idle') throw new AuctionError('This player is on the block right now');
+  const c = getCaptain(data, p.captainId);
+  pl.status = 'sold';
+  pl.teamId = c.id;
+  pl.price = num(p.price, effectiveBase(data.settings, pl), 0);
+  pl.soldRound = data.round;
+  note(data, `${pl.name} assigned to ${c.team} for ${money(data, pl.price)}`, now);
+});
+
+on('player.release', 'admin', ({ data }, p, _a, now) => {
+  const pl = getPlayer(data, p.id);
+  if (data.live.playerId === pl.id && data.live.phase === 'bidding') throw new AuctionError('This player is on the block right now');
+  Object.assign(pl, { status: 'available', teamId: null, price: 0, soldRound: 0 });
+  if (data.live.playerId === pl.id) {
+    data.live = { ...emptyLive(), screen: data.live.screen, seq: data.live.seq, lastEvent: data.live.lastEvent };
+    emit(data, 'idle', now);
+  }
+  note(data, `${pl.name} released back to the pool`, now);
+});
+
+// ---- the live auction ------------------------------------------------------------------------
+
+const poolOf = (d: EventData, role?: string) =>
+  d.players
+    .filter((p) => p.status === 'available' && (!role || p.role.toLowerCase() === role.toLowerCase()))
+    .sort((a, b) => a.order - b.order);
+
+function assertCanDraw(d: EventData) {
+  if (d.live.phase === 'spinning' || d.live.phase === 'bidding') throw new AuctionError('Finish the current player first');
+  if (d.captains.length < 2) throw new AuctionError('Add at least two teams before starting');
+}
+
+function clearBlock(d: EventData) {
+  d.live.playerId = null;
+  d.live.bids = [];
+  d.live.call = 0;
+  d.live.spin = null;
+  d.live.result = null;
+  d.live.phase = 'idle';
+}
+
+function putOnBlock(d: EventData, player: Player, spin: EventData['live']['spin'], now: number) {
+  clearBlock(d);
+  d.live.playerId = player.id;
+  if (spin) {
+    d.live.phase = 'spinning';
+    d.live.spin = spin;
+    emit(d, 'spin', now, { playerId: player.id });
+  } else {
+    d.live.phase = 'bidding';
+    emit(d, 'reveal', now, { playerId: player.id });
+  }
+}
+
+function drawFromPool(d: EventData, now: number, mode: string | undefined, role?: string) {
+  assertCanDraw(d);
+  const pool = poolOf(d, role);
+  if (pool.length === 0) throw new AuctionError(role ? `No “${role}” players left in this round` : `No players left in round ${d.round}`);
+  const how = mode ?? d.settings.drawMode;
+  if (how === 'manual') throw new AuctionError('Pick a player from the list');
+  if (how === 'sequential') {
+    putOnBlock(d, pool[0], null, now);
+    return;
+  }
+  const target = pool[randomInt(pool.length)];
+  const others = pool.filter((p) => p.id !== target.id);
+  for (let i = others.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [others[i], others[j]] = [others[j], others[i]];
+  }
+  const candidates = [target.id, ...others.slice(0, WHEEL_SLICES - 1).map((p) => p.id)];
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+  }
+  putOnBlock(d, target, { targetId: target.id, candidates, startedAt: now, endsAt: now + SPIN_MS }, now);
+}
+
+on('draw', 'host', ({ data }, p, _a, now) => {
+  drawFromPool(data, now, typeof p.mode === 'string' ? p.mode : undefined, typeof p.role === 'string' && p.role ? p.role : undefined);
+});
+
+on('pick', 'host', ({ data }, p, _a, now) => {
+  assertCanDraw(data);
+  const pl = getPlayer(data, p.playerId);
+  if (pl.status === 'sold') throw new AuctionError(`${pl.name} is already on a team`);
+  putOnBlock(data, pl, null, now);
+});
+
+on('next', 'host', ({ data }, _p, _a, now) => {
+  const phase = data.live.phase;
+  if (phase !== 'sold' && phase !== 'unsold') throw new AuctionError('Nothing to move on from');
+  clearBlock(data);
+  emit(data, 'idle', now);
+  if (data.settings.drawMode !== 'manual' && poolOf(data).length > 0) drawFromPool(data, now, undefined);
+});
+
+on('bid', 'captain', (store, p, actor, now) => {
+  const { data } = store;
+  const live = data.live;
+  const player = currentPlayer(data);
+  if (live.phase !== 'bidding' || !player) throw new AuctionError('Bidding is not open right now');
+
+  const byHost = actor.role !== 'captain';
+  const captainId = byHost ? p.captainId : actor.captainId;
+  const captain = getCaptain(data, captainId);
+
+  const min = nextBidAmount(data.settings, player, live.bids);
+  const amount = p.amount === undefined ? min : num(p.amount, NaN, 0);
+  if (!Number.isFinite(amount)) throw new AuctionError('Invalid bid amount');
+  if (amount < min) throw new AuctionError(`Too late — the bid is already at ${money(data, live.bids[live.bids.length - 1]?.amount ?? 0)}. Next bid: ${money(data, min)}`);
+
+  const block = checkBid(data, captain, amount);
+  if (!block.ok) throw new AuctionError(block.reason);
+
+  live.bids.push({ captainId: captain.id, amount, at: now, byHost });
+  live.call = 0;
+  emit(data, 'bid', now, { captainId: captain.id, amount, playerId: player.id });
+  return { amount };
+});
+
+on('undoBid', 'host', ({ data }, _p, _a, now) => {
+  if (data.live.phase !== 'bidding') throw new AuctionError('Bidding is not open');
+  if (data.live.bids.length === 0) throw new AuctionError('No bids to undo');
+  data.live.bids.pop();
+  data.live.call = 0;
+  emit(data, 'undo', now);
+});
+
+on('call', 'host', ({ data }, _p, _a, now) => {
+  const live = data.live;
+  if (live.phase !== 'bidding') throw new AuctionError('Bidding is not open');
+  if (live.bids.length === 0) throw new AuctionError('No bids yet — wait for an opening bid, or mark the player unsold');
+  if (live.call >= 3) throw new AuctionError('Final call already made — sell it!');
+  live.call = (live.call + 1) as 1 | 2 | 3;
+  emit(data, 'call', now, { call: live.call });
+});
+
+on('sold', 'host', ({ data }, _p, _a, now) => {
+  const live = data.live;
+  const player = currentPlayer(data);
+  if (live.phase !== 'bidding' || !player) throw new AuctionError('Bidding is not open');
+  const top = live.bids[live.bids.length - 1];
+  if (!top) throw new AuctionError('No bids — mark the player unsold instead');
+  const captain = getCaptain(data, top.captainId);
+  if (teamStats(data, captain).remaining < top.amount)
+    throw new AuctionError(`${captain.team} can no longer afford ${money(data, top.amount)} — undo the bid or top up their purse`);
+  player.status = 'sold';
+  player.teamId = captain.id;
+  player.price = top.amount;
+  player.soldRound = data.round;
+  live.phase = 'sold';
+  live.result = { kind: 'sold', playerId: player.id, captainId: captain.id, price: top.amount };
+  emit(data, 'sold', now, { playerId: player.id, captainId: captain.id, amount: top.amount });
+  note(data, `SOLD: ${player.name} → ${captain.team} for ${money(data, top.amount)}`, now);
+});
+
+on('unsold', 'host', ({ data }, _p, _a, now) => {
+  const live = data.live;
+  const player = currentPlayer(data);
+  if (live.phase !== 'bidding' || !player) throw new AuctionError('Bidding is not open');
+  if (live.bids.length > 0) throw new AuctionError('There are bids on this player — undo them first');
+  player.status = 'unsold';
+  live.phase = 'unsold';
+  live.result = { kind: 'unsold', playerId: player.id };
+  emit(data, 'unsold', now, { playerId: player.id });
+  note(data, `UNSOLD: ${player.name}`, now);
+});
+
+/** Undo the sale that is currently being shown, putting the player straight back on the block. */
+on('reopen', 'host', ({ data }, _p, _a, now) => {
+  const live = data.live;
+  const player = currentPlayer(data);
+  if ((live.phase !== 'sold' && live.phase !== 'unsold') || !player) throw new AuctionError('Nothing to reopen');
+  Object.assign(player, { status: 'available', teamId: null, price: 0, soldRound: 0 });
+  live.result = null;
+  live.phase = 'bidding';
+  live.call = 0;
+  emit(data, 'undo', now);
+  note(data, `${player.name} re-opened for bidding`, now);
+});
+
+on('round.next', 'host', ({ data }, _p, _a, now) => {
+  if (data.live.phase === 'spinning' || data.live.phase === 'bidding') throw new AuctionError('Finish the current player first');
+  const unsold = data.players.filter((p) => p.status === 'unsold');
+  if (unsold.length === 0) throw new AuctionError('There are no unsold players to carry over');
+  for (const p of unsold) p.status = 'available';
+  data.round += 1;
+  clearBlock(data);
+  emit(data, 'round', now);
+  note(data, `Round ${data.round} started with ${unsold.length} unsold players`, now);
+});
+
+on('screen.set', 'host', ({ data }, p) => {
+  data.live.screen = p.screen === 'board' ? 'board' : 'stage';
+});
+
+on('reset', 'admin', ({ data }, _p, _a, now) => {
+  for (const p of data.players) Object.assign(p, { status: 'available', teamId: null, price: 0, soldRound: 0 });
+  data.round = 1;
+  const { screen, seq } = data.live;
+  data.live = { ...emptyLive(), screen, seq };
+  emit(data, 'idle', now);
+  note(data, 'Auction reset', now);
+});
+
+// ---- demo data -------------------------------------------------------------------------------
+
+const DEMO_PLAYERS: [string, string, string][] = [
+  ['Aarav Mehta', 'Batter', 'Opens the innings and never leaves the crease.'],
+  ['Rohan Iyer', 'Bowler', 'Yorker specialist. Terrifying in the last five.'],
+  ['Priya Nair', 'All-rounder', 'Handy with both bat and ball — the office MVP.'],
+  ['Kabir Singh', 'Batter', 'Big hitter. Has broken two windows this season.'],
+  ['Ananya Rao', 'Wicketkeeper', 'Quick hands, sharper tongue.'],
+  ['Vikram Shah', 'Bowler', 'Left-arm spin that nobody can read.'],
+  ['Meera Kapoor', 'All-rounder', 'Captain material. Calm under pressure.'],
+  ['Arjun Das', 'Batter', 'Anchors the innings with grit.'],
+  ['Sneha Pillai', 'Bowler', 'Swing queen. Moves it both ways.'],
+  ['Dev Malhotra', 'Batter', 'Highest strike rate in the building.'],
+  ['Isha Verma', 'All-rounder', 'Fields like a cat, hits like a truck.'],
+  ['Karan Joshi', 'Bowler', 'Pace and bounce. Needs ice after every spell.'],
+  ['Tanya Bose', 'Batter', 'Elegant cover drives all day.'],
+  ['Nikhil Reddy', 'Wicketkeeper', 'Stumps a batter before they blink.'],
+  ['Zara Khan', 'All-rounder', 'Plays for the highlight reel.'],
+  ['Harsh Vora', 'Bowler', 'Death-over specialist.'],
+  ['Pooja Menon', 'Batter', 'Consistent. Boringly, wonderfully consistent.'],
+  ['Rahul Gupta', 'Bowler', 'Off-spin with a doosra nobody asked for.'],
+  ['Simran Kaur', 'All-rounder', 'Wins matches from nowhere.'],
+  ['Aditya Pandey', 'Batter', 'Left-hander with a lovely flick.'],
+  ['Neha Saxena', 'Bowler', 'Slower balls. Many, many slower balls.'],
+  ['Yash Thakur', 'Batter', 'Finisher. Cool as ice.'],
+  ['Divya Chawla', 'All-rounder', 'Does a bit of everything, brilliantly.'],
+  ['Manav Kulkarni', 'Wicketkeeper', 'Loud behind the stumps.'],
+];
+
+on('demo.load', 'admin', ({ data, secrets }, _p, _a, now) => {
+  if (data.captains.length === 0) {
+    for (const team of ['Royal Rockets', 'Thunder Hawks', 'Neon Ninjas', 'Blaze Bulls']) {
+      const c: Captain = { id: uid(), team, name: '', color: COLORS[data.captains.length % COLORS.length], logo: '', budget: data.settings.defaultBudget };
+      data.captains.push(c);
+      secrets.captainTokens[c.id] = randomCode(6);
+    }
+  }
+  if (data.players.length === 0) {
+    for (const [name, role, description] of DEMO_PLAYERS) data.players.push(newPlayer(data, { name, role, description }));
+  }
+  note(data, 'Sample teams and players loaded', now);
+});
+
+export function actionNames(): string[] {
+  return Object.keys(actions);
+}
+
+export { maxBid };
