@@ -1,6 +1,7 @@
-const L = require('./lib.cjs'); const { chromium, BASE, sleep, t, api, newPage, done } = L;
+const L = require('./lib.cjs'); const { chromium, BASE, sleep, t, api, newPage, done, waitUnthrottled } = L;
 const errors = [];
 (async () => {
+  await waitUnthrottled();
   const b = await chromium.launch();
   const c = await api.create({ name: 'QA <b>Bold</b> & "Quotes" 🎉', tagline: '<script>alert(1)</script>', drawMode: 'manual' });
   const { code, adminKey, hostKey } = c;

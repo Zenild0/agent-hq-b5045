@@ -9,6 +9,17 @@ const api = {
   cmd(code, key, action, params = {}) { return fetch(`${BASE}/api/events/${code}/cmd`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-key': key }, body: JSON.stringify({ action, params }) }).then(r => r.json()); },
   async state(code, key = '') { return (await fetch(`${BASE}/api/events/${code}/state${key ? '?key=' + key : ''}`)).json(); },
 };
+
+/** The server throttles a connection that keeps presenting wrong keys (qa-api does that on purpose).
+ *  Suites that open pages with wrong keys first wait until the throttle has cleared. */
+async function waitUnthrottled() {
+  const c = await api.create({});
+  for (let i = 0; i < 40; i++) {
+    const r = await fetch(`${BASE}/api/events/${c.code}/state?key=PROBE${i}`);
+    if (r.status !== 429) return;
+    await sleep(3000);
+  }
+}
 async function newPage(browser, w, h, errors, label, opts = {}) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, ...opts });
   const p = await ctx.newPage();
@@ -23,4 +34,4 @@ function done(title, errors) {
   errors.slice(0, 15).forEach((e) => console.log('  ', e));
   process.exit(fails.length || errors.length ? 1 : 0);
 }
-module.exports = { chromium, BASE, sleep, t, api, newPage, done, get pass() { return pass; }, fails };
+module.exports = { chromium, BASE, sleep, t, api, newPage, done, waitUnthrottled, get pass() { return pass; }, fails };

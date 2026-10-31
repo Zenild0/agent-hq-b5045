@@ -1,6 +1,7 @@
-const L = require('./lib.cjs'); const { chromium, BASE, sleep, t, api, newPage, done } = L;
+const L = require('./lib.cjs'); const { chromium, BASE, sleep, t, api, newPage, done, waitUnthrottled } = L;
 const errors = [];
 (async () => {
+  await waitUnthrottled();
   const b = await chromium.launch();
   const c = await api.create({}); await api.cmd(c.code, c.adminKey, 'demo.load');
   const st = await api.state(c.code, c.adminKey); const tok = st.captains.map(x => st.secrets.captainTokens[x.id]);
@@ -18,5 +19,6 @@ const errors = [];
   await ok.waitForSelector('text=Squad', { timeout: 6000 }); t('a valid captain is never locked out', true);
   // the throttled page recovers by itself once the minute is up
   await p.waitForSelector('text=CAPTAIN LOGIN', { timeout: 75000 }); t('the throttled page recovers on its own after ~1 minute', true);
+  for (let i = errors.length - 1; i >= 0; i--) if (/429|Too Many Requests/.test(errors[i])) errors.splice(i, 1); // the browser logs the deliberate 429s
   await b.close(); done('Throttle UX', errors);
 })().catch(e => { console.error('CRASH', e); process.exit(2); });
