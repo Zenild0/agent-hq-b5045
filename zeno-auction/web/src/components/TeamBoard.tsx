@@ -29,7 +29,7 @@ export function TeamBoard({ snap, big = false, highlightId }: { snap: Snapshot; 
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   {c.logo && <img src={c.logo} alt="" className="h-7 w-7 rounded-full object-cover" />}
-                  <h3 className={`truncate font-display tracking-wide ${big ? 'text-3xl' : 'text-2xl'}`} style={{ color: c.color }}>
+                  <h3 className={`truncate font-display font-extrabold ${big ? 'text-xl xl:text-2xl' : 'text-xl'}`} style={{ color: c.color }}>
                     {c.team}
                   </h3>
                 </div>
@@ -42,7 +42,7 @@ export function TeamBoard({ snap, big = false, highlightId }: { snap: Snapshot; 
               </div>
               <div className="text-right">
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Purse left</div>
-                <div className={`font-display leading-none ${big ? 'text-5xl' : 'text-4xl'} ${st.remaining < 0 ? 'text-red-400' : ''}`}>
+                <div className={`whitespace-nowrap font-display font-extrabold leading-none ${big ? 'text-3xl xl:text-4xl' : 'text-3xl'} ${st.remaining < 0 ? 'text-red-400' : ''}`}>
                   {formatMoney(st.remaining, settings)}
                 </div>
               </div>
@@ -100,7 +100,7 @@ export function TeamStrip({ snap, leaderId }: { snap: Snapshot; leaderId?: strin
               <span className="truncate">{c.team}</span>
               <span className="ml-auto text-slate-400">{st.count}</span>
             </div>
-            <div className="font-display text-xl leading-tight">{formatMoney(st.remaining, settings)}</div>
+            <div className="font-display text-lg font-bold leading-tight">{formatMoney(st.remaining, settings)}</div>
           </div>
         );
       })}

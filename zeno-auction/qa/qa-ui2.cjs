@@ -11,7 +11,7 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
   await p.fill('input[value="Office Premier League"]', 'QA Cup');
   await p.click('button.chip:has-text("Football")');
   t('sport chip fills the field', await p.inputValue('input[value="Football"]') === 'Football');
-  await p.click('button[aria-label="Accent #29e0ff"]');
+  await p.click('button[aria-label="Accent #5cc8ff"]');
   await p.click('button:has-text("$ Dollars")');
   t('western style hint shown', await p.locator('text=Amounts show as K / M').count() === 1);
   const money = p.locator('input[placeholder="e.g. 12cr, 5L, 250k"]');
@@ -40,7 +40,7 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
   const u = new URL(p.url()); code = u.pathname.split('/')[2]; adminKey = u.searchParams.get('k');
   hostKey = await p.evaluate((c) => localStorage.getItem(`zeno:key:${c}:host`), code);
   const s1 = (await api.state(code, adminKey)).settings;
-  t('A: name', s1.name === 'QA Cup'); t('A: sport', s1.sport === 'Football'); t('A: accent', s1.accent === '#29e0ff');
+  t('A: name', s1.name === 'QA Cup'); t('A: sport', s1.sport === 'Football'); t('A: accent', s1.accent === '#5cc8ff');
   t('A: currency', s1.symbol === '$' && s1.moneyStyle === 'western');
   t('A: purse/base', s1.defaultBudget === 10_000_000 && s1.defaultBasePrice === 200_000, JSON.stringify([s1.defaultBudget, s1.defaultBasePrice]));
   t('A: tiers', JSON.stringify(s1.increments) === JSON.stringify([{ from: 0, step: 100_000 }, { from: 1_000_000, step: 250_000 }]), JSON.stringify(s1.increments));

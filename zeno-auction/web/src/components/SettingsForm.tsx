@@ -12,12 +12,21 @@ const CURRENCIES = [
   { id: 'GBP', label: '£ Pounds', symbol: '£', moneyStyle: 'western' as const },
   { id: 'PTS', label: 'Points', symbol: 'pts', moneyStyle: 'western' as const },
 ];
-const ACCENTS = ['#ffc933', '#ff3d81', '#29e0ff', '#7cf29a', '#b388ff', '#ff8a3d'];
+const ACCENTS = ['#f2b84b', '#5b8cff', '#5cc8ff', '#34d399', '#b388ff', '#ff7d95'];
 
-function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+/** The sections of the form, in order (the create page builds its step navigator from this). */
+export const SECTIONS = [
+  { id: 'event', label: 'The event' },
+  { id: 'money', label: 'Money' },
+  { id: 'audience', label: 'What the audience sees' },
+  { id: 'next', label: 'Who comes next' },
+  { id: 'squad', label: 'Squad rules' },
+] as const;
+
+function Section({ id, title, hint, children }: { id: string; title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <section className="card p-5">
-      <h2 className="text-base font-bold">{title}</h2>
+    <section id={`sec-${id}`} className="card scroll-mt-24 p-5 sm:p-6">
+      <h2 className="font-display text-lg font-bold tracking-tight">{title}</h2>
       {hint && <p className="mb-4 mt-0.5 text-sm text-slate-400">{hint}</p>}
       {!hint && <div className="mb-4" />}
       <div className="space-y-4">{children}</div>
@@ -35,7 +44,7 @@ export function SettingsForm({ value, onChange }: { value: EventSettings; onChan
 
   return (
     <div className="space-y-5">
-      <Section title="The event">
+      <Section id="event" title="The event">
         <Field label="Event name">
           <input className="input" value={value.name} maxLength={80} onChange={(e) => set('name', e.target.value)} />
         </Field>
@@ -69,7 +78,7 @@ export function SettingsForm({ value, onChange }: { value: EventSettings; onChan
         </div>
       </Section>
 
-      <Section title="Money" hint="Every team gets the same starting purse; you can top up or cut any team's purse during the auction.">
+      <Section id="money" title="Money" hint="Every team gets the same starting purse; you can top up or cut any team's purse during the auction.">
         <Field label="Currency">
           <div className="flex flex-wrap gap-2">
             {CURRENCIES.map((c) => (
@@ -142,7 +151,7 @@ export function SettingsForm({ value, onChange }: { value: EventSettings; onChan
         </Field>
       </Section>
 
-      <Section title="What the audience sees" hint="Choose how each player is shown when they come on the block.">
+      <Section id="audience" title="What the audience sees" hint="Choose how each player is shown when they come on the block.">
         <div className="grid gap-2 sm:grid-cols-2">
           <Toggle label="Player photo" hint="Face on the big screen" checked={value.display.showPhoto} onChange={(v) => set('display', { ...value.display, showPhoto: v })} />
           <Toggle label="Description" hint="A line about the player" checked={value.display.showDescription} onChange={(v) => set('display', { ...value.display, showDescription: v })} />
@@ -152,7 +161,7 @@ export function SettingsForm({ value, onChange }: { value: EventSettings; onChan
         <p className="hint">The player's name is always shown.</p>
       </Section>
 
-      <Section title="Who comes up next">
+      <Section id="next" title="Who comes up next">
         <Segmented
           value={value.drawMode}
           onChange={(v) => set('drawMode', v)}
@@ -167,7 +176,7 @@ export function SettingsForm({ value, onChange }: { value: EventSettings; onChan
         </Field>
       </Section>
 
-      <Section title="Squad rules" hint="Optional. Leave at 0 for no limit.">
+      <Section id="squad" title="Squad rules" hint="Optional. Leave at 0 for no limit.">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Minimum squad size">
             <input className="input" type="number" min={0} value={value.minSquad} onChange={(e) => set('minSquad', Math.max(0, Number(e.target.value) || 0))} />

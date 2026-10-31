@@ -11,14 +11,14 @@ import { avatarGradient, PlayerAvatar, TeamDot } from './ui';
  * The big-screen show: the player on the left, the bidding war on the right, and every team's
  * squad (with the price paid for each player) along the bottom.
  */
-export function Arena({ snap, serverNow, tickSound }: { snap: Snapshot; serverNow: () => number; tickSound: boolean }) {
+export function Arena({ snap, serverNow, tickSound, beat = 1.2 }: { snap: Snapshot; serverNow: () => number; tickSound: boolean; beat?: number }) {
   const { live } = snap;
   useTicker(live.phase === 'spinning');
   if (live.break) return <BreakView snap={snap} serverNow={serverNow} compact={false} />;
 
   const calling = live.phase === 'bidding' ? live.call : 0;
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4" style={{ ['--beat' as string]: `${beat}s` } as CSSProperties}>
       <div className="relative h-[clamp(400px,56vh,720px)] shrink-0">
         {live.phase === 'spinning' && live.spin ? (
           <SpinHero snap={snap} serverNow={serverNow} tickSound={tickSound} />
@@ -65,10 +65,10 @@ function SpinHero({ snap, serverNow, tickSound }: { snap: Snapshot; serverNow: (
         <SpinWheel players={candidates} targetId={spin.targetId} startedAt={spin.startedAt} stopAt={stopAt} serverNow={serverNow} tickSound={tickSound} size="min(38vh, 36vw)" hideWinner />
       </div>
       <div className="min-w-0">
-        <p className="font-display text-[clamp(1.4rem,2.6vw,2.6rem)] tracking-[0.2em] text-gold">{stopped ? 'AND THE NEXT PLAYER IS…' : 'DRAWING THE NEXT PLAYER…'}</p>
+        <p className="font-stage text-[clamp(1.6rem,3vw,3rem)] font-bold tracking-[0.22em] text-gold">{stopped ? 'AND THE NEXT PLAYER IS…' : 'DRAWING THE NEXT PLAYER…'}</p>
         {stopped && winner ? (
           <div key="winner" className="mt-3 animate-pop">
-            <div className="animate-pulse font-display text-[clamp(3rem,8vw,8.5rem)] uppercase leading-[0.95] tracking-wide">{winner.name}</div>
+            <div className="animate-pulse font-stage text-[clamp(3.4rem,9vw,9.5rem)] font-extrabold uppercase leading-[0.92] tracking-tight">{winner.name}</div>
             {snap.settings.display.showRole && winner.role && <span className="chip mt-3 text-base">{winner.role}</span>}
           </div>
         ) : (
@@ -96,7 +96,7 @@ function IdleHero({ snap }: { snap: Snapshot }) {
       <div className="card grid place-items-center p-6 text-center">
         <div>
           <div className="mx-auto mb-3 grid h-20 w-20 place-items-center rounded-3xl bg-gold/10 text-5xl">🔨</div>
-          <h2 className="font-display text-[clamp(2rem,3.8vw,4rem)] leading-none tracking-wide">{title}</h2>
+          <h2 className="font-display text-[clamp(1.8rem,3.2vw,3.4rem)] font-extrabold leading-[1.05]">{title}</h2>
           <p className="mt-3 text-lg text-slate-400">{sub}</p>
           <div className="mt-5 flex justify-center gap-3 text-sm">
             <span className="chip">{sold.length} sold</span>
@@ -106,7 +106,7 @@ function IdleHero({ snap }: { snap: Snapshot }) {
         </div>
       </div>
       <div className="card flex min-h-0 flex-col p-5">
-        <h3 className="mb-3 font-display text-2xl tracking-wide">
+        <h3 className="mb-3 font-display text-xl font-extrabold">
           LATEST <span className="text-gold">BUYS</span>
         </h3>
         {recent.length === 0 ? (
@@ -124,7 +124,7 @@ function IdleHero({ snap }: { snap: Snapshot }) {
                       {team?.team}
                     </div>
                   </div>
-                  <div className="font-display text-3xl text-gold">{formatMoney(p.price, snap.settings)}</div>
+                  <div className="font-display text-2xl font-bold text-gold">{formatMoney(p.price, snap.settings)}</div>
                 </li>
               );
             })}
@@ -148,7 +148,7 @@ function BidHero({ snap }: { snap: Snapshot }) {
         <div className="absolute inset-0 z-20 grid place-items-center rounded-2xl bg-ink-950/80 backdrop-blur-[3px]">
           <div key={live.seq} className="animate-slam text-center" style={{ transform: 'rotate(-8deg)' }}>
             <div
-              className={`inline-block rounded-3xl border-[12px] px-10 py-1 font-display tracking-widest text-[clamp(4rem,10vw,10rem)] ${
+              className={`inline-block rounded-3xl border-[12px] px-10 py-0 font-stage font-extrabold tracking-[0.14em] text-[clamp(4.5rem,11vw,11rem)] ${
                 result.kind === 'sold' ? 'border-red-500 text-red-500' : 'border-slate-400 text-slate-300'
               }`}
               style={{ textShadow: '0 0 50px currentColor' }}
@@ -156,7 +156,7 @@ function BidHero({ snap }: { snap: Snapshot }) {
               {result.kind === 'sold' ? 'SOLD!' : 'UNSOLD'}
             </div>
             {result.kind === 'sold' && winner && (
-              <div className="mt-4 font-display text-[clamp(1.8rem,4vw,4.2rem)] tracking-wide" style={{ color: winner.color }}>
+              <div className="mt-4 font-stage text-[clamp(2rem,4.4vw,4.6rem)] font-bold tracking-wide" style={{ color: winner.color }}>
                 {player.name} → {winner.team}
                 <div className="text-[0.8em] text-white">for {formatMoney(result.price ?? 0, snap.settings)}</div>
               </div>
@@ -197,7 +197,7 @@ function PlayerCard({ snap, player }: { snap: Snapshot; player: Player }) {
           {d.showRole && player.role && <span className="chip bg-black/40">{player.role}</span>}
           {bidding && <span className="chip border-emerald-400/40 bg-emerald-400/15 text-emerald-300">● LIVE</span>}
         </div>
-        <h2 className="font-display uppercase leading-[0.92] tracking-wide drop-shadow-[0_4px_24px_rgba(0,0,0,0.8)]" style={{ fontSize: `min(${vw}vw, 15vh)` }}>
+        <h2 className="font-stage font-extrabold uppercase leading-[0.9] tracking-tight drop-shadow-[0_4px_24px_rgba(0,0,0,0.8)]" style={{ fontSize: `min(${vw}vw, 15vh)` }}>
           {player.name}
         </h2>
         {d.showDescription && player.description && <p className="line-clamp-3 max-w-[40ch] text-[clamp(0.95rem,1.35vw,1.4rem)] text-slate-200">{player.description}</p>}
@@ -275,10 +275,10 @@ function BidWar({ snap, player }: { snap: Snapshot; player: Player }) {
           {live.bids.length > 0 && <span className="chip !text-[11px] tracking-normal">{live.bids.length} bid{live.bids.length === 1 ? '' : 's'}</span>}
         </div>
 
-        <div className="relative my-1">
+        <div className={`relative my-1 ${open ? 'animate-beat' : ''}`}>
           <div
             key={`${shown}-${motion?.key ?? 0}`}
-            className={`font-display leading-none tracking-wide ${motion?.dir === 'down' ? 'animate-dropflash' : 'animate-bump'}`}
+            className={`font-display font-extrabold leading-none tracking-tight ${motion?.dir === 'down' ? 'animate-dropflash' : 'animate-bump'}`}
             style={{ fontSize: 'min(6vw, 10vh)', color: motion?.dir === 'down' ? '#ff3d57' : (leader?.color ?? '#fff'), textShadow: leader ? `0 0 50px ${leader.color}66` : undefined }}
           >
             {fmt(shown)}
@@ -286,7 +286,7 @@ function BidWar({ snap, player }: { snap: Snapshot; player: Player }) {
           {motion && (
             <div
               key={motion.key}
-              className={`pointer-events-none absolute -right-2 top-0 translate-x-full font-display text-[clamp(1.4rem,2.6vw,2.6rem)] ${
+              className={`pointer-events-none absolute -right-2 top-0 translate-x-full font-display font-bold text-[clamp(1.2rem,2.2vw,2.2rem)] ${
                 motion.dir === 'up' ? 'animate-floatup text-emerald-400' : 'animate-fall text-red-400'
               }`}
             >
@@ -311,7 +311,7 @@ function BidWar({ snap, player }: { snap: Snapshot; player: Player }) {
         <div className="relative mt-1 flex min-h-[3rem] items-center justify-center">
           {open && live.call > 0 ? (
             <div key={live.call} className={`animate-pop ${CALL_COLOR[live.call]}`}>
-              <span className="font-display text-[clamp(1.6rem,3.1vw,3.3rem)] tracking-wider">{CALL_TEXT[live.call]}</span>
+              <span className="font-stage text-[clamp(2rem,3.8vw,4rem)] font-extrabold tracking-[0.1em]">{CALL_TEXT[live.call]}</span>
               <span className="ml-3 inline-flex gap-1.5 align-middle">
                 {[1, 2, 3].map((i) => (
                   <span key={i} className={`h-3 w-3 rounded-full ${i <= live.call ? 'bg-current' : 'bg-white/15'}`} />
@@ -412,7 +412,7 @@ function BidLadder({ snap, player, nextAmount }: { snap: Snapshot; player: Playe
               style={{ background: '#0d0d24', ['--glow' as string]: `${c.color}66`, outline: lead ? `2px solid ${c.color}` : '1px solid rgba(255,255,255,0.06)' } as CSSProperties}
             >
               <div className="absolute inset-y-0 left-0 transition-all duration-500 ease-out" style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${c.color}55, ${c.color}15)` }} />
-              <span className="relative w-5 text-center font-display text-lg text-slate-500">{amount > 0 ? i + 1 : ''}</span>
+              <span className="relative w-5 text-center font-display text-sm font-bold text-slate-500">{amount > 0 ? i + 1 : ''}</span>
               <span className="relative flex min-w-0 flex-1 items-center gap-2">
                 {c.logo ? <img src={c.logo} alt="" className="h-6 w-6 rounded-full object-cover" /> : <TeamDot captain={c} size={12} />}
                 <span className="truncate font-bold" style={{ color: c.color, fontSize: 'min(1.5vw, 3.1vh)' }}>
@@ -423,7 +423,7 @@ function BidLadder({ snap, player, nextAmount }: { snap: Snapshot; player: Playe
               </span>
               <span className="relative text-right">
                 {amount > 0 ? (
-                  <span key={flash ? ev!.seq : 'x'} className={`inline-block font-display leading-none ${flash ? 'animate-bump' : ''}`} style={{ fontSize: 'min(2.2vw, 4.4vh)' }}>
+                  <span key={flash ? ev!.seq : 'x'} className={`inline-block font-display font-bold leading-none ${flash ? 'animate-bump' : ''}`} style={{ fontSize: 'min(2.2vw, 4.4vh)' }}>
                     {fmt(amount)}
                   </span>
                 ) : (
@@ -493,7 +493,7 @@ function TeamCard({ snap, captain: c, leading, justSoldId, compact = false }: { 
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             {c.logo && <img src={c.logo} alt="" className="h-6 w-6 rounded-full object-cover" />}
-            <h3 className="truncate font-display text-[clamp(1.2rem,2vw,2rem)] leading-tight tracking-wide" style={{ color: c.color }}>
+            <h3 className="truncate font-display text-[clamp(1.05rem,1.7vw,1.7rem)] font-extrabold leading-tight" style={{ color: c.color }}>
               {c.team}
             </h3>
           </div>
@@ -504,7 +504,7 @@ function TeamCard({ snap, captain: c, leading, justSoldId, compact = false }: { 
         </div>
         <div className="shrink-0 text-right">
           <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Purse left</div>
-          <div className={`font-display text-[clamp(1.3rem,2.2vw,2.2rem)] leading-none ${st.remaining < 0 ? 'text-red-400' : ''}`}>{formatMoney(st.remaining, settings)}</div>
+          <div className={`font-display text-[clamp(1.1rem,1.9vw,1.9rem)] font-bold leading-none ${st.remaining < 0 ? 'text-red-400' : ''}`}>{formatMoney(st.remaining, settings)}</div>
         </div>
       </div>
       <div className="mt-2 h-1.5 shrink-0 overflow-hidden rounded-full bg-ink-900">

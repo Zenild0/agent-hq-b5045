@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { formatMoney } from '../../../shared/money';
 import { checkBid, effectiveBase, nextBidAmount } from '../../../shared/rules';
 import type { Snapshot } from '../../../shared/types';
+import { useTempo } from '../lib/tempo';
 import { fmtClock, useCountdown } from '../lib/useCountdown';
 import type { Room } from '../lib/useRoom';
 import { Stage } from './Stage';
@@ -10,10 +11,11 @@ import { TeamStrip } from './TeamBoard';
 import { PlayerAvatar, TeamDot } from './ui';
 
 const CALL_LABEL = ['GOING ONCE…', 'GOING TWICE…', 'GOING THRICE…', 'SOLD! 🔨'];
-const CALL_STYLE = ['bg-gold text-ink-950', 'bg-orange-500 text-white', 'bg-red-600 text-white', 'bg-emerald-500 text-ink-950'];
+const CALL_STYLE = ['cta-gold', 'cta-orange', 'cta-red', 'cta-green'];
 
 export function HostConsole({ snap, room, tickSound }: { snap: Snapshot; room: Room; tickSound: boolean }) {
   const { live, settings } = snap;
+  const tempo = useTempo(snap, room.serverNow);
   const [busy, setBusy] = useState(false);
   const [role, setRole] = useState('');
   const [search, setSearch] = useState('');
@@ -40,22 +42,22 @@ export function HostConsole({ snap, room, tickSound }: { snap: Snapshot; room: R
 
   // The one big button the auctioneer keeps hitting.
   const primary = (() => {
-    if (onBreak) return { label: 'END BREAK ▶', disabled: false, style: 'bg-emerald-500 text-ink-950', onClick: () => run('break.end') };
-    if (spinning) return { label: 'Wheel spinning…', disabled: true, style: 'bg-ink-600 text-slate-300', onClick: () => {} };
+    if (onBreak) return { label: 'END BREAK ▶', disabled: false, style: 'cta-green', onClick: () => run('break.end') };
+    if (spinning) return { label: 'Wheel spinning…', disabled: true, style: 'cta-muted', onClick: () => {} };
     if (bidding) {
-      if (!hasBids) return { label: 'Waiting for a bid…', disabled: true, style: 'bg-ink-600 text-slate-300', onClick: () => {} };
+      if (!hasBids) return { label: 'Waiting for a bid…', disabled: true, style: 'cta-muted', onClick: () => {} };
       return { label: CALL_LABEL[live.call], disabled: false, style: CALL_STYLE[live.call], onClick: () => run(live.call >= 3 ? 'sold' : 'call') };
     }
     if (finished) {
       const label = settings.drawMode === 'random' ? 'SPIN FOR NEXT PLAYER' : settings.drawMode === 'sequential' ? 'NEXT PLAYER' : 'NEXT';
-      return { label: `${label} ▶`, disabled: false, style: 'bg-gold text-ink-950', onClick: () => run('next') };
+      return { label: `${label} ▶`, disabled: false, style: 'cta-gold', onClick: () => run('next') };
     }
-    if (pool.length === 0) return { label: unsold.length ? `Round ${snap.round} complete` : 'No players left', disabled: true, style: 'bg-ink-600 text-slate-300', onClick: () => {} };
-    if (settings.drawMode === 'manual') return { label: 'Pick a player below ↓', disabled: true, style: 'bg-ink-600 text-slate-300', onClick: () => {} };
+    if (pool.length === 0) return { label: unsold.length ? `Round ${snap.round} complete` : 'No players left', disabled: true, style: 'cta-muted', onClick: () => {} };
+    if (settings.drawMode === 'manual') return { label: 'Pick a player below ↓', disabled: true, style: 'cta-muted', onClick: () => {} };
     return {
       label: settings.drawMode === 'random' ? '🎡 SPIN THE WHEEL' : 'NEXT PLAYER ▶',
       disabled: false,
-      style: 'bg-gold text-ink-950',
+      style: 'cta-gold',
       onClick: () => run('draw', role ? { role } : {}),
     };
   })();
@@ -94,7 +96,8 @@ export function HostConsole({ snap, room, tickSound }: { snap: Snapshot; room: R
           <button
             disabled={primary.disabled || busy}
             onClick={primary.onClick}
-            className={`w-full rounded-2xl px-4 py-6 font-display text-[clamp(1.8rem,3.2vw,2.8rem)] tracking-wide transition active:scale-[0.98] disabled:opacity-60 ${primary.style}`}
+            style={{ ['--beat' as string]: `${tempo.beat}s` } as React.CSSProperties}
+            className={`relative w-full overflow-hidden rounded-2xl px-4 py-6 font-display text-[clamp(1.4rem,2.5vw,2.2rem)] font-extrabold tracking-tight transition active:scale-[0.98] disabled:opacity-70 ${primary.style} ${!primary.disabled && bidding ? 'animate-beat' : ''}`}
           >
             {primary.label}
           </button>

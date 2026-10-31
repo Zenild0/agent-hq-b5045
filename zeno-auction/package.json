@@ -1,7 +1,7 @@
 {
   "name": "zenobid",
   "version": "1.0.0",
-  "description": "ZenoBid \u2014 the live team auction app. Captains bid, the auctioneer calls it, the whole Zoom room watches.",
+  "description": "ZenoBid — the live team auction app. Captains bid, the auctioneer calls it, the whole Zoom room watches.",
   "private": true,
   "type": "module",
   "engines": {
@@ -23,7 +23,9 @@
   },
   "devDependencies": {
     "@fontsource/anton": "^5.1.0",
+    "@fontsource/barlow-condensed": "^5.3.0",
     "@fontsource/inter": "^5.1.0",
+    "@fontsource/sora": "^5.3.0",
     "@types/express": "^4.17.21",
     "@types/node": "^22.10.0",
     "@types/react": "^18.3.12",

@@ -42,7 +42,7 @@ export function Stage({
     const candidates = live.spin.candidates.map((id) => snap.players.find((p) => p.id === id)).filter(Boolean) as Player[];
     return (
       <div className="flex flex-1 flex-col items-center justify-center py-6 text-center">
-        <p className="mb-6 font-display text-[clamp(1.5rem,3.5vw,2.8rem)] tracking-widest text-gold">DRAWING THE NEXT PLAYER…</p>
+        <p className="mb-6 font-stage text-[clamp(1.6rem,3.6vw,2.9rem)] font-bold tracking-[0.2em] text-gold">DRAWING THE NEXT PLAYER…</p>
         <SpinWheel
           players={candidates}
           targetId={live.spin.targetId}
@@ -86,7 +86,7 @@ export function Stage({
               {live.phase === 'bidding' && result === null && <span className="chip border-emerald-400/30 bg-emerald-400/10 text-emerald-300">● Bidding open</span>}
             </div>
             <h2
-              className={`font-display uppercase leading-[0.95] tracking-wide ${
+              className={`font-stage font-extrabold uppercase leading-[0.92] tracking-tight ${
                 compact ? 'text-4xl' : hasVisual ? 'text-[clamp(2.6rem,5.6vw,6rem)]' : 'text-[clamp(3.4rem,9vw,9rem)]'
               }`}
             >
@@ -114,7 +114,7 @@ export function Stage({
           </div>
           <div
             key={top?.amount ?? 0}
-            className={`font-display leading-none tracking-wide animate-bump ${
+            className={`font-display font-extrabold leading-none tracking-tight animate-bump ${
               compact ? 'my-2 text-6xl' : 'my-3 text-[clamp(4rem,10vw,10.5rem)]'
             }`}
             style={{ color: leader?.color ?? '#fff' }}
@@ -136,7 +136,7 @@ export function Stage({
             <div className="mt-5 min-h-[3.5rem]">
               {live.call > 0 ? (
                 <div key={live.call} className={`animate-slam ${CALL_COLOR[live.call]}`} style={{ transform: 'rotate(-3deg)' }}>
-                  <div className={`font-display tracking-wider ${compact ? 'text-3xl' : 'text-[clamp(2rem,4.4vw,4.5rem)]'}`}>{CALL_TEXT[live.call]}</div>
+                  <div className={`font-stage font-extrabold tracking-[0.1em] ${compact ? 'text-4xl' : 'text-[clamp(2rem,4.4vw,4.5rem)]'}`}>{CALL_TEXT[live.call]}</div>
                   <div className="mt-1 flex justify-center gap-2">
                     {[1, 2, 3].map((i) => (
                       <span key={i} className={`h-3 w-3 rounded-full ${i <= live.call ? 'bg-current' : 'bg-white/15'}`} />
@@ -197,7 +197,7 @@ function ResultStamp({
     <div className="absolute inset-0 z-10 grid place-items-center bg-ink-950/70 backdrop-blur-[2px]">
       <div key={snap.live.seq} className="animate-slam text-center" style={{ transform: 'rotate(-12deg)' }}>
         <div
-          className={`inline-block rounded-2xl border-[10px] px-8 py-1 font-display tracking-widest ${
+          className={`inline-block rounded-2xl border-[10px] px-8 py-0 font-stage font-extrabold tracking-[0.14em] ${
             kind === 'sold' ? 'border-red-500 text-red-500' : 'border-slate-400 text-slate-300'
           } ${compact ? 'text-6xl' : 'text-[clamp(3rem,7vw,7rem)]'}`}
           style={{ textShadow: '0 0 40px currentColor' }}
@@ -205,7 +205,7 @@ function ResultStamp({
           {kind === 'sold' ? 'SOLD!' : 'UNSOLD'}
         </div>
         {kind === 'sold' && winnerName && (
-          <div className={`mt-3 font-display tracking-wide ${compact ? 'text-2xl' : 'text-[clamp(1.3rem,2.4vw,2.6rem)]'}`} style={{ color }}>
+          <div className={`mt-3 font-stage font-bold tracking-wide ${compact ? 'text-3xl' : 'text-[clamp(1.3rem,2.4vw,2.6rem)]'}`} style={{ color }}>
             to {winnerName} · {formatMoney(price ?? 0, snap.settings)}
           </div>
         )}
@@ -236,7 +236,7 @@ function IdleStage({ snap, compact }: { snap: Snapshot; compact: boolean }) {
     <div className={`card grid flex-1 place-items-center text-center ${compact ? 'p-8' : 'min-h-[52vh] p-10'}`}>
       <div>
         <div className="mb-4 inline-grid h-20 w-20 place-items-center rounded-3xl bg-gold/10 text-5xl">🔨</div>
-        <h2 className={`font-display tracking-wide ${compact ? 'text-3xl' : 'text-[clamp(2.4rem,6vw,5.5rem)]'}`}>{title}</h2>
+        <h2 className={`font-display font-extrabold ${compact ? 'text-2xl' : 'text-[clamp(2.2rem,5vw,4.6rem)]'}`}>{title}</h2>
         <p className="mt-2 text-lg text-slate-400">{sub}</p>
         <div className="mt-6 flex justify-center gap-3 text-sm">
           <span className="chip">{sold} sold</span>

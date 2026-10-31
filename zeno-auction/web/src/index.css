@@ -2,11 +2,23 @@
 @import '@fontsource/inter/500.css';
 @import '@fontsource/inter/600.css';
 @import '@fontsource/inter/700.css';
-@import '@fontsource/anton/400.css';
+@import '@fontsource/sora/600.css';
+@import '@fontsource/sora/700.css';
+@import '@fontsource/sora/800.css';
+@import '@fontsource/barlow-condensed/600.css';
+@import '@fontsource/barlow-condensed/700.css';
+@import '@fontsource/barlow-condensed/800.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --gold-grad: linear-gradient(135deg, #ffe9ac 0%, #f2b84b 46%, #c98a12 100%);
+  --royal-grad: linear-gradient(135deg, #5b8cff 0%, #2f6bff 55%, #1f4fd6 100%);
+  --hairline: rgba(160, 190, 255, 0.14);
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
 
 html,
 body,
@@ -15,10 +27,56 @@ body,
 }
 
 body {
-  @apply bg-ink-950 font-sans text-slate-100 antialiased;
-  background-image: radial-gradient(900px 500px at 85% -10%, rgba(255, 61, 129, 0.16), transparent 60%),
-    radial-gradient(800px 500px at -10% 10%, rgba(41, 224, 255, 0.12), transparent 60%);
+  @apply bg-ink-950 font-sans text-pearl antialiased;
+  font-feature-settings: 'cv11', 'ss01';
+  background-image:
+    radial-gradient(1000px 560px at 88% -12%, rgba(47, 107, 255, 0.26), transparent 62%),
+    radial-gradient(900px 520px at -8% 6%, rgba(242, 184, 75, 0.12), transparent 60%),
+    radial-gradient(1200px 700px at 50% 120%, rgba(31, 79, 214, 0.2), transparent 60%);
   background-attachment: fixed;
+}
+
+/* a faint engineering grid that fades toward the bottom: "trading floor" without noise */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: linear-gradient(rgba(150, 180, 255, 0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(150, 180, 255, 0.045) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, #000 20%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, #000 20%, transparent 75%);
+}
+
+::selection {
+  background: rgba(242, 184, 75, 0.35);
+}
+
+/* ---------------------------------------------------------------------- type */
+.font-display {
+  letter-spacing: -0.015em;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.font-display.tracking-wide,
+.font-display.tracking-wider,
+.font-display.tracking-widest {
+  letter-spacing: -0.005em;
+}
+.num {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.text-gold-grad {
+  background: var(--gold-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.text-royal-grad {
+  background: var(--royal-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 @layer base {
@@ -32,48 +90,158 @@ body {
   h3 {
     overflow-wrap: anywhere;
   }
+  :focus-visible {
+    outline: 2px solid #f2b84b;
+    outline-offset: 2px;
+    border-radius: 0.6rem;
+  }
 }
 
+/* ---------------------------------------------------------------- components */
 @layer components {
+  /* glass panel with a gold-blue hairline and a soft lit top edge */
   .card {
-    @apply rounded-2xl border border-white/10 bg-ink-800/80 backdrop-blur;
+    @apply relative rounded-2xl backdrop-blur-xl;
+    background:
+      linear-gradient(180deg, rgba(160, 190, 255, 0.07), rgba(160, 190, 255, 0.015) 38%),
+      rgba(9, 18, 46, 0.78);
+    border: 1px solid var(--hairline);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.07) inset,
+      0 24px 48px -28px rgba(0, 0, 0, 0.75);
   }
+  .card-lift {
+    transition: transform 0.25s var(--ease), box-shadow 0.25s var(--ease), border-color 0.25s;
+  }
+  .card-lift:hover {
+    transform: translateY(-3px);
+    border-color: rgba(242, 184, 75, 0.35);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset, 0 30px 50px -26px rgba(0, 0, 0, 0.8), 0 0 40px -10px rgba(242, 184, 75, 0.25);
+  }
+
   .btn {
-    @apply inline-flex select-none items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition
+    @apply relative isolate inline-flex select-none items-center justify-center gap-2 overflow-hidden rounded-xl px-4 py-2.5 text-sm font-semibold transition
       active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100;
   }
+  /* champagne-gold primary with a slow light sweep */
   .btn-primary {
-    @apply btn bg-gold text-ink-950 hover:brightness-110;
+    @apply btn text-ink-950;
+    background: var(--gold-grad);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.55) inset, 0 8px 24px -8px rgba(242, 184, 75, 0.55);
+  }
+  .btn-primary::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    width: 40%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+    @apply animate-shine;
+    pointer-events: none;
+    z-index: -1; /* the sweep lives behind the label so text always stays crisp */
+  }
+  .btn-primary:disabled::after {
+    display: none;
+  }
+  .btn-primary:disabled {
+    box-shadow: none;
+    filter: saturate(0.6);
+  }
+  .btn-primary:hover:not(:disabled) {
+    filter: brightness(1.07);
   }
   .btn-hot {
-    @apply btn bg-hot text-white hover:brightness-110;
+    @apply btn text-white hover:brightness-110;
+    background: linear-gradient(135deg, #ff7d95, #ff5c7a 50%, #e0334f);
   }
   .btn-ghost {
-    @apply btn border border-white/15 bg-white/5 text-slate-100 hover:bg-white/10;
+    @apply btn text-pearl hover:bg-white/10;
+    background: rgba(160, 190, 255, 0.07);
+    border: 1px solid var(--hairline);
   }
   .btn-danger {
-    @apply btn border border-red-400/30 bg-red-500/10 text-red-300 hover:bg-red-500/20;
+    @apply btn text-red-300 hover:bg-red-500/20;
+    background: rgba(255, 92, 122, 0.09);
+    border: 1px solid rgba(255, 92, 122, 0.3);
   }
   .input {
-    @apply w-full rounded-xl border border-white/10 bg-ink-900 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500
-      focus:border-gold/70 focus:outline-none focus:ring-2 focus:ring-gold/20;
+    @apply w-full rounded-xl px-3 py-2.5 text-sm text-pearl placeholder:text-slate-500 transition focus:outline-none;
+    background: rgba(4, 9, 24, 0.7);
+    border: 1px solid var(--hairline);
+  }
+  .input:hover {
+    border-color: rgba(160, 190, 255, 0.28);
+  }
+  .input:focus {
+    border-color: rgba(242, 184, 75, 0.75);
+    box-shadow: 0 0 0 3px rgba(242, 184, 75, 0.16);
   }
   .label {
-    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400;
+    @apply mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-royal-300/80;
   }
   .hint {
-    @apply mt-1 text-xs text-slate-500;
+    @apply mt-1 text-xs text-slate-400/80;
   }
   .chip {
-    @apply inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium;
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium;
+    background: rgba(160, 190, 255, 0.08);
+    border: 1px solid var(--hairline);
+  }
+  .skeleton {
+    background: linear-gradient(90deg, rgba(160, 190, 255, 0.05) 25%, rgba(160, 190, 255, 0.14) 50%, rgba(160, 190, 255, 0.05) 75%);
+    background-size: 200% 100%;
+    @apply animate-shimmer rounded-xl;
+  }
+  /* the auctioneer's big button changes skin as the call escalates */
+  .cta-gold {
+    background: var(--gold-grad);
+    color: #070f26;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.55) inset, 0 14px 36px -12px rgba(242, 184, 75, 0.7);
+  }
+  .cta-orange {
+    background: linear-gradient(135deg, #ffb066, #ff8a3d 55%, #e5601a);
+    color: #fff;
+    box-shadow: 0 14px 36px -12px rgba(255, 138, 61, 0.7);
+  }
+  .cta-red {
+    background: linear-gradient(135deg, #ff7d95, #ff5c7a 55%, #e0334f);
+    color: #fff;
+    box-shadow: 0 14px 40px -10px rgba(255, 92, 122, 0.8);
+  }
+  .cta-green {
+    background: linear-gradient(135deg, #6ee7b7, #34d399 55%, #10b981);
+    color: #052e22;
+    box-shadow: 0 14px 36px -12px rgba(52, 211, 153, 0.7);
+  }
+  .cta-muted {
+    background: rgba(160, 190, 255, 0.1);
+    color: #8ea0c4;
+    border: 1px solid var(--hairline);
+  }
+  .eyebrow {
+    @apply text-[11px] font-bold uppercase tracking-[0.24em] text-gold/90;
   }
 }
 
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
+  background: rgba(160, 190, 255, 0.18);
+  border-radius: 9px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(160, 190, 255, 0.3);
+}
+
+/* People who ask their system for less motion get a calm, static interface. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

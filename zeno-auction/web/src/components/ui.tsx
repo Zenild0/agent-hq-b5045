@@ -1,4 +1,4 @@
-import { Check, Copy, Gavel, X } from 'lucide-react';
+import { AlertCircle, Check, CheckCircle2, Copy, Info, X } from 'lucide-react';
 import { Children, cloneElement, createContext, isValidElement, useCallback, useContext, useEffect, useId, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { Captain, Player } from '../../../shared/types';
@@ -15,26 +15,31 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const toast = useCallback((msg: string, kind: ToastKind = 'info') => {
     const id = nextId.current++;
     setItems((xs) => [...xs.slice(-3), { id, msg, kind }]);
-    setTimeout(() => setItems((xs) => xs.filter((x) => x.id !== id)), kind === 'error' ? 5000 : 3000);
+    setTimeout(() => setItems((xs) => xs.filter((x) => x.id !== id)), kind === 'error' ? 5500 : 3200);
   }, []);
+  const Icon = { info: Info, error: AlertCircle, success: CheckCircle2 };
   return (
     <ToastCtx.Provider value={{ toast }}>
       {children}
-      <div className="pointer-events-none fixed inset-x-0 bottom-4 z-[100] flex flex-col items-center gap-2 px-4">
-        {items.map((t) => (
-          <div
-            key={t.id}
-            className={`pointer-events-auto max-w-md animate-rise rounded-xl border px-4 py-2.5 text-sm font-medium shadow-2xl ${
-              t.kind === 'error'
-                ? 'border-red-400/40 bg-red-950/95 text-red-100'
-                : t.kind === 'success'
-                  ? 'border-emerald-400/40 bg-emerald-950/95 text-emerald-100'
-                  : 'border-white/15 bg-ink-700/95 text-slate-100'
-            }`}
-          >
-            {t.msg}
-          </div>
-        ))}
+      <div className="pointer-events-none fixed inset-x-0 bottom-4 z-[100] flex flex-col items-center gap-2 px-4" role="status" aria-live="polite">
+        {items.map((t) => {
+          const I = Icon[t.kind];
+          return (
+            <div
+              key={t.id}
+              className={`pointer-events-auto flex max-w-md animate-rise items-start gap-2.5 rounded-2xl border px-4 py-3 text-sm font-medium shadow-2xl backdrop-blur-xl ${
+                t.kind === 'error'
+                  ? 'border-hot/40 bg-[#2a0d1a]/95 text-red-100'
+                  : t.kind === 'success'
+                    ? 'border-emerald-400/40 bg-[#062a22]/95 text-emerald-100'
+                    : 'border-royal/40 bg-ink-800/95 text-pearl'
+              }`}
+            >
+              <I className={`mt-0.5 h-4 w-4 shrink-0 ${t.kind === 'error' ? 'text-hot' : t.kind === 'success' ? 'text-emerald-400' : 'text-royal-300'}`} />
+              <span>{t.msg}</span>
+            </div>
+          );
+        })}
       </div>
     </ToastCtx.Provider>
   );
@@ -42,14 +47,38 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
 // ---- brand ----------------------------------------------------------------------------------
 
+/** The ZenoBid mark: a gavel over a pulse line, in a navy tile with a gold edge. */
+export function LogoMark({ size = 36 }: { size?: number }) {
+  const id = useId().replace(/:/g, '');
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden className="shrink-0 drop-shadow-[0_6px_14px_rgba(242,184,75,0.35)]">
+      <defs>
+        <linearGradient id={`g${id}`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#ffe9ac" />
+          <stop offset=".5" stopColor="#f2b84b" />
+          <stop offset="1" stopColor="#c98a12" />
+        </linearGradient>
+        <linearGradient id={`b${id}`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#1b2f63" />
+          <stop offset="1" stopColor="#070f26" />
+        </linearGradient>
+      </defs>
+      <rect x="1.5" y="1.5" width="45" height="45" rx="13" fill={`url(#b${id})`} stroke={`url(#g${id})`} strokeWidth="1.6" />
+      <g transform="rotate(-38 24 20)">
+        <rect x="11" y="8" width="24" height="11" rx="3.2" fill={`url(#g${id})`} />
+        <rect x="21" y="18" width="5" height="17" rx="2.5" fill={`url(#g${id})`} />
+      </g>
+      <path d="M7 38h9l3-5 4 9 3-7h15" fill="none" stroke="#5b8cff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function Logo({ to = '/', size = 'md' }: { to?: string; size?: 'md' | 'lg' }) {
   return (
-    <Link to={to} className="inline-flex items-center gap-2.5">
-      <span className={`grid place-items-center rounded-xl bg-gold text-ink-950 ${size === 'lg' ? 'h-12 w-12' : 'h-9 w-9'}`}>
-        <Gavel className={size === 'lg' ? 'h-7 w-7' : 'h-5 w-5'} strokeWidth={2.5} />
-      </span>
-      <span className={`font-display tracking-wide ${size === 'lg' ? 'text-4xl' : 'text-2xl'}`}>
-        ZENO<span className="text-gold">BID</span>
+    <Link to={to} className="inline-flex items-center gap-2.5" aria-label="ZenoBid home">
+      <LogoMark size={size === 'lg' ? 46 : 36} />
+      <span className={`font-display font-extrabold tracking-tight ${size === 'lg' ? 'text-4xl' : 'text-[1.4rem]'}`}>
+        Zeno<span className="text-gold-grad">Bid</span>
       </span>
     </Link>
   );
@@ -90,14 +119,16 @@ export function Toggle({ checked, onChange, label, hint }: { checked: boolean; o
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className="flex w-full items-center justify-between gap-4 rounded-xl border border-white/10 bg-ink-900 px-3.5 py-3 text-left transition hover:border-white/25"
+      className={`flex w-full items-center justify-between gap-4 rounded-xl border px-3.5 py-3 text-left transition ${
+        checked ? 'border-gold/40 bg-gold/[0.07]' : 'border-[var(--hairline)] bg-ink-900/60 hover:border-royal-300/30'
+      }`}
     >
       <span>
         <span className="block text-sm font-semibold">{label}</span>
         {hint && <span className="block text-xs text-slate-400">{hint}</span>}
       </span>
       <span className={`relative h-6 w-11 shrink-0 rounded-full transition ${checked ? 'bg-gold' : 'bg-ink-600'}`}>
-        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${checked ? 'left-[22px]' : 'left-0.5'}`} />
+        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-md transition-all ${checked ? 'left-[22px]' : 'left-0.5'}`} />
       </span>
     </button>
   );
@@ -120,7 +151,7 @@ export function Segmented<T extends string>({
           type="button"
           onClick={() => onChange(o.value)}
           className={`rounded-xl border px-3 py-2.5 text-left transition ${
-            value === o.value ? 'border-gold bg-gold/10' : 'border-white/10 bg-ink-900 hover:border-white/25'
+            value === o.value ? 'border-gold/70 bg-gold/[0.09] shadow-[0_0_24px_-8px_rgba(242,184,75,0.6)]' : 'border-[var(--hairline)] bg-ink-900/60 hover:border-royal-300/30'
           }`}
         >
           <span className="block text-sm font-semibold">{o.label}</span>
@@ -133,14 +164,17 @@ export function Segmented<T extends string>({
 
 export function Tabs<T extends string>({ value, onChange, tabs }: { value: T; onChange: (v: T) => void; tabs: { id: T; label: string; badge?: ReactNode }[] }) {
   return (
-    <div className="flex gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-ink-900/80 p-1">
+    <div className="flex gap-1 overflow-x-auto rounded-2xl border border-[var(--hairline)] bg-ink-900/70 p-1 backdrop-blur" role="tablist">
       {tabs.map((t) => (
         <button
           key={t.id}
+          role="tab"
+          aria-selected={value === t.id}
           onClick={() => onChange(t.id)}
           className={`flex items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold transition ${
-            value === t.id ? 'bg-gold text-ink-950' : 'text-slate-300 hover:bg-white/5'
+            value === t.id ? 'text-ink-950 shadow-[0_6px_18px_-8px_rgba(242,184,75,0.8)]' : 'text-slate-300 hover:bg-white/5 hover:text-white'
           }`}
+          style={value === t.id ? { background: 'var(--gold-grad)' } : undefined}
         >
           {t.label}
           {t.badge}
@@ -157,13 +191,13 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-sm" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-ink-950/75 p-4 backdrop-blur-md" onMouseDown={onClose} role="dialog" aria-modal="true" aria-label={title}>
       <div
-        className={`card max-h-[92vh] w-full overflow-y-auto p-5 shadow-2xl ${wide ? 'max-w-3xl' : 'max-w-lg'}`}
+        className={`card max-h-[92vh] w-full animate-pop overflow-y-auto p-5 shadow-[0_40px_90px_-30px_rgba(0,0,0,0.9)] ${wide ? 'max-w-3xl' : 'max-w-lg'}`}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-bold">{title}</h3>
+          <h3 className="font-display text-lg font-bold tracking-tight">{title}</h3>
           <button className="rounded-lg p-1.5 text-slate-400 hover:bg-white/10 hover:text-white" onClick={onClose} aria-label="Close">
             <X className="h-5 w-5" />
           </button>
@@ -204,9 +238,9 @@ export function CopyButton({ text, label = 'Copy', className = '' }: { text: str
 export function FullScreenMessage({ title, children }: { title: string; children?: ReactNode }) {
   return (
     <div className="grid min-h-screen place-items-center p-6 text-center">
-      <div>
+      <div className="max-w-md animate-rise">
         <Logo />
-        <h1 className="mt-8 font-display text-4xl tracking-wide">{title}</h1>
+        <h1 className="mt-8 font-display text-3xl font-extrabold tracking-tight">{title}</h1>
         <div className="mt-3 text-slate-400">{children}</div>
       </div>
     </div>
@@ -215,16 +249,18 @@ export function FullScreenMessage({ title, children }: { title: string; children
 
 // ---- avatars --------------------------------------------------------------------------------
 
+// A curated set of deep jewel tones so photo-less players still look premium (no neon).
+const JEWELS = [222, 262, 340, 162, 200, 34, 188, 352];
 function hue(s: string): number {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return h % 360;
+  return JEWELS[h % JEWELS.length];
 }
 
 /** The coloured backdrop used for players without a photo. */
 export function avatarGradient(name: string): string {
   const h = hue(name);
-  return `linear-gradient(135deg, hsl(${h} 70% 38%), hsl(${(h + 50) % 360} 70% 20%))`;
+  return `radial-gradient(120% 90% at 20% 0%, hsl(${h} 70% 52% / .9), transparent 60%), linear-gradient(145deg, hsl(${h} 58% 30%), hsl(${(h + 28) % 360} 62% 14%))`;
 }
 
 const initials = (name: string) =>
@@ -241,13 +277,9 @@ export function PlayerAvatar({ player, className = '', showPhoto = true }: { pla
   if (showPhoto && player.photo && !broken) {
     return <img src={player.photo} alt={player.name} onError={() => setBroken(true)} className={`object-cover ${className}`} draggable={false} />;
   }
-  const h = hue(player.name);
   return (
-    <div
-      className={`grid place-items-center font-display text-white ${className}`}
-      style={{ background: `linear-gradient(135deg, hsl(${h} 70% 45%), hsl(${(h + 50) % 360} 70% 30%))` }}
-    >
-      <span className="select-none" style={{ fontSize: '2.4em' }}>
+    <div className={`grid place-items-center font-display font-bold text-white/95 ${className}`} style={{ background: avatarGradient(player.name) }}>
+      <span className="select-none" style={{ fontSize: '2.2em' }}>
         {initials(player.name)}
       </span>
     </div>
@@ -255,17 +287,13 @@ export function PlayerAvatar({ player, className = '', showPhoto = true }: { pla
 }
 
 export function TeamDot({ captain, size = 10 }: { captain: Pick<Captain, 'color'>; size?: number }) {
-  return <span className="inline-block shrink-0 rounded-full" style={{ background: captain.color, width: size, height: size }} />;
+  return <span className="inline-block shrink-0 rounded-full" style={{ background: captain.color, width: size, height: size, boxShadow: `0 0 10px ${captain.color}88` }} />;
 }
 
 export function TeamBadge({ captain, className = '' }: { captain: Pick<Captain, 'team' | 'color' | 'logo'>; className?: string }) {
   return (
     <span className={`inline-flex items-center gap-2 font-semibold ${className}`}>
-      {captain.logo ? (
-        <img src={captain.logo} alt="" className="h-6 w-6 rounded-full object-cover" />
-      ) : (
-        <TeamDot captain={captain} size={12} />
-      )}
+      {captain.logo ? <img src={captain.logo} alt="" className="h-6 w-6 rounded-full object-cover" /> : <TeamDot captain={captain} size={12} />}
       {captain.team}
     </span>
   );

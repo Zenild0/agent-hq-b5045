@@ -1,9 +1,9 @@
-import { Loader2, Volume2, VolumeX, Mic, MicOff } from 'lucide-react';
+import { Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { Room } from '../lib/useRoom';
-import { sfx, type SoundPrefs } from '../lib/sound';
-import { FullScreenMessage } from './ui';
+import { sfx, speak, useVoices, type SoundPrefs } from '../lib/sound';
+import { FullScreenMessage, Logo } from './ui';
 
 export function RoomGate({ room, code, children }: { room: Room; code: string; children: (snap: NonNullable<Room['snap']>) => ReactNode }) {
   if (room.status === 'missing')
@@ -28,14 +28,25 @@ export function RoomGate({ room, code, children }: { room: Room; code: string; c
     );
   if (!room.snap)
     return (
-      <div className="grid min-h-screen place-items-center">
-        <Loader2 className="h-8 w-8 animate-spin text-gold" />
+      <div className="grid min-h-screen place-items-center p-6" aria-busy="true" aria-label="Loading the auction">
+        <div className="w-full max-w-md space-y-5">
+          <div className="flex justify-center">
+            <Logo />
+          </div>
+          <div className="skeleton h-5 w-2/3" />
+          <div className="skeleton h-40 w-full" />
+          <div className="grid grid-cols-3 gap-3">
+            <div className="skeleton h-16" />
+            <div className="skeleton h-16" />
+            <div className="skeleton h-16" />
+          </div>
+        </div>
       </div>
     );
   return (
     <>
       {room.status === 'offline' && (
-        <div className="fixed inset-x-0 top-0 z-[90] bg-red-600 py-1.5 text-center text-xs font-bold">Connection lost — reconnecting…</div>
+        <div className="fixed inset-x-0 top-0 z-[90] bg-gradient-to-r from-hot to-[#e0334f] py-1.5 text-center text-xs font-bold text-white">Connection lost — reconnecting…</div>
       )}
       {children(room.snap)}
     </>
@@ -43,11 +54,13 @@ export function RoomGate({ room, code, children }: { room: Room; code: string; c
 }
 
 export function SoundControls({ prefs, update }: { prefs: SoundPrefs; update: (p: Partial<SoundPrefs>) => void }) {
+  const { voices, active } = useVoices(prefs.voiceName);
   return (
-    <div className="flex gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5">
       <button
         className={`btn-ghost !px-3 !py-2 ${prefs.sfx ? '!border-gold/60 !text-gold' : ''}`}
         title="Sound effects"
+        aria-pressed={prefs.sfx}
         onClick={() => {
           update({ sfx: !prefs.sfx });
           if (!prefs.sfx) setTimeout(sfx.bid, 50);
@@ -59,11 +72,35 @@ export function SoundControls({ prefs, update }: { prefs: SoundPrefs; update: (p
       <button
         className={`btn-ghost !px-3 !py-2 ${prefs.voice ? '!border-gold/60 !text-gold' : ''}`}
         title="Announcer voice"
-        onClick={() => update({ voice: !prefs.voice })}
+        aria-pressed={prefs.voice}
+        onClick={() => {
+          update({ voice: !prefs.voice });
+          if (!prefs.voice) setTimeout(() => speak("Hello! I'm your auctioneer. Let's begin.", prefs.voiceName), 80);
+        }}
       >
         {prefs.voice ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
         <span className="hidden sm:inline">Announcer</span>
       </button>
+      {prefs.voice && voices.length > 1 && (
+        <select
+          aria-label="Announcer voice"
+          title="Choose the announcer's voice"
+          className="input !w-auto max-w-[190px] !py-2 !text-xs"
+          value={prefs.voiceName ?? ''}
+          onChange={(e) => {
+            update({ voiceName: e.target.value || undefined });
+            const name = e.target.value || undefined;
+            setTimeout(() => speak('Going once, going twice, sold!', name), 60);
+          }}
+        >
+          <option value="">Best voice{active ? ` · ${active.name.replace(/^(Microsoft|Google)\s+/i, '')}` : ''}</option>
+          {voices.map((v) => (
+            <option key={v.name} value={v.name}>
+              {v.name.replace(/^(Microsoft|Google)\s+/i, '')} ({v.lang})
+            </option>
+          ))}
+        </select>
+      )}
     </div>
   );
 }

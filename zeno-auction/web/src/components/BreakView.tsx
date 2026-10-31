@@ -41,7 +41,7 @@ export function BreakView({ snap, serverNow, compact }: { snap: Snapshot; server
           </svg>
           <div className="absolute inset-0 grid place-items-center">
             <div
-              className={`font-display tracking-wide ${urgent ? 'animate-pulse' : ''} ${compact ? 'text-6xl' : 'text-[clamp(4.5rem,9vw,8rem)]'}`}
+              className={`font-display font-extrabold ${urgent ? 'animate-beat' : ''} ${compact ? 'text-5xl' : 'text-[clamp(4rem,8vw,7.5rem)]'}`}
               style={{ color }}
             >
               {over ? '0:00' : fmtClock(left)}
@@ -55,7 +55,7 @@ export function BreakView({ snap, serverNow, compact }: { snap: Snapshot; server
 
       {!compact && (
         <div>
-          <h2 className="mb-3 font-display text-3xl tracking-wide">
+          <h2 className="mb-3 font-display text-2xl font-extrabold">
             TEAMS <span className="text-gold">SO FAR</span>
           </h2>
           <TeamBoard snap={snap} big />

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatMoney, spokenMoney } from '../../../shared/money';
+import { englishVoices, isFemaleVoice, pickVoice } from '../../../shared/voice';
 import type { Snapshot } from '../../../shared/types';
 import { fmtDuration } from './useCountdown';
 
@@ -77,15 +78,40 @@ export const sfx = {
   },
 };
 
-export function speak(text: string) {
+// ---- the announcer's voice: a clear female English voice by default, changeable ----------------
+
+type Voice = SpeechSynthesisVoice;
+const voiceListeners = new Set<() => void>();
+if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+  // Chrome loads its voice list asynchronously; tell everyone when it arrives
+  window.speechSynthesis.addEventListener?.('voiceschanged', () => voiceListeners.forEach((f) => f()));
+}
+const allVoices = (): Voice[] => (typeof window !== 'undefined' && 'speechSynthesis' in window ? window.speechSynthesis.getVoices() : []);
+
+/** The English voices installed on this computer, best (female) first, and the one that will be used. */
+export function useVoices(preferred?: string) {
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const f = () => bump((n) => n + 1);
+    voiceListeners.add(f);
+    return () => void voiceListeners.delete(f);
+  }, []);
+  const voices = englishVoices(allVoices());
+  const active = pickVoice(voices, preferred);
+  return { voices, active };
+}
+
+export function speak(text: string, preferredVoice?: string) {
   if (!('speechSynthesis' in window)) return;
   const synth = window.speechSynthesis;
   synth.cancel();
   const u = new SpeechSynthesisUtterance(text);
-  const voices = synth.getVoices();
-  u.voice = voices.find((v) => v.lang === 'en-IN') ?? voices.find((v) => v.lang.startsWith('en')) ?? null;
-  u.rate = 1.02;
-  u.pitch = 0.95;
+  const voice = pickVoice(englishVoices(synth.getVoices()), preferredVoice);
+  if (voice) u.voice = voice;
+  u.lang = voice?.lang ?? 'en-IN';
+  u.rate = 1.04;
+  // a touch brighter for an upbeat announcer; lifted more if only a male voice is installed
+  u.pitch = voice && !isFemaleVoice(voice) ? 1.3 : 1.08;
   synth.speak(u);
 }
 
@@ -94,6 +120,8 @@ export function speak(text: string) {
 export interface SoundPrefs {
   sfx: boolean;
   voice: boolean;
+  /** the announcer voice the person picked (empty = best female voice) */
+  voiceName?: string;
 }
 
 const PREF_KEY = 'zeno:sound';
@@ -137,7 +165,7 @@ export function useAuctionSound(snap: Snapshot | null, prefs: SoundPrefs) {
     const fmt = snap.settings;
     const player = snap.players.find((p) => p.id === ev.playerId);
     const team = snap.captains.find((c) => c.id === ev.captainId);
-    const say = (text: string) => prefs.voice && speak(text);
+    const say = (text: string) => prefs.voice && speak(text, prefs.voiceName);
 
     switch (ev.type) {
       case 'spin':

@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Player } from '../../../shared/types';
 import { sfx } from '../lib/sound';
 
-const PALETTE = ['#ff3d81', '#29e0ff', '#ffc933', '#7cf29a', '#b388ff', '#ff8a3d', '#4d8bff'];
+// navy / royal blue / champagne gold: a roulette that looks like it belongs in a private bank
+const PALETTE = ['#1d46b8', '#f2b84b', '#2f6bff', '#ffe29a', '#14286b', '#d9a03a'];
+const LIGHT_SEGMENTS = new Set(['#f2b84b', '#ffe29a', '#d9a03a']);
 const R = 188;
 const C = 200;
 
@@ -99,20 +101,26 @@ export function SpinWheel({
     <div className="relative mx-auto" style={{ width: size, height: size }}>
       {/* pointer */}
       <svg viewBox="0 0 40 50" className="absolute left-1/2 top-[-3%] z-10 w-[9%] -translate-x-1/2 drop-shadow-[0_4px_8px_rgba(0,0,0,0.6)]">
-        <path d="M20 48 L3 6 Q20 -4 37 6 Z" fill="#ffc933" stroke="#07071a" strokeWidth="3" strokeLinejoin="round" />
+        <defs><linearGradient id="ptr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ffe9ac" /><stop offset="1" stopColor="#c98a12" /></linearGradient></defs>
+        <path d="M20 48 L3 6 Q20 -4 37 6 Z" fill="url(#ptr)" stroke="#070f26" strokeWidth="3" strokeLinejoin="round" />
       </svg>
       <svg
         viewBox="0 0 400 400"
-        className={`h-full w-full ${stopped ? 'drop-shadow-[0_0_40px_rgba(255,201,51,0.55)]' : ''}`}
+        className={`h-full w-full ${stopped ? 'drop-shadow-[0_0_44px_rgba(242,184,75,0.6)]' : 'drop-shadow-[0_18px_30px_rgba(0,0,0,0.5)]'}`}
         style={{
           transform: `rotate(${anim.rot}deg)`,
           transition: anim.ms ? `transform ${anim.ms}ms cubic-bezier(0.215, 0.61, 0.355, 1)` : 'none',
         }}
       >
-        <circle cx={C} cy={C} r={R + 8} fill="#0d0d24" stroke="#ffc933" strokeWidth="4" />
+        <circle cx={C} cy={C} r={R + 10} fill="#070f26" stroke="#f2b84b" strokeWidth="3" />
+        <circle cx={C} cy={C} r={R + 10} fill="none" stroke="#ffe9ac" strokeOpacity="0.35" strokeWidth="1" strokeDasharray="2 6" />
+        {Array.from({ length: 40 }, (_, k) => {
+          const [lx, ly] = point((k * 360) / 40, R + 3);
+          return <circle key={k} cx={lx} cy={ly} r="2.1" fill={k % 2 ? '#ffe9ac' : '#5b8cff'} className={stopped ? '' : 'animate-twinkle'} style={{ animationDelay: `${(k % 8) * 0.12}s`, opacity: stopped ? 0.9 : undefined }} />;
+        })}
         {slices.map(({ p, d, color, mid }) => (
           <g key={p.id}>
-            <path d={d} fill={color} stroke="#07071a" strokeWidth="2" opacity={stopped && p.id !== targetId ? 0.35 : 1} />
+            <path d={d} fill={color} stroke="#070f26" strokeWidth="1.6" opacity={stopped && p.id !== targetId ? 0.32 : 1} />
             <text
               transform={`rotate(${mid - 90} ${C} ${C})`}
               x={C + R - 14}
@@ -121,15 +129,16 @@ export function SpinWheel({
               dominantBaseline="central"
               fontSize={fontSize}
               fontWeight={800}
-              fill="#07071a"
+              fill={LIGHT_SEGMENTS.has(color) ? '#070f26' : '#f4f7ff'}
               style={{ fontFamily: 'Inter, sans-serif' }}
             >
               {clip(p.name, n)}
             </text>
           </g>
         ))}
-        <circle cx={C} cy={C} r="34" fill="#07071a" stroke="#ffc933" strokeWidth="5" />
-        <text x={C} y={C} textAnchor="middle" dominantBaseline="central" fontSize="22" fill="#ffc933" style={{ fontFamily: 'Anton, Impact, sans-serif' }}>
+        <circle cx={C} cy={C} r="36" fill="#070f26" stroke="#f2b84b" strokeWidth="4" />
+        <circle cx={C} cy={C} r="29" fill="none" stroke="#2f6bff" strokeOpacity="0.6" strokeWidth="1.5" />
+        <text x={C} y={C} textAnchor="middle" dominantBaseline="central" fontSize="20" fontWeight="800" fill="#f2b84b" style={{ fontFamily: 'Sora, Inter, sans-serif' }}>
           ZB
         </text>
       </svg>
@@ -137,7 +146,7 @@ export function SpinWheel({
       {stopped && winner && !hideWinner && (
         <div className="pointer-events-none absolute inset-x-0 -bottom-[24%] text-center">
           <div className="inline-block animate-pop rounded-2xl border-4 border-gold bg-ink-950/95 px-8 py-2 shadow-[0_0_60px_rgba(255,201,51,0.5)]">
-            <span className="animate-pulse font-display text-[clamp(1.8rem,5vw,3.6rem)] tracking-wide text-gold">{winner.name}</span>
+            <span className="animate-pulse font-stage text-[clamp(2.2rem,5.4vw,4rem)] font-extrabold tracking-wide text-gold">{winner.name}</span>
           </div>
         </div>
       )}
