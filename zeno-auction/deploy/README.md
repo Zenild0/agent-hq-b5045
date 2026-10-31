@@ -1,5 +1,7 @@
 # Put ZenoBid on your own server and domain
 
+> **On a Windows server (with Cloudflare for your domain)?** Use **[WINDOWS.md](./WINDOWS.md)** — no Docker, no open ports. This page is for a Linux server.
+
 Result: `https://auction.yourdomain.com` — anyone, anywhere, can open it. HTTPS is automatic.
 
 ## What you need

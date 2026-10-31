@@ -312,7 +312,11 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ ok: false, error: 'Something went wrong' });
 });
 
-const server = app.listen(PORT, () => console.log(`ZenoBid listening on http://localhost:${PORT}`));
+// HOST=127.0.0.1 makes the app reachable only from this machine (used with a tunnel or reverse proxy,
+// so nobody can bypass it by connecting to the port directly). Default: all network interfaces.
+const HOST = process.env.HOST || undefined;
+const onListening = () => console.log(`ZenoBid listening on http://${HOST ?? 'localhost'}:${PORT}`);
+const server = HOST ? app.listen(PORT, HOST, onListening) : app.listen(PORT, onListening);
 server.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EADDRINUSE') {
     console.error(`\n✗ Port ${PORT} is already in use — another copy of ZenoBid is probably still running.\n  Close the other terminal window (Ctrl+C) and start again. Auctions are saved on disk, nothing is lost.\n`);
