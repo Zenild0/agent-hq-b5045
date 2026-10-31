@@ -1,5 +1,6 @@
 import { Maximize2, Users } from 'lucide-react';
 import { useParams } from 'react-router-dom';
+import { PageTitle } from '../components/PageTitle';
 import { PracticeBanner } from '../components/PracticeBanner';
 import { RoomGate, SoundControls } from '../components/RoomGate';
 import { Arena } from '../components/Arena';
@@ -24,6 +25,7 @@ export default function Live({ forceBoard = false }: { forceBoard?: boolean }) {
         const leader = live.bids[live.bids.length - 1]?.captainId;
         return (
           <>
+          <PageTitle title={`${settings.name} · Live`} />
           <PracticeBanner snap={snap} />
           <div className="mx-auto flex min-h-screen max-w-[1800px] flex-col gap-4 p-4 sm:p-6" style={{ ['--accent' as string]: settings.accent }}>
             <header className="flex flex-wrap items-center justify-between gap-3">

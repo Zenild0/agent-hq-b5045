@@ -12,6 +12,6 @@ export default defineConfig({
     port: 5173,
     host: true,
     fs: { allow: [path.resolve('.')] },
-    proxy: { '/api': API, '/uploads': API },
+    proxy: { '/api': { target: API, ws: true }, '/uploads': API },
   },
 });

@@ -28,14 +28,27 @@ export async function lookupEvent(code: string) {
   return parse<{ code: string; name: string; sport: string }>(res);
 }
 
+const COMMAND_TIMEOUT_MS = 10_000;
+
 export async function sendCommand(code: string, key: string | null, action: string, params: unknown = {}) {
-  const res = await fetch(`/api/events/${code}/cmd`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', ...(key ? { 'x-key': key } : {}) },
-    body: JSON.stringify({ action, params }),
-  });
-  const body = await parse<{ ok: true; result: any }>(res);
-  return body.result;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), COMMAND_TIMEOUT_MS);
+  try {
+    const res = await fetch(`/api/events/${code}/cmd`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(key ? { 'x-key': key } : {}) },
+      body: JSON.stringify({ action, params }),
+      signal: ctl.signal,
+    });
+    const body = await parse<{ ok: true; result: any }>(res);
+    return body.result;
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    // timeout or no network: say so instead of leaving a button stuck
+    throw new ApiError(ctl.signal.aborted ? 'The server is taking too long to answer — please try again.' : 'Could not reach the server — check your connection.', 0);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function uploadImage(code: string, key: string, blob: Blob): Promise<string> {

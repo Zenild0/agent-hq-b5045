@@ -1,5 +1,5 @@
 import { Check, Copy, Gavel, X } from 'lucide-react';
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Children, cloneElement, createContext, isValidElement, useCallback, useContext, useEffect, useId, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { Captain, Player } from '../../../shared/types';
 
@@ -57,11 +57,27 @@ export function Logo({ to = '/', size = 'md' }: { to?: string; size?: 'md' | 'lg
 
 // ---- form bits ------------------------------------------------------------------------------
 
+/** Gives the first form control inside a Field the id its label points at (so screen readers announce it). */
+function linkControl(children: ReactNode, id: string): ReactNode {
+  let done = false;
+  return Children.map(children, (child) => {
+    if (done || !isValidElement(child)) return child;
+    const el = child as ReactElement<{ id?: string }>;
+    const isControl = ['input', 'select', 'textarea'].includes(el.type as string) || (typeof el.type !== 'string' && 'fmt' in (el.props as object));
+    if (!isControl || el.props.id) return child;
+    done = true;
+    return cloneElement(el, { id });
+  });
+}
+
 export function Field({ label, hint, children, className = '' }: { label: string; hint?: string; children: ReactNode; className?: string }) {
+  const id = useId();
   return (
     <div className={className}>
-      <label className="label">{label}</label>
-      {children}
+      <label className="label" htmlFor={id}>
+        {label}
+      </label>
+      {linkControl(children, id)}
       {hint && <p className="hint">{hint}</p>}
     </div>
   );

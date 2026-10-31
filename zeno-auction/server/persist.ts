@@ -41,8 +41,13 @@ export function saveSoon(store: Store): void {
 export function saveNow(store: Store): void {
   const file = path.join(EVENTS_DIR, `${store.data.code}.json`);
   const tmp = `${file}.tmp`;
-  writeFileSync(tmp, JSON.stringify(store));
-  renameSync(tmp, file);
+  try {
+    writeFileSync(tmp, JSON.stringify(store));
+    renameSync(tmp, file);
+  } catch (err) {
+    // e.g. disk full: keep the auction running from memory and try again on the next change
+    console.error(`Could not save auction ${store.data.code}:`, err);
+  }
 }
 
 export function flushAll(stores: Iterable<Store>): void {

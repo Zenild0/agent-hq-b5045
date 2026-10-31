@@ -21,6 +21,19 @@ body {
   background-attachment: fixed;
 }
 
+@layer base {
+  /* Grid items may shrink below their longest unbreakable word, so a very long name can never
+     stretch a column (and the whole page) past the screen edge. */
+  .grid > * {
+    min-width: 0;
+  }
+  h1,
+  h2,
+  h3 {
+    overflow-wrap: anywhere;
+  }
+}
+
 @layer components {
   .card {
     @apply rounded-2xl border border-white/10 bg-ink-800/80 backdrop-blur;

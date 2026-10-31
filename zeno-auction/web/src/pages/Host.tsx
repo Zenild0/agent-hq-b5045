@@ -2,6 +2,7 @@ import { ExternalLink } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { HostConsole } from '../components/HostConsole';
 import { KeyPrompt } from '../components/KeyPrompt';
+import { PageTitle } from '../components/PageTitle';
 import { PracticeBanner } from '../components/PracticeBanner';
 import { RoomGate, SoundControls } from '../components/RoomGate';
 import { Logo } from '../components/ui';
@@ -24,6 +25,7 @@ export default function Host() {
           return <KeyPrompt title="AUCTIONEER LOGIN" hint="Paste the auctioneer key from the admin's Share tab." />;
         return (
           <>
+          <PageTitle title={`Auctioneer · ${snap.settings.name}`} />
           <PracticeBanner snap={snap} />
           <div className="mx-auto max-w-[1700px] space-y-5 p-4 sm:p-6">
             <header className="flex flex-wrap items-center justify-between gap-3">

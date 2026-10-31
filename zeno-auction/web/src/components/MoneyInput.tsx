@@ -10,6 +10,7 @@ export function MoneyInput({
   className = '',
   allowZero = false,
   onCommit,
+  id,
 }: {
   value: number;
   onChange: (n: number) => void;
@@ -19,6 +20,7 @@ export function MoneyInput({
   allowZero?: boolean;
   /** Called when the field loses focus with a readable amount (handy for "save on blur" fields). */
   onCommit?: (n: number) => void;
+  id?: string;
 }) {
   const [text, setText] = useState(value ? formatMoney(value, { ...fmt, symbol: '' }).trim() : '');
   const [focused, setFocused] = useState(false);
@@ -33,6 +35,7 @@ export function MoneyInput({
   return (
     <div className={className}>
       <input
+        id={id}
         className={`input ${invalid ? '!border-red-400/60' : ''}`}
         value={text}
         placeholder={placeholder ?? 'e.g. 12cr, 5L, 250k'}

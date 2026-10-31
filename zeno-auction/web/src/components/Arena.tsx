@@ -177,7 +177,8 @@ function PlayerCard({ snap, player }: { snap: Snapshot; player: Player }) {
   const { settings, live } = snap;
   const d = settings.display;
   const longest = Math.max(...player.name.split(/\s+/).map((w) => w.length), player.name.length / 2.2);
-  const vw = Math.max(3.4, Math.min(8.2, 76 / longest));
+  // shrink for long single words AND for long names overall, so nothing is ever cut off
+  const vw = Math.max(1.7, Math.min(8.2, 76 / longest, 170 / Math.max(player.name.length, 1)));
   const bidding = live.phase === 'bidding' && !live.result;
 
   return (
@@ -450,9 +451,23 @@ function TeamsRail({ snap }: { snap: Snapshot }) {
   const { captains, live } = snap;
   const leaderId = live.phase === 'bidding' ? live.bids[live.bids.length - 1]?.captainId : undefined;
   const justSold = live.result?.kind === 'sold' ? live.result : null;
+  // With many teams there is no room to list every squad, so show one compact tile per team
+  // (the full squads are on the Team board screen).
+  const compact = captains.length > 8;
   const cols = captains.length <= 5 ? captains.length || 1 : Math.ceil(captains.length / 2);
 
   if (captains.length === 0) return null;
+  if (compact) {
+    return (
+      <AutoScroll className="min-h-[260px] flex-1">
+        <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))' }}>
+          {captains.map((c) => (
+            <TeamCard key={c.id} snap={snap} captain={c} compact leading={leaderId === c.id} justSoldId={justSold?.captainId === c.id ? justSold.playerId : undefined} />
+          ))}
+        </div>
+      </AutoScroll>
+    );
+  }
   return (
     <div className="grid min-h-[260px] flex-1 gap-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
       {captains.map((c) => (
@@ -462,7 +477,7 @@ function TeamsRail({ snap }: { snap: Snapshot }) {
   );
 }
 
-function TeamCard({ snap, captain: c, leading, justSoldId }: { snap: Snapshot; captain: Captain; leading: boolean; justSoldId?: string }) {
+function TeamCard({ snap, captain: c, leading, justSoldId, compact = false }: { snap: Snapshot; captain: Captain; leading: boolean; justSoldId?: string; compact?: boolean }) {
   const { settings } = snap;
   const st = teamStats(snap, c);
   const squad = [...st.players].sort((a, b) => b.price - a.price);
@@ -495,8 +510,15 @@ function TeamCard({ snap, captain: c, leading, justSoldId }: { snap: Snapshot; c
       <div className="mt-2 h-1.5 shrink-0 overflow-hidden rounded-full bg-ink-900">
         <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: c.color }} />
       </div>
-      <p className="mt-1 shrink-0 text-[10px] text-slate-500">Max bid {formatMoney(Math.max(0, limit), settings)}</p>
+      {compact && (
+        <p className="mt-1.5 flex shrink-0 justify-between text-[11px] text-slate-400">
+          <span>{st.count} players</span>
+          <span>Max bid {formatMoney(Math.max(0, limit), settings)}</span>
+        </p>
+      )}
+      {!compact && <p className="mt-1 shrink-0 text-[10px] text-slate-500">Max bid {formatMoney(Math.max(0, limit), settings)}</p>}
 
+      {!compact && (
       <AutoScroll className="mt-1.5 min-h-0 flex-1">
         {squad.length === 0 ? (
           <p className="py-4 text-center text-xs text-slate-500">No players yet</p>
@@ -519,6 +541,7 @@ function TeamCard({ snap, captain: c, leading, justSoldId }: { snap: Snapshot; c
           </ul>
         )}
       </AutoScroll>
+      )}
     </div>
   );
 }
@@ -530,29 +553,47 @@ function AutoScroll({ children, className = '' }: { children: ReactNode; classNa
     const el = ref.current;
     if (!el) return;
     let raf = 0;
-    let pos = el.scrollTop;
+    let running = false;
+    let pos = 0;
     let dir = 1;
     let pause = 2000;
-    let last = performance.now();
+    let last = 0;
     const loop = (t: number) => {
       const dt = Math.min(64, t - last);
       last = t;
       const max = el.scrollHeight - el.clientHeight;
-      if (max > 4) {
-        if (pause > 0) pause -= dt;
-        else {
-          pos = Math.max(0, Math.min(max, pos + dir * dt * 0.03));
-          el.scrollTop = pos;
-          if (pos >= max || pos <= 0) {
-            dir = -dir;
-            pause = 2500;
-          }
+      if (pause > 0) pause -= dt;
+      else {
+        pos = Math.max(0, Math.min(max, pos + dir * dt * 0.03));
+        el.scrollTop = pos;
+        if (pos >= max || pos <= 0) {
+          dir = -dir;
+          pause = 2500;
         }
-      } else pos = 0;
+      }
       raf = requestAnimationFrame(loop);
     };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
+    // Only animate when there is something to scroll; otherwise stay completely idle.
+    const check = () => {
+      const needs = el.scrollHeight - el.clientHeight > 4;
+      if (needs && !running) {
+        running = true;
+        last = performance.now();
+        pos = el.scrollTop;
+        raf = requestAnimationFrame(loop);
+      } else if (!needs && running) {
+        running = false;
+        cancelAnimationFrame(raf);
+        pos = 0;
+        el.scrollTop = 0;
+      }
+    };
+    const id = setInterval(check, 1000);
+    check();
+    return () => {
+      clearInterval(id);
+      cancelAnimationFrame(raf);
+    };
   }, []);
   return (
     <div ref={ref} className={`overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${className}`}>

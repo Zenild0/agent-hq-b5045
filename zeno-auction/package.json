@@ -1,7 +1,7 @@
 {
   "name": "zenobid",
   "version": "1.0.0",
-  "description": "ZenoBid — the live team auction app. Captains bid, the auctioneer calls it, the whole Zoom room watches.",
+  "description": "ZenoBid \u2014 the live team auction app. Captains bid, the auctioneer calls it, the whole Zoom room watches.",
   "private": true,
   "type": "module",
   "engines": {
@@ -14,10 +14,12 @@
     "build": "vite build && esbuild server/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist-server/index.js",
     "start": "node dist-server/index.js",
     "test": "node --import tsx --test server/*.test.ts shared/*.test.ts",
-    "typecheck": "tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.server.json --noEmit"
+    "typecheck": "tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "qa": "node qa/run-all.cjs"
   },
   "dependencies": {
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@fontsource/anton": "^5.1.0",
@@ -26,12 +28,14 @@
     "@types/node": "^22.10.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "concurrently": "^9.1.0",
     "esbuild": "^0.24.0",
     "exceljs": "^4.4.0",
     "lucide-react": "^0.460.0",
+    "playwright": "^1.63.0",
     "postcss": "^8.4.49",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

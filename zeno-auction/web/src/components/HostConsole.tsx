@@ -75,9 +75,9 @@ export function HostConsole({ snap, room, tickSound }: { snap: Snapshot; room: R
   const visiblePool = pool.filter((p) => !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.role.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[1.25fr_1fr]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
       {/* ---------------- what the room sees ---------------- */}
-      <div className="space-y-4">
+      <div className="min-w-0 space-y-4">
         <div className="flex items-center justify-between text-xs text-slate-400">
           <span className="font-bold uppercase tracking-widest">Preview of the big screen</span>
           <span>
@@ -89,7 +89,7 @@ export function HostConsole({ snap, room, tickSound }: { snap: Snapshot; room: R
       </div>
 
       {/* ---------------- controls ---------------- */}
-      <div className="space-y-4">
+      <div className="min-w-0 space-y-4">
         <div className="card space-y-3 p-4">
           <button
             disabled={primary.disabled || busy}

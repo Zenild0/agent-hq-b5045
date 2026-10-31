@@ -251,8 +251,8 @@ const on = (name: string, access: Access, run: Handler) => {
 };
 
 export function runAction(store: Store, actor: Actor, name: string, params: unknown, now = Date.now()): unknown {
-  const action = actions[name];
-  if (!action) throw new AuctionError(`Unknown action “${name}”`, 404);
+  const action = typeof name === 'string' && Object.hasOwn(actions, name) ? actions[name] : undefined; // (not inherited keys like "constructor")
+  if (!action) throw new AuctionError(`Unknown action “${String(name).slice(0, 40)}”`, 404);
   if (!allowed(actor, action.access)) throw new AuctionError('You are not allowed to do that', 403);
   if (store.data.practice && ROSTER_LOCKED.has(name))
     throw new AuctionError('Teams and players are locked during a practice run — click “Go live” first to edit them');
@@ -325,8 +325,11 @@ on('captain.remove', 'admin', (store, p, _a, now) => {
   const top = data.live.bids[data.live.bids.length - 1];
   if (data.live.phase === 'bidding' && data.live.bids.some((b) => b.captainId === c.id) && top)
     throw new AuctionError('This team has bids on the current player — undo them first');
+  // a SOLD stamp that names this team (as buyer or as an under-bidder) cannot stay on screen
+  if (data.live.phase === 'sold' && data.live.playerId && (data.live.result?.captainId === c.id || data.live.bids.some((b) => b.captainId === c.id)))
+    dropFromBlock(data, data.live.playerId, now);
   for (const pl of data.players) {
-    if (pl.teamId === c.id) Object.assign(pl, { status: 'available', teamId: null, price: 0, soldRound: 0, soldAt: 0 });
+    if (pl.teamId === c.id) resetPlayer(pl);
   }
   data.captains = data.captains.filter((x) => x.id !== c.id);
   delete secrets.captainTokens[c.id];
@@ -785,7 +788,10 @@ on('practice.end', 'admin', (store, _p, _a, now) => {
 
 // ---- captains' strategy -----------------------------------------------------------------------
 
-const planOf = (store: Store, actor: Actor): StrategyItem[] => (store.strategies[actor.captainId!] ??= []);
+const planOf = (store: Store, actor: Actor): StrategyItem[] => {
+  const c = getCaptain(store.data, actor.captainId); // a plan only ever belongs to a team that exists
+  return (store.strategies[c.id] ??= []);
+};
 
 on('strategy.add', 'captainOnly', (store, p, actor) => {
   const pl = getPlayer(store.data, p.playerId);

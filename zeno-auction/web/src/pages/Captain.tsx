@@ -5,6 +5,7 @@ import { formatMoney } from '../../../shared/money';
 import { checkBid, maxBid, nextBidAmount, stepFor, teamStats } from '../../../shared/rules';
 import type { Snapshot } from '../../../shared/types';
 import { KeyPrompt } from '../components/KeyPrompt';
+import { PageTitle } from '../components/PageTitle';
 import { PracticeBanner } from '../components/PracticeBanner';
 import { StrategyTab } from '../components/StrategyTab';
 import { RoomGate, SoundControls } from '../components/RoomGate';
@@ -70,6 +71,7 @@ export default function Captain() {
 
         return (
           <>
+          <PageTitle title={`${me.team} · Captain`} />
           <PracticeBanner snap={snap} />
           <div className="mx-auto flex min-h-screen max-w-3xl flex-col gap-4 p-3 pb-44 sm:p-5 sm:pb-44" style={{ ['--accent' as string]: me.color }}>
             <header className="flex items-center justify-between gap-2">

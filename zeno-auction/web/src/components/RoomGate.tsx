@@ -17,6 +17,15 @@ export function RoomGate({ room, code, children }: { room: Room; code: string; c
         </Link>
       </FullScreenMessage>
     );
+  if (!room.snap && room.status === 'blocked')
+    return (
+      <FullScreenMessage title="Too many wrong keys">
+        <p>This connection tried too many wrong keys or PINs. Wait a minute — this page will retry by itself — then check your link or PIN.</p>
+        <Link to="/join" className="btn-primary mt-6">
+          Back to join
+        </Link>
+      </FullScreenMessage>
+    );
   if (!room.snap)
     return (
       <div className="grid min-h-screen place-items-center">

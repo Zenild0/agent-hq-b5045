@@ -85,7 +85,7 @@ export function TeamBoard({ snap, big = false, highlightId }: { snap: Snapshot; 
 export function TeamStrip({ snap, leaderId }: { snap: Snapshot; leaderId?: string }) {
   const { settings } = snap;
   return (
-    <div className="flex gap-2 overflow-x-auto pb-1">
+    <div className="flex min-w-0 max-w-full gap-2 overflow-x-auto pb-1">
       {snap.captains.map((c) => {
         const st = teamStats(snap, c);
         const lead = leaderId === c.id;
