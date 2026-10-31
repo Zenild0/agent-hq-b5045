@@ -2,8 +2,8 @@ import { Maximize2, Users } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { PracticeBanner } from '../components/PracticeBanner';
 import { RoomGate, SoundControls } from '../components/RoomGate';
-import { Stage } from '../components/Stage';
-import { TeamBoard, TeamStrip } from '../components/TeamBoard';
+import { Arena } from '../components/Arena';
+import { TeamBoard } from '../components/TeamBoard';
 import { Logo } from '../components/ui';
 import { useAuctionSound, useSoundPrefs } from '../lib/sound';
 import { useRoom } from '../lib/useRoom';
@@ -55,11 +55,10 @@ export default function Live({ forceBoard = false }: { forceBoard?: boolean }) {
                   <TeamBoard snap={snap} big highlightId={leader} />
                 </div>
               ) : (
-                <Stage snap={snap} serverNow={room.serverNow} tickSound={prefs.sfx} />
+                <Arena snap={snap} serverNow={room.serverNow} tickSound={prefs.sfx} />
               )}
             </main>
 
-            {!showBoard && !onBreak && <TeamStrip snap={snap} leaderId={leader} />}
           </div>
           </>
         );

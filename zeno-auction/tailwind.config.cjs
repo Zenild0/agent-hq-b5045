@@ -32,6 +32,33 @@ module.exports = {
           '0%': { transform: 'translate3d(0,-10vh,0) rotate(0)', opacity: '1' },
           '100%': { transform: 'translate3d(var(--dx),110vh,0) rotate(var(--rot))', opacity: '0.9' },
         },
+        floatup: {
+          '0%': { opacity: '0', transform: 'translateY(14px) scale(0.8)' },
+          '15%': { opacity: '1' },
+          '100%': { opacity: '0', transform: 'translateY(-70px) scale(1.15)' },
+        },
+        fall: {
+          '0%': { opacity: '0', transform: 'translateY(-14px) scale(0.8)' },
+          '15%': { opacity: '1' },
+          '100%': { opacity: '0', transform: 'translateY(70px) scale(1.1)' },
+        },
+        spark: {
+          '0%': { opacity: '1', transform: 'translate(0,0) scale(0.5) rotate(0)' },
+          '100%': { opacity: '0', transform: 'translate(var(--sx), var(--sy)) scale(1.4) rotate(var(--sr))' },
+        },
+        edge: {
+          '0%': { opacity: '0', boxShadow: 'inset 0 0 0 0 var(--edge)' },
+          '25%': { opacity: '1', boxShadow: 'inset 0 0 160px 36px var(--edge)' },
+          '100%': { opacity: '0.45', boxShadow: 'inset 0 0 90px 14px var(--edge)' },
+        },
+        edgepulse: {
+          '0%,100%': { opacity: '0.35', boxShadow: 'inset 0 0 90px 14px var(--edge)' },
+          '50%': { opacity: '1', boxShadow: 'inset 0 0 180px 44px var(--edge)' },
+        },
+        dropflash: {
+          '0%': { color: '#ff3d57', transform: 'translateY(-8px) scale(1.06)' },
+          '100%': { transform: 'none' },
+        },
         shake: { '0%,100%': { transform: 'translateX(0)' }, '25%': { transform: 'translateX(-6px)' }, '75%': { transform: 'translateX(6px)' } },
       },
       animation: {
@@ -42,6 +69,12 @@ module.exports = {
         glow: 'glow 1.6s ease-in-out infinite',
         confetti: 'confetti var(--dur) linear var(--delay) forwards',
         shake: 'shake 0.3s',
+        floatup: 'floatup 1.3s ease-out forwards',
+        fall: 'fall 1.3s ease-out forwards',
+        spark: 'spark var(--dur) ease-out forwards',
+        edge: 'edge 1.6s ease-out forwards',
+        edgepulse: 'edgepulse 0.9s ease-in-out infinite',
+        dropflash: 'dropflash 0.5s ease-out',
       },
     },
   },

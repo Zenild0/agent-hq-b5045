@@ -205,6 +205,12 @@ function hue(s: string): number {
   return h % 360;
 }
 
+/** The coloured backdrop used for players without a photo. */
+export function avatarGradient(name: string): string {
+  const h = hue(name);
+  return `linear-gradient(135deg, hsl(${h} 70% 38%), hsl(${(h + 50) % 360} 70% 20%))`;
+}
+
 const initials = (name: string) =>
   name
     .split(/\s+/)

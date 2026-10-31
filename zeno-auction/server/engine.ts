@@ -326,7 +326,7 @@ on('captain.remove', 'admin', (store, p, _a, now) => {
   if (data.live.phase === 'bidding' && data.live.bids.some((b) => b.captainId === c.id) && top)
     throw new AuctionError('This team has bids on the current player — undo them first');
   for (const pl of data.players) {
-    if (pl.teamId === c.id) Object.assign(pl, { status: 'available', teamId: null, price: 0, soldRound: 0 });
+    if (pl.teamId === c.id) Object.assign(pl, { status: 'available', teamId: null, price: 0, soldRound: 0, soldAt: 0 });
   }
   data.captains = data.captains.filter((x) => x.id !== c.id);
   delete secrets.captainTokens[c.id];
@@ -350,6 +350,7 @@ function newPlayer(d: EventData, src: Record<string, any>): Player {
     teamId: null,
     price: 0,
     soldRound: 0,
+    soldAt: 0,
     order: d.players.reduce((m, p) => Math.max(m, p.order), 0) + 1,
   };
 }
@@ -411,6 +412,7 @@ on('players.import', 'admin', ({ data }, p, _a, now) => {
         pl.teamId = c.id;
         pl.price = num(row.price, effectiveBase(data.settings, pl), 0);
         pl.soldRound = data.round;
+        pl.soldAt = now;
         assigned++;
       } else {
         skipped.push(`${pl.name} (team “${row.team}” not found — left unassigned)`);
@@ -431,7 +433,7 @@ on('player.update', 'admin', ({ data }, p) => {
   if (patch.basePrice !== undefined) pl.basePrice = num(patch.basePrice, pl.basePrice, 0);
 });
 
-const resetPlayer = (pl: Player) => Object.assign(pl, { status: 'available', teamId: null, price: 0, soldRound: 0 });
+const resetPlayer = (pl: Player) => Object.assign(pl, { status: 'available', teamId: null, price: 0, soldRound: 0, soldAt: 0 });
 
 /** If `id` is the player on screen, wipe the screen (bids are discarded; the player's own status is untouched). */
 function dropFromBlock(d: EventData, id: string, now: number): boolean {
@@ -456,6 +458,7 @@ on('player.assign', 'admin', ({ data }, p, _a, now) => {
   pl.teamId = c.id;
   pl.price = num(p.price, effectiveBase(data.settings, pl), 0);
   pl.soldRound = data.round;
+  pl.soldAt = now;
   note(data, `${pl.name} assigned to ${c.team} for ${money(data, pl.price)}`, now);
 });
 
@@ -633,6 +636,7 @@ on('sold', 'host', ({ data }, _p, _a, now) => {
   player.teamId = captain.id;
   player.price = top.amount;
   player.soldRound = data.round;
+  player.soldAt = now;
   live.phase = 'sold';
   live.result = { kind: 'sold', playerId: player.id, captainId: captain.id, price: top.amount };
   emit(data, 'sold', now, { playerId: player.id, captainId: captain.id, amount: top.amount });
@@ -656,7 +660,7 @@ on('reopen', 'host', ({ data }, _p, _a, now) => {
   const live = data.live;
   const player = currentPlayer(data);
   if ((live.phase !== 'sold' && live.phase !== 'unsold') || !player) throw new AuctionError('Nothing to reopen');
-  Object.assign(player, { status: 'available', teamId: null, price: 0, soldRound: 0 });
+  Object.assign(player, { status: 'available', teamId: null, price: 0, soldRound: 0, soldAt: 0 });
   live.result = null;
   live.phase = 'bidding';
   live.call = 0;

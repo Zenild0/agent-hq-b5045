@@ -47,6 +47,8 @@ export interface Player {
   teamId: string | null;
   price: number;
   soldRound: number;
+  /** When the player was sold (for the "latest buys" feed). Missing on very old saves. */
+  soldAt?: number;
   order: number;
 }
 

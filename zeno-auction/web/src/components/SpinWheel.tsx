@@ -28,6 +28,7 @@ export function SpinWheel({
   serverNow,
   tickSound,
   size = 'min(78vw, 52vh, 560px)',
+  hideWinner = false,
 }: {
   players: Player[];
   targetId: string;
@@ -36,6 +37,7 @@ export function SpinWheel({
   serverNow: () => number;
   tickSound: boolean;
   size?: string;
+  hideWinner?: boolean;
 }) {
   const n = players.length;
   const seg = 360 / n;
@@ -132,7 +134,7 @@ export function SpinWheel({
         </text>
       </svg>
 
-      {stopped && winner && (
+      {stopped && winner && !hideWinner && (
         <div className="pointer-events-none absolute inset-x-0 -bottom-[24%] text-center">
           <div className="inline-block animate-pop rounded-2xl border-4 border-gold bg-ink-950/95 px-8 py-2 shadow-[0_0_60px_rgba(255,201,51,0.5)]">
             <span className="animate-pulse font-display text-[clamp(1.8rem,5vw,3.6rem)] tracking-wide text-gold">{winner.name}</span>
