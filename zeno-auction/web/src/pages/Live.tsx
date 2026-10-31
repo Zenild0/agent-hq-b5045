@@ -1,5 +1,6 @@
 import { Maximize2, Users } from 'lucide-react';
 import { useParams } from 'react-router-dom';
+import { PracticeBanner } from '../components/PracticeBanner';
 import { RoomGate, SoundControls } from '../components/RoomGate';
 import { Stage } from '../components/Stage';
 import { TeamBoard, TeamStrip } from '../components/TeamBoard';
@@ -18,9 +19,12 @@ export default function Live({ forceBoard = false }: { forceBoard?: boolean }) {
     <RoomGate room={room} code={code}>
       {(snap) => {
         const { live, settings } = snap;
-        const showBoard = forceBoard || live.screen === 'board';
+        const onBreak = !!live.break;
+        const showBoard = forceBoard || (live.screen === 'board' && !onBreak);
         const leader = live.bids[live.bids.length - 1]?.captainId;
         return (
+          <>
+          <PracticeBanner snap={snap} />
           <div className="mx-auto flex min-h-screen max-w-[1800px] flex-col gap-4 p-4 sm:p-6" style={{ ['--accent' as string]: settings.accent }}>
             <header className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-4">
@@ -55,8 +59,9 @@ export default function Live({ forceBoard = false }: { forceBoard?: boolean }) {
               )}
             </main>
 
-            {!showBoard && <TeamStrip snap={snap} leaderId={leader} />}
+            {!showBoard && !onBreak && <TeamStrip snap={snap} leaderId={leader} />}
           </div>
+          </>
         );
       }}
     </RoomGate>

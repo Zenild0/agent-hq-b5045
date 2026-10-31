@@ -1,8 +1,9 @@
-import { Eye, LayoutGrid, Search, Shuffle, Undo2, Gavel, SkipForward, RotateCcw, ListOrdered } from 'lucide-react';
+import { Eye, LayoutGrid, Search, Shuffle, Undo2, Gavel, SkipForward, RotateCcw, ListOrdered, Timer } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { formatMoney } from '../../../shared/money';
 import { checkBid, effectiveBase, nextBidAmount } from '../../../shared/rules';
 import type { Snapshot } from '../../../shared/types';
+import { fmtClock, useCountdown } from '../lib/useCountdown';
 import type { Room } from '../lib/useRoom';
 import { Stage } from './Stage';
 import { TeamStrip } from './TeamBoard';
@@ -27,7 +28,8 @@ export function HostConsole({ snap, room, tickSound }: { snap: Snapshot; room: R
   const spinning = live.phase === 'spinning';
   const bidding = live.phase === 'bidding';
   const finished = live.phase === 'sold' || live.phase === 'unsold';
-  const canDraw = live.phase === 'idle' || finished;
+  const onBreak = !!live.break;
+  const canDraw = (live.phase === 'idle' || finished) && !onBreak;
 
   const run = async (action: string, params: unknown = {}) => {
     if (busy) return;
@@ -38,6 +40,7 @@ export function HostConsole({ snap, room, tickSound }: { snap: Snapshot; room: R
 
   // The one big button the auctioneer keeps hitting.
   const primary = (() => {
+    if (onBreak) return { label: 'END BREAK ▶', disabled: false, style: 'bg-emerald-500 text-ink-950', onClick: () => run('break.end') };
     if (spinning) return { label: 'Wheel spinning…', disabled: true, style: 'bg-ink-600 text-slate-300', onClick: () => {} };
     if (bidding) {
       if (!hasBids) return { label: 'Waiting for a bid…', disabled: true, style: 'bg-ink-600 text-slate-300', onClick: () => {} };
@@ -186,6 +189,8 @@ export function HostConsole({ snap, room, tickSound }: { snap: Snapshot; room: R
           </div>
         </div>
 
+        {(onBreak || live.phase === 'idle' || finished) && <BreakControls snap={snap} room={room} busy={busy} run={run} />}
+
         {/* ---- bid on behalf ---- */}
         {bidding && player && (
           <div className="card p-4">
@@ -261,6 +266,73 @@ export function HostConsole({ snap, room, tickSound }: { snap: Snapshot; room: R
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function BreakControls({ snap, room, busy, run }: { snap: Snapshot; room: Room; busy: boolean; run: (action: string, params?: unknown) => Promise<void> }) {
+  const b = snap.live.break;
+  const left = useCountdown(b?.endsAt ?? null, room.serverNow);
+  const [mins, setMins] = useState('5');
+  const [secs, setSecs] = useState('0');
+  const seconds = Math.round((Number(mins) || 0) * 60 + (Number(secs) || 0));
+  const valid = seconds >= 10 && seconds <= 7200;
+
+  if (b) {
+    return (
+      <div className="card border-emerald-400/30 p-4">
+        <div className="mb-1 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-emerald-300">
+          <Timer className="h-4 w-4" /> {b.label} is running
+        </div>
+        <div className="my-2 text-center font-display text-7xl leading-none tracking-wide text-gold">{left > 0 ? fmtClock(left) : '0:00'}</div>
+        <p className="mb-3 text-center text-xs text-slate-400">Everyone sees this countdown and the team board.</p>
+        <div className="grid grid-cols-3 gap-2">
+          <button className="btn-ghost !text-xs" disabled={busy} onClick={() => run('break.extend', { seconds: 60 })}>
+            + 1 min
+          </button>
+          <button className="btn-ghost !text-xs" disabled={busy} onClick={() => run('break.extend', { seconds: 300 })}>
+            + 5 min
+          </button>
+          <button className="btn-primary !text-xs" disabled={busy} onClick={() => run('break.end')}>
+            End break now
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card p-4">
+      <h3 className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400">
+        <Timer className="h-4 w-4" /> Strategy break
+      </h3>
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        {[2, 5, 10, 15].map((m) => (
+          <button
+            key={m}
+            className={`chip hover:bg-white/10 ${Number(mins) === m && Number(secs) === 0 ? '!border-gold !bg-gold/15 !text-gold' : ''}`}
+            onClick={() => (setMins(String(m)), setSecs('0'))}
+          >
+            {m} min
+          </button>
+        ))}
+      </div>
+      <div className="flex items-end gap-2">
+        <label className="flex-1">
+          <span className="label">Minutes</span>
+          <input className="input" type="number" min={0} max={120} value={mins} onChange={(e) => setMins(e.target.value)} />
+        </label>
+        <label className="flex-1">
+          <span className="label">Seconds</span>
+          <input className="input" type="number" min={0} max={59} value={secs} onChange={(e) => setSecs(e.target.value)} />
+        </label>
+        <button className="btn-primary !py-2.5" disabled={!valid || busy} onClick={() => run('break.start', { seconds })}>
+          Start break
+        </button>
+      </div>
+      <p className="mt-2 text-xs text-slate-500">
+        {valid ? `${fmtClock(seconds * 1000)} countdown on every screen, with the teams bought so far. You can end it early.` : 'Choose between 10 seconds and 2 hours.'}
+      </p>
     </div>
   );
 }

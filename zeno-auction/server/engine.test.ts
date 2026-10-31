@@ -363,3 +363,138 @@ test('admin can set any player to pool / unsold / on the block / sold', () => {
   throwsAuction(() => runAction(s, ADMIN, 'player.setStatus', { id: c.id, status: 'sold' }), /Assign/);
   throwsAuction(() => runAction(s, HOST, 'player.setStatus', { id: c.id, status: 'available' }), /not allowed/);
 });
+
+// ---------------------------------------------------------------------------------------------
+// practice run
+// ---------------------------------------------------------------------------------------------
+
+test('a practice run never touches the real auction', () => {
+  const { s, teams } = setup({ defaultBudget: 100 * L }, 4);
+  const [a, b] = s.data.players;
+  runAction(s, ADMIN, 'player.assign', { id: a.id, captainId: teams[0], price: 30 * L }); // real sale
+  runAction(s, HOST, 'pick', { playerId: b.id }); // real player on the block…
+  runAction(s, captain(s, teams[1]), 'bid', { amount: 25 * L }); // …with a real bid
+  const realBefore = JSON.stringify({ p: s.data.players, c: s.data.captains, r: s.data.round, l: s.data.live.bids, log: s.data.log.length });
+
+  runAction(s, ADMIN, 'practice.start', {});
+  assert.equal(s.data.practice, true);
+  assert.ok(s.data.players.every((p) => p.status === 'available'), 'practice starts from a clean board');
+  assert.equal(s.data.live.phase, 'idle');
+
+  // run a full sale in practice, including a break and a round
+  runAction(s, HOST, 'pick', { playerId: a.id });
+  runAction(s, captain(s, teams[2]), 'bid', {});
+  runAction(s, HOST, 'sold', {});
+  assert.equal(a.status, 'sold');
+  assert.equal(teamStats(s.data, s.data.captains[2]).count, 1);
+  runAction(s, HOST, 'next', {});
+  runAction(s, HOST, 'break.start', { seconds: 60 });
+  runAction(s, ADMIN, 'player.setStatus', { id: b.id, status: 'unsold' });
+
+  runAction(s, ADMIN, 'practice.end', {});
+  assert.equal(s.data.practice, false);
+  assert.equal(s.stash, null);
+  const realAfter = JSON.stringify({ p: s.data.players, c: s.data.captains, r: s.data.round, l: s.data.live.bids, log: s.data.log.length });
+  assert.equal(realAfter, realBefore, 'players, purses, round, bids and log are exactly as before');
+  assert.equal(s.data.live.phase, 'bidding'); // the real player is still on the block
+  assert.equal(s.data.live.playerId, b.id);
+  assert.equal(s.data.live.break, null);
+  throwsAuction(() => runAction(s, ADMIN, 'practice.end', {}), /No practice/);
+});
+
+test('practice needs a real setup and locks roster edits while it runs', () => {
+  const empty = createStore('PRAC01', {});
+  throwsAuction(() => runAction(empty, ADMIN, 'practice.start', {}), /at least two teams/);
+
+  const { s, teams } = setup({}, 3);
+  runAction(s, ADMIN, 'practice.start', {});
+  throwsAuction(() => runAction(s, ADMIN, 'player.add', { name: 'Nope' }), /locked during a practice/);
+  throwsAuction(() => runAction(s, ADMIN, 'captain.budget', { id: teams[0], mode: 'add', amount: 1 }), /locked/);
+  throwsAuction(() => runAction(s, ADMIN, 'players.import', { rows: [{ name: 'X' }] }), /locked/);
+  throwsAuction(() => runAction(s, ADMIN, 'practice.start', {}), /already/);
+  runAction(s, ADMIN, 'reset', {}); // "restart practice" is allowed
+  runAction(s, ADMIN, 'practice.end', {});
+  runAction(s, ADMIN, 'player.add', { name: 'Fine now' }); // editing works again after going live
+  assert.equal(s.data.players.length, 4);
+});
+
+// ---------------------------------------------------------------------------------------------
+// strategy break
+// ---------------------------------------------------------------------------------------------
+
+test('a strategy break counts down, blocks drawing, can be extended and ended early', () => {
+  const { s } = setup({ drawMode: 'sequential' }, 3);
+  const t0 = 9_000_000;
+  runAction(s, HOST, 'break.start', { seconds: 120, label: 'Plan round 2' }, t0);
+  assert.equal(s.data.live.break!.endsAt, t0 + 120_000);
+  assert.equal(s.data.live.break!.label, 'Plan round 2');
+  throwsAuction(() => runAction(s, HOST, 'draw', {}, t0 + 1000), /break is running/);
+  throwsAuction(() => runAction(s, HOST, 'pick', { playerId: s.data.players[0].id }, t0 + 1000), /break/);
+  throwsAuction(() => runAction(s, HOST, 'break.start', { seconds: 30 }, t0 + 1000), /already running/);
+
+  runAction(s, HOST, 'break.extend', { seconds: 60 }, t0 + 5000);
+  assert.equal(s.data.live.break!.endsAt, t0 + 180_000);
+
+  runAction(s, HOST, 'break.end', {}, t0 + 10_000); // early end
+  assert.equal(s.data.live.break, null);
+  runAction(s, HOST, 'draw', {}, t0 + 10_001); // auction continues
+  assert.equal(s.data.live.phase, 'bidding');
+});
+
+test('a break ends by itself when the timer runs out; only the host can run it', () => {
+  const { s, teams } = setup({}, 2);
+  const t0 = 1_000_000;
+  throwsAuction(() => runAction(s, captain(s, teams[0]), 'break.start', { seconds: 60 }, t0), /not allowed/);
+  throwsAuction(() => runAction(s, HOST, 'break.start', { seconds: 3 }, t0), /between/);
+  runAction(s, HOST, 'break.start', { seconds: 60 }, t0);
+  assert.equal(tick(s, t0 + 59_000), false);
+  assert.equal(tick(s, t0 + 60_000), true);
+  assert.equal(s.data.live.break, null);
+  assert.equal(s.data.live.lastEvent!.type, 'breakend');
+});
+
+test('a break can follow a sale (the SOLD stamp is cleared) but not interrupt bidding', () => {
+  const { s, teams } = setup({}, 2);
+  runAction(s, HOST, 'pick', { playerId: s.data.players[0].id });
+  throwsAuction(() => runAction(s, HOST, 'break.start', { seconds: 60 }), /Finish the current player/);
+  runAction(s, captain(s, teams[0]), 'bid', {});
+  runAction(s, HOST, 'sold', {});
+  runAction(s, HOST, 'break.start', { seconds: 60 });
+  assert.equal(s.data.live.phase, 'idle');
+  assert.equal(s.data.players[0].status, 'sold'); // the sale stands
+});
+
+// ---------------------------------------------------------------------------------------------
+// captains' strategy
+// ---------------------------------------------------------------------------------------------
+
+test('captains keep a private plan of players and the most they will pay', () => {
+  const { s, teams } = setup({}, 3);
+  const [a, b] = s.data.players;
+  const me = captain(s, teams[0]);
+  const other = captain(s, teams[1]);
+
+  runAction(s, me, 'strategy.add', { playerId: a.id, budget: 4 * CR });
+  runAction(s, me, 'strategy.add', { playerId: b.id }); // defaults to the base price
+  assert.deepEqual(s.strategies[teams[0]].map((i) => [i.playerId, i.budget]), [[a.id, 4 * CR], [b.id, 20 * L]]);
+  assert.equal(s.strategies[teams[1]], undefined, 'other captains see nothing');
+
+  throwsAuction(() => runAction(s, me, 'strategy.add', { playerId: a.id }), /already in your plan/);
+  runAction(s, me, 'strategy.update', { playerId: a.id, budget: 3 * CR, note: 'only if cheap' });
+  assert.equal(s.strategies[teams[0]][0].budget, 3 * CR);
+  runAction(s, other, 'strategy.add', { playerId: a.id, budget: 1 * CR });
+  assert.equal(s.strategies[teams[0]][0].budget, 3 * CR, 'plans are independent');
+
+  runAction(s, me, 'strategy.remove', { playerId: b.id });
+  assert.equal(s.strategies[teams[0]].length, 1);
+
+  // only captains have a plan; sold players cannot be added; deleting a player cleans plans up
+  throwsAuction(() => runAction(s, HOST, 'strategy.add', { playerId: a.id }), /not allowed/);
+  runAction(s, ADMIN, 'player.assign', { id: b.id, captainId: teams[2], price: 1 });
+  throwsAuction(() => runAction(s, me, 'strategy.add', { playerId: b.id }), /already been sold/);
+  runAction(s, ADMIN, 'player.remove', { id: a.id });
+  assert.equal(s.strategies[teams[0]].length, 0);
+  assert.equal(s.strategies[teams[1]].length, 0);
+  runAction(s, ADMIN, 'captain.remove', { id: teams[0] });
+  assert.equal(s.strategies[teams[0]], undefined);
+});

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import type { Store } from './engine';
+import { normalizeStore, type Store } from './engine';
 
 export const DATA_DIR = path.resolve(process.env.DATA_DIR ?? './data');
 const EVENTS_DIR = path.join(DATA_DIR, 'events');
@@ -15,7 +15,7 @@ export function loadAll(): Map<string, Store> {
     if (!file.endsWith('.json')) continue;
     try {
       const store = JSON.parse(readFileSync(path.join(EVENTS_DIR, file), 'utf8')) as Store;
-      out.set(store.data.code, store);
+      out.set(store.data.code, normalizeStore(store));
     } catch (err) {
       console.error(`Could not load ${file}:`, err);
     }

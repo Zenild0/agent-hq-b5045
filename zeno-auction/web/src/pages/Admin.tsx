@@ -1,8 +1,9 @@
-import { Check, ExternalLink, Sparkles } from 'lucide-react';
+import { Check, ExternalLink, FlaskConical, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { HostConsole } from '../components/HostConsole';
 import { KeyPrompt } from '../components/KeyPrompt';
+import { PracticeBanner } from '../components/PracticeBanner';
 import { RoomGate, SoundControls } from '../components/RoomGate';
 import { Logo, Tabs } from '../components/ui';
 import { PlayersTab } from '../components/admin/PlayersTab';
@@ -42,6 +43,8 @@ export default function Admin() {
         const ready = snap.captains.length >= 2 && players > 0;
         const left = snap.players.filter((p) => p.status === 'available').length;
         return (
+          <>
+          <PracticeBanner snap={snap} room={room} />
           <div className="mx-auto max-w-[1700px] space-y-5 p-4 sm:p-6">
             <header className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-4">
@@ -88,6 +91,25 @@ export default function Admin() {
               ]}
             />
 
+            {tab === 'control' && ready && !snap.practice && (
+              <div className="card flex flex-wrap items-center gap-4 border-amber-400/30 bg-amber-400/5 p-4">
+                <FlaskConical className="h-6 w-6 shrink-0 text-amber-300" />
+                <div className="min-w-[240px] flex-1">
+                  <div className="font-bold">Practice run</div>
+                  <p className="text-sm text-slate-400">
+                    Let the auctioneer and captains rehearse with the real teams and players so they know their screens and buttons. Nothing is saved — when you click <b>Go live</b> the real auction comes back exactly as it is now.
+                  </p>
+                </div>
+                <button className="btn-primary" onClick={() => room.act('practice.start')}>
+                  Start a practice run
+                </button>
+              </div>
+            )}
+            {(tab === 'teams' || tab === 'players') && snap.practice && (
+              <p className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+                Adding or editing teams, purses and players is locked during a practice run so the real auction stays safe. Click <b>Go live</b> at the top to edit them again. You can still change a player's status for the practice.
+              </p>
+            )}
             {tab === 'control' && (ready || snap.live.phase !== 'idle' ? <HostConsole snap={snap} room={room} tickSound={prefs.sfx} /> : <p className="card p-10 text-center text-slate-400">Add at least two teams and a few players, then come back here to run the auction. ({left} in the pool)</p>)}
             {tab === 'teams' && <TeamsTab snap={snap} room={room} adminKey={key!} />}
             {tab === 'players' && <PlayersTab snap={snap} room={room} adminKey={key!} />}
@@ -95,6 +117,7 @@ export default function Admin() {
             {tab === 'settings' && <SettingsTab snap={snap} room={room} />}
             {tab === 'share' && <ShareTab snap={snap} />}
           </div>
+          </>
         );
       }}
     </RoomGate>

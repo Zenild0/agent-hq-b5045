@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { formatMoney } from '../../../shared/money';
 import { effectiveBase, nextBidAmount, SPIN_FLASH_MS } from '../../../shared/rules';
 import type { Player, Snapshot } from '../../../shared/types';
+import { BreakView } from './BreakView';
 import { Confetti } from './Confetti';
 import { SpinWheel } from './SpinWheel';
 import { TeamDot, PlayerAvatar } from './ui';
@@ -32,6 +33,7 @@ export function Stage({
 }) {
   const { live, settings } = snap;
   useTicker(live.phase === 'spinning');
+  if (live.break) return <BreakView snap={snap} serverNow={serverNow} compact={compact} />;
 
   const player = snap.players.find((p) => p.id === live.playerId) ?? null;
   const spinning = live.phase === 'spinning' && live.spin;

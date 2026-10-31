@@ -1,10 +1,12 @@
 import { Gavel, Wallet } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { formatMoney } from '../../../shared/money';
 import { checkBid, maxBid, nextBidAmount, stepFor, teamStats } from '../../../shared/rules';
 import type { Snapshot } from '../../../shared/types';
 import { KeyPrompt } from '../components/KeyPrompt';
+import { PracticeBanner } from '../components/PracticeBanner';
+import { StrategyTab } from '../components/StrategyTab';
 import { RoomGate, SoundControls } from '../components/RoomGate';
 import { Stage } from '../components/Stage';
 import { TeamBoard, TeamStrip } from '../components/TeamBoard';
@@ -18,9 +20,15 @@ export default function Captain() {
   const key = usePageKey(code, 'captain');
   const room = useRoom(code, key);
   const [prefs, updatePrefs] = useSoundPrefs({ sfx: false, voice: false });
-  const [tab, setTab] = useState<'squad' | 'teams'>('squad');
+  const [tab, setTab] = useState<'squad' | 'strategy' | 'teams'>('squad');
   const [busy, setBusy] = useState(false);
   useAuctionSound(room.snap, prefs);
+
+  // When the auctioneer calls a strategy break, open the planning tab for the captain.
+  const onBreak = !!room.snap?.live.break;
+  useEffect(() => {
+    if (onBreak) setTab('strategy');
+  }, [onBreak]);
 
   return (
     <RoomGate room={room} code={code}>
@@ -58,7 +66,11 @@ export default function Captain() {
           if (ok && navigator.vibrate) navigator.vibrate(30);
         };
 
+        const planItem = open ? snap.strategy?.find((i) => i.playerId === live.playerId) : undefined;
+
         return (
+          <>
+          <PracticeBanner snap={snap} />
           <div className="mx-auto flex min-h-screen max-w-3xl flex-col gap-4 p-3 pb-44 sm:p-5 sm:pb-44" style={{ ['--accent' as string]: me.color }}>
             <header className="flex items-center justify-between gap-2">
               <Logo />
@@ -87,6 +99,17 @@ export default function Captain() {
               </div>
             </section>
 
+            {planItem && (
+              <div
+                className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-2.5 text-sm font-semibold ${
+                  min > planItem.budget ? 'border-red-400/50 bg-red-500/10 text-red-200' : 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200'
+                }`}
+              >
+                <span>🎯 In your plan — up to {formatMoney(planItem.budget, settings)}</span>
+                {min > planItem.budget && <span>Next bid is above your plan</span>}
+              </div>
+            )}
+
             {snap.live.screen === 'board' && live.phase === 'idle' ? (
               <TeamBoard snap={snap} highlightId={me.id} />
             ) : (
@@ -100,10 +123,13 @@ export default function Captain() {
               onChange={setTab}
               tabs={[
                 { id: 'squad', label: `My squad (${st.count})` },
+                { id: 'strategy', label: `Strategy (${snap.strategy?.length ?? 0})` },
                 { id: 'teams', label: 'All teams' },
               ]}
             />
-            {tab === 'squad' ? (
+            {tab === 'strategy' ? (
+              <StrategyTab snap={snap} room={room} me={me} />
+            ) : tab === 'squad' ? (
               <div className="space-y-2">
                 {st.players.length === 0 && <p className="card p-6 text-center text-sm text-slate-400">No players yet — go win some!</p>}
                 {st.players.map((p) => (
@@ -151,6 +177,7 @@ export default function Captain() {
               </div>
             </div>
           </div>
+          </>
         );
       }}
     </RoomGate>

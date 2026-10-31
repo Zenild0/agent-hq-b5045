@@ -4,11 +4,14 @@ import { checkBid, effectiveBase, maxBid, nextBidAmount, sortedTiers, teamStats 
 import type {
   Captain,
   EventData,
+  LiveState,
+  LogItem,
   EventSettings,
   LiveEventType,
   Me,
   Player,
   Secrets,
+  StrategyItem,
 } from '../shared/types';
 
 export class AuctionError extends Error {
@@ -19,9 +22,30 @@ export class AuctionError extends Error {
   }
 }
 
+/** The real auction, parked while a practice run uses the same players and teams. */
+export interface Stash {
+  players: Player[];
+  budgets: Record<string, number>;
+  round: number;
+  live: LiveState;
+  log: LogItem[];
+}
+
 export interface Store {
   data: EventData;
   secrets: Secrets;
+  /** Captains' private plans, keyed by captain id. Never part of the shared state. */
+  strategies: Record<string, StrategyItem[]>;
+  stash: Stash | null;
+}
+
+/** Fills in fields that auctions saved by an older version don't have. */
+export function normalizeStore(store: Store): Store {
+  store.strategies ??= {};
+  store.stash ??= null;
+  store.data.practice ??= false;
+  store.data.live.break ??= null;
+  return store;
 }
 
 export const SPIN_MS = 7000; // 5.2 s of spinning + 1.8 s of the winner's name flashing
@@ -131,13 +155,16 @@ export function createStore(code: string, settingsPatch: unknown, now = Date.now
       round: 1,
       live: emptyLive(),
       log: [{ at: now, text: `Auction “${settings.name}” created` }],
+      practice: false,
     },
     secrets: { adminKey: secretKey(), hostKey: secretKey(), captainTokens: {} },
+    strategies: {},
+    stash: null,
   };
 }
 
 function emptyLive(): EventData['live'] {
-  return { phase: 'idle', playerId: null, bids: [], call: 0, spin: null, result: null, screen: 'stage', seq: 0, lastEvent: null };
+  return { phase: 'idle', playerId: null, bids: [], call: 0, spin: null, result: null, screen: 'stage', break: null, seq: 0, lastEvent: null };
 }
 
 function emit(d: EventData, type: LiveEventType, now: number, extra: Partial<EventData['live']['lastEvent'] & object> = {}) {
@@ -171,12 +198,28 @@ function currentPlayer(d: EventData): Player | null {
 /** Time-driven transitions (the wheel stopping). Call before reading or acting on an event. */
 export function tick(store: Store, now: number): boolean {
   const { live } = store.data;
+  let changed = false;
   if (live.phase === 'spinning' && live.spin && now >= live.spin.endsAt) {
     live.phase = 'bidding';
     emit(store.data, 'reveal', live.spin.endsAt, { playerId: live.playerId ?? undefined });
-    return true;
+    changed = true;
   }
-  return false;
+  if (live.break && now >= live.break.endsAt) {
+    const at = live.break.endsAt;
+    live.break = null;
+    emit(store.data, 'breakend', at);
+    changed = true;
+  }
+  return changed;
+}
+
+/** The next moment something happens by itself (the wheel stops, a break ends), or null. */
+export function nextDue(store: Store): number | null {
+  const { live } = store.data;
+  const times: number[] = [];
+  if (live.phase === 'spinning' && live.spin) times.push(live.spin.endsAt);
+  if (live.break) times.push(live.break.endsAt);
+  return times.length ? Math.min(...times) : null;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -189,14 +232,18 @@ export interface Actor {
 }
 
 type Handler = (store: Store, p: Record<string, any>, actor: Actor, now: number) => unknown;
-type Access = 'admin' | 'host' | 'captain';
+type Access = 'admin' | 'host' | 'captain' | 'captainOnly';
 
 const rank: Record<Actor['role'], number> = { viewer: 0, captain: 1, host: 2, admin: 3 };
 
 function allowed(actor: Actor, access: Access): boolean {
+  if (access === 'captainOnly') return actor.role === 'captain' && !!actor.captainId;
   if (access === 'captain') return actor.role === 'captain' || actor.role === 'host' || actor.role === 'admin';
   return rank[actor.role] >= rank[access];
 }
+
+/** Changes to who is in the auction can't be part of a practice run (they would be lost or leak into the real one). */
+const ROSTER_LOCKED = new Set(['captain.add', 'captain.budget', 'captains.topup', 'captain.remove', 'player.add', 'players.import', 'player.update', 'player.remove', 'demo.load']);
 
 const actions: Record<string, { access: Access; run: Handler }> = {};
 const on = (name: string, access: Access, run: Handler) => {
@@ -207,6 +254,8 @@ export function runAction(store: Store, actor: Actor, name: string, params: unkn
   const action = actions[name];
   if (!action) throw new AuctionError(`Unknown action “${name}”`, 404);
   if (!allowed(actor, action.access)) throw new AuctionError('You are not allowed to do that', 403);
+  if (store.data.practice && ROSTER_LOCKED.has(name))
+    throw new AuctionError('Teams and players are locked during a practice run — click “Go live” first to edit them');
   tick(store, now);
   const p = (params && typeof params === 'object' ? params : {}) as Record<string, any>;
   return action.run(store, p, actor, now);
@@ -270,7 +319,8 @@ on('captain.rotateToken', 'admin', ({ data, secrets }, p) => {
   secrets.captainTokens[c.id] = randomCode(6);
 });
 
-on('captain.remove', 'admin', ({ data, secrets }, p, _a, now) => {
+on('captain.remove', 'admin', (store, p, _a, now) => {
+  const { data, secrets } = store;
   const c = getCaptain(data, p.id);
   const top = data.live.bids[data.live.bids.length - 1];
   if (data.live.phase === 'bidding' && data.live.bids.some((b) => b.captainId === c.id) && top)
@@ -280,6 +330,7 @@ on('captain.remove', 'admin', ({ data, secrets }, p, _a, now) => {
   }
   data.captains = data.captains.filter((x) => x.id !== c.id);
   delete secrets.captainTokens[c.id];
+  delete store.strategies[c.id];
   note(data, `Team ${c.team} removed`, now);
 });
 
@@ -390,10 +441,11 @@ function dropFromBlock(d: EventData, id: string, now: number): boolean {
   return true;
 }
 
-on('player.remove', 'admin', ({ data }, p, _a, now) => {
+on('player.remove', 'admin', ({ data, strategies }, p, _a, now) => {
   const pl = getPlayer(data, p.id);
   dropFromBlock(data, pl.id, now);
   data.players = data.players.filter((x) => x.id !== pl.id);
+  for (const id of Object.keys(strategies)) strategies[id] = strategies[id].filter((i) => i.playerId !== pl.id);
 });
 
 on('player.assign', 'admin', ({ data }, p, _a, now) => {
@@ -433,6 +485,7 @@ on('player.setStatus', 'admin', ({ data }, p, _a, now) => {
       note(data, `${pl.name} set to: unsold`, now);
       break;
     case 'block':
+      assertNoBreak(data);
       if (data.captains.length < 2) throw new AuctionError('Add at least two teams before starting');
       // Whoever is on screen right now is dropped (back to the pool if they were mid-bidding).
       if (pl.status === 'sold') resetPlayer(pl);
@@ -451,7 +504,12 @@ const poolOf = (d: EventData, role?: string) =>
     .filter((p) => p.status === 'available' && (!role || p.role.toLowerCase() === role.toLowerCase()))
     .sort((a, b) => a.order - b.order);
 
+function assertNoBreak(d: EventData) {
+  if (d.live.break) throw new AuctionError('A strategy break is running — end it first');
+}
+
 function assertCanDraw(d: EventData) {
+  assertNoBreak(d);
   if (d.live.phase === 'spinning' || d.live.phase === 'bidding') throw new AuctionError('Finish the current player first');
   if (d.captains.length < 2) throw new AuctionError('Add at least two teams before starting');
 }
@@ -618,6 +676,7 @@ on('unblock', 'host', ({ data }, _p, _a, now) => {
 });
 
 on('round.next', 'host', ({ data }, _p, _a, now) => {
+  assertNoBreak(data);
   if (data.live.phase === 'spinning' || data.live.phase === 'bidding') throw new AuctionError('Finish the current player first');
   const unsold = data.players.filter((p) => p.status === 'unsold');
   if (unsold.length === 0) throw new AuctionError('There are no unsold players to carry over');
@@ -638,7 +697,110 @@ on('reset', 'admin', ({ data }, _p, _a, now) => {
   const { screen, seq } = data.live;
   data.live = { ...emptyLive(), screen, seq };
   emit(data, 'idle', now);
-  note(data, 'Auction reset', now);
+  note(data, data.practice ? 'Practice restarted' : 'Auction reset', now);
+});
+
+// ---- strategy break ---------------------------------------------------------------------------
+
+on('break.start', 'host', ({ data }, p, _a, now) => {
+  const live = data.live;
+  if (live.break) throw new AuctionError('A break is already running');
+  if (live.phase === 'spinning' || live.phase === 'bidding')
+    throw new AuctionError('Finish the current player (or send them back to the pool) before a break');
+  const seconds = Number(p.seconds);
+  if (!Number.isFinite(seconds) || seconds < 10 || seconds > 7200) throw new AuctionError('Choose a break between 10 seconds and 2 hours');
+  clearBlock(data); // a lingering SOLD stamp makes way for the break
+  live.break = { startedAt: now, endsAt: now + Math.round(seconds) * 1000, label: str(p.label, 'Strategy break', 60) || 'Strategy break' };
+  emit(data, 'break', now, { amount: Math.round(seconds) });
+  note(data, `Strategy break started (${Math.round(seconds)} s)`, now);
+});
+
+on('break.extend', 'host', ({ data }, p, _a, now) => {
+  const b = data.live.break;
+  if (!b) throw new AuctionError('There is no break running');
+  const seconds = Math.round(Number(p.seconds ?? 60));
+  if (!Number.isFinite(seconds) || seconds < 5 || seconds > 3600) throw new AuctionError('Add between 5 seconds and 1 hour');
+  b.endsAt = Math.min(b.endsAt + seconds * 1000, now + 7200_000);
+  emit(data, 'breakext', now, { amount: seconds });
+});
+
+on('break.end', 'host', ({ data }, _p, _a, now) => {
+  if (!data.live.break) throw new AuctionError('There is no break running');
+  data.live.break = null;
+  emit(data, 'breakend', now);
+  note(data, 'Strategy break ended early', now);
+});
+
+// ---- practice run -----------------------------------------------------------------------------
+
+/**
+ * Starts a rehearsal with the real teams and players. The real auction is parked untouched and put
+ * back by `practice.end`, so nothing that happens in between can affect it.
+ */
+on('practice.start', 'admin', (store, _p, _a, now) => {
+  const { data } = store;
+  if (data.practice) throw new AuctionError('A practice run is already going');
+  if (data.captains.length < 2 || data.players.length === 0) throw new AuctionError('Add at least two teams and some players first');
+  store.stash = structuredClone({
+    players: data.players,
+    budgets: Object.fromEntries(data.captains.map((c) => [c.id, c.budget])),
+    round: data.round,
+    live: data.live,
+    log: data.log,
+  });
+  for (const pl of data.players) resetPlayer(pl);
+  data.round = 1;
+  const { screen, seq } = data.live;
+  data.live = { ...emptyLive(), screen, seq };
+  data.log = [];
+  data.practice = true;
+  emit(data, 'practice', now);
+  note(data, 'Practice run started — nothing here affects the real auction', now);
+});
+
+on('practice.end', 'admin', (store, _p, _a, now) => {
+  const { data, stash } = store;
+  if (!data.practice) throw new AuctionError('No practice run is going');
+  if (stash) {
+    data.players = stash.players;
+    for (const c of data.captains) if (stash.budgets[c.id] !== undefined) c.budget = stash.budgets[c.id];
+    data.round = stash.round;
+    data.log = stash.log;
+    const seq = data.live.seq;
+    data.live = { ...stash.live, seq };
+  } else {
+    // (should not happen) no stash to restore: just leave a clean board
+    for (const pl of data.players) resetPlayer(pl);
+    data.round = 1;
+    data.live = { ...emptyLive(), screen: data.live.screen, seq: data.live.seq };
+  }
+  store.stash = null;
+  data.practice = false;
+  emit(data, 'practice', now); // (no log line: the real record stays exactly as it was)
+});
+
+// ---- captains' strategy -----------------------------------------------------------------------
+
+const planOf = (store: Store, actor: Actor): StrategyItem[] => (store.strategies[actor.captainId!] ??= []);
+
+on('strategy.add', 'captainOnly', (store, p, actor) => {
+  const pl = getPlayer(store.data, p.playerId);
+  const plan = planOf(store, actor);
+  if (pl.status === 'sold') throw new AuctionError(`${pl.name} has already been sold`);
+  if (plan.some((i) => i.playerId === pl.id)) throw new AuctionError(`${pl.name} is already in your plan`);
+  if (plan.length >= 100) throw new AuctionError('Your plan is full (100 players)');
+  plan.push({ playerId: pl.id, budget: num(p.budget, effectiveBase(store.data.settings, pl), 0), note: str(p.note, '', 140) });
+});
+
+on('strategy.update', 'captainOnly', (store, p, actor) => {
+  const item = planOf(store, actor).find((i) => i.playerId === p.playerId);
+  if (!item) throw new AuctionError('That player is not in your plan', 404);
+  if (p.budget !== undefined) item.budget = num(p.budget, item.budget, 0);
+  if (p.note !== undefined) item.note = str(p.note, item.note, 140);
+});
+
+on('strategy.remove', 'captainOnly', (store, p, actor) => {
+  store.strategies[actor.captainId!] = planOf(store, actor).filter((i) => i.playerId !== p.playerId);
 });
 
 // ---- demo data -------------------------------------------------------------------------------

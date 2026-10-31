@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatMoney, spokenMoney } from '../../../shared/money';
 import type { Snapshot } from '../../../shared/types';
+import { fmtDuration } from './useCountdown';
 
 let ctx: AudioContext | null = null;
 
@@ -161,6 +162,17 @@ export function useAuctionSound(snap: Snapshot | null, prefs: SoundPrefs) {
       case 'unsold':
         if (prefs.sfx) sfx.unsold();
         if (player) say(`${player.name} goes unsold`);
+        break;
+      case 'break':
+        if (prefs.sfx) sfx.reveal();
+        say(`${snap.live.break?.label ?? 'Strategy break'}. ${fmtDuration(ev.amount ?? 60)}.`);
+        break;
+      case 'breakext':
+        say(`Break extended by ${fmtDuration(ev.amount ?? 60)}.`);
+        break;
+      case 'breakend':
+        if (prefs.sfx) sfx.reveal();
+        say('The break is over. Back to the auction!');
         break;
     }
   }, [snap, prefs]);

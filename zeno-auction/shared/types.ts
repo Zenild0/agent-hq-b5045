@@ -82,7 +82,9 @@ export interface LiveResult {
   price?: number;
 }
 
-export type LiveEventType = 'spin' | 'reveal' | 'bid' | 'call' | 'sold' | 'unsold' | 'undo' | 'idle' | 'round';
+export type LiveEventType =
+  | 'spin' | 'reveal' | 'bid' | 'call' | 'sold' | 'unsold' | 'undo' | 'idle' | 'round'
+  | 'break' | 'breakext' | 'breakend' | 'practice';
 
 export interface LiveEvent {
   seq: number;
@@ -94,6 +96,13 @@ export interface LiveEvent {
   call?: number;
 }
 
+/** A timed pause between players so captains can plan. */
+export interface BreakState {
+  startedAt: number;
+  endsAt: number;
+  label: string;
+}
+
 export interface LiveState {
   phase: Phase;
   playerId: string | null;
@@ -102,6 +111,7 @@ export interface LiveState {
   spin: SpinInfo | null;
   result: LiveResult | null;
   screen: 'stage' | 'board';
+  break: BreakState | null;
   seq: number;
   lastEvent: LiveEvent | null;
 }
@@ -120,6 +130,15 @@ export interface EventData {
   round: number;
   live: LiveState;
   log: LogItem[];
+  /** A practice run is in progress: nothing in it touches the real auction. */
+  practice: boolean;
+}
+
+/** A captain's private plan for one player. */
+export interface StrategyItem {
+  playerId: string;
+  budget: number; // the most they plan to pay
+  note: string;
 }
 
 export interface Secrets {
@@ -142,4 +161,6 @@ export interface Snapshot extends EventData {
   presence: { captains: string[]; viewers: number };
   /** Only sent to the admin. */
   secrets?: Secrets;
+  /** Only sent to a captain: their own plan. */
+  strategy?: StrategyItem[];
 }

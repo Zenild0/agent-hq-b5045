@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Me, Snapshot } from '../shared/types';
-import { AuctionError, createStore, randomCode, runAction, tick, type Actor, type Store } from './engine';
+import { AuctionError, createStore, nextDue, randomCode, runAction, tick, type Actor, type Store } from './engine';
 import { DATA_DIR, flushAll, loadAll, saveSoon, UPLOADS_DIR } from './persist';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -46,6 +46,7 @@ function presenceOf(code: string) {
 function snapshot(store: Store, me: Me, isAdmin: boolean, now = Date.now()): Snapshot {
   const snap: Snapshot = { ...store.data, now, me, presence: presenceOf(store.data.code) };
   if (isAdmin) snap.secrets = store.secrets;
+  if (me.captainId) snap.strategy = store.strategies[me.captainId] ?? []; // a captain's plan is private to them
   return snap;
 }
 
@@ -63,6 +64,7 @@ function broadcast(store: Store) {
     if (!payload) {
       const snap: Snapshot = { ...base, me: c.me };
       if (c.isAdmin) snap.secrets = store.secrets;
+      if (c.me.captainId) snap.strategy = store.strategies[c.me.captainId] ?? [];
       payload = `data: ${JSON.stringify(snap)}\n\n`;
       plain.set(cacheKey, payload);
     }
@@ -79,14 +81,16 @@ function broadcastPresenceSoon(store: Store) {
   }, 400);
 }
 
-/** When the wheel stops the server flips to "bidding" and tells everyone, even if nobody clicks. */
-function scheduleSpinEnd(store: Store) {
-  const { live } = store.data;
+/**
+ * Things that happen by themselves — the wheel stopping, a strategy break running out — are driven
+ * by the server so every screen changes together, even if nobody clicks anything.
+ */
+function scheduleTimers(store: Store) {
   const code = store.data.code;
   clearTimeout(spinTimers.get(code));
   spinTimers.delete(code);
-  if (live.phase !== 'spinning' || !live.spin) return;
-  const delay = Math.max(0, live.spin.endsAt - Date.now()) + 25;
+  const due = nextDue(store);
+  if (due === null) return;
   spinTimers.set(
     code,
     setTimeout(() => {
@@ -94,12 +98,13 @@ function scheduleSpinEnd(store: Store) {
         saveSoon(store);
         broadcast(store);
       }
-    }, delay),
+      scheduleTimers(store);
+    }, Math.max(0, due - Date.now()) + 25),
   );
 }
 for (const s of events.values()) {
   tick(s, Date.now());
-  scheduleSpinEnd(s);
+  scheduleTimers(s);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -200,7 +205,7 @@ app.post(
     const action = String(req.body?.action ?? '');
     const result = runAction(store, actor, action, req.body?.params);
     saveSoon(store);
-    scheduleSpinEnd(store);
+    scheduleTimers(store);
     broadcast(store);
     res.json({ ok: true, result: result ?? null });
   }),

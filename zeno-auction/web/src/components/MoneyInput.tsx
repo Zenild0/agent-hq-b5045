@@ -9,6 +9,7 @@ export function MoneyInput({
   placeholder,
   className = '',
   allowZero = false,
+  onCommit,
 }: {
   value: number;
   onChange: (n: number) => void;
@@ -16,6 +17,8 @@ export function MoneyInput({
   placeholder?: string;
   className?: string;
   allowZero?: boolean;
+  /** Called when the field loses focus with a readable amount (handy for "save on blur" fields). */
+  onCommit?: (n: number) => void;
 }) {
   const [text, setText] = useState(value ? formatMoney(value, { ...fmt, symbol: '' }).trim() : '');
   const [focused, setFocused] = useState(false);
@@ -35,7 +38,10 @@ export function MoneyInput({
         placeholder={placeholder ?? 'e.g. 12cr, 5L, 250k'}
         inputMode="text"
         onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
+        onBlur={() => {
+          setFocused(false);
+          if (onCommit && parsed !== null && (parsed > 0 || allowZero)) onCommit(parsed);
+        }}
         onChange={(e) => {
           setText(e.target.value);
           const n = parseMoney(e.target.value);
