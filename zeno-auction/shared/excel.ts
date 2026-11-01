@@ -247,7 +247,7 @@ export function buildWorkbook(ExcelJS: ExcelNS, input: WorkbookInput) {
 }
 
 /** Everything in the auction as sheet rows (the in-app Export button). */
-export function exportRows(data: EventData): { teams: SheetTeam[]; players: SheetPlayer[] } {
+export function exportRows(data: Omit<EventData, 'log'>): { teams: SheetTeam[]; players: SheetPlayer[] } {
   const teamName = (id: string | null) => data.captains.find((c) => c.id === id)?.team ?? '';
   const teams = data.captains.map((c: Captain) => {
     const st = teamStats(data, c);

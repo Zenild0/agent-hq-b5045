@@ -1,6 +1,6 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { Me, Snapshot } from '../shared/types';
@@ -10,7 +10,8 @@ import { clientIp } from './net';
 import { DATA_DIR, deleteEventFiles, flushAll, loadAll, readUpload, saveSoon, UPLOADS_DIR, writeUploads } from './persist';
 
 const PORT = Number(process.env.PORT ?? 8787);
-const VERSION = process.env.APP_VERSION ?? 'dev';
+// Which build is running: set by the packaging step as a VERSION file next to the app (or by APP_VERSION).
+const VERSION = process.env.APP_VERSION ?? (existsSync('VERSION') ? readFileSync('VERSION', 'utf8').trim().slice(0, 80) : 'dev');
 const MAX_EVENTS = Number(process.env.MAX_EVENTS ?? 2000);
 const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
 const MAX_UPLOADS_PER_AUCTION = 1000;
@@ -33,6 +34,10 @@ interface Client {
   send: (json: string) => void;
   /** Ends the connection (used when an auction is deleted). */
   close: () => void;
+  /** What this screen already has, by part of the state (so an update can carry only what changed). */
+  last?: Map<string, string>;
+  /** Only the WebSocket connection understands partial updates; the plain-HTTP stream always gets everything. */
+  deltas?: boolean;
   me: Me;
   isAdmin: boolean;
 }
@@ -82,33 +87,53 @@ function presenceOf(code: string) {
   return { captains: [...captains], viewers: set.size };
 }
 
+/** The whole state as one object, as one screen should see it. */
 function snapshot(store: Store, me: Me, isAdmin: boolean, now = Date.now()): Snapshot {
-  const snap: Snapshot = { ...store.data, now, me, presence: presenceOf(store.data.code) };
+  const { log: _log, ...data } = store.data; // the activity log is not sent to screens
+  const snap: Snapshot = { ...data, now, me, presence: presenceOf(store.data.code) };
   if (isAdmin) snap.secrets = store.secrets;
   if (me.captainId) snap.strategy = store.strategies[me.captainId] ?? []; // a captain's plan is private to them
   return snap;
+}
+
+/**
+ * Pushes the new state to every connected screen. To keep the data used small (a free server only
+ * allows ~1 GB a month), a screen that already has the previous state gets only the parts that
+ * changed — usually just `live` and the clock — instead of the whole thing. A newly connected screen
+ * (no `last`) always gets everything.
+ */
+/** Sends one screen the complete state (on connecting) and remembers what it now has. */
+function sendFull(store: Store, c: Client) {
+  const snap = snapshot(store, c.me, c.isAdmin);
+  c.last = new Map(Object.entries(snap).filter(([k]) => k !== 'now').map(([k, v]) => [k, JSON.stringify(v)]));
+  c.send(JSON.stringify(snap));
 }
 
 function broadcast(store: Store) {
   const set = clients.get(store.data.code);
   if (!set || set.size === 0) return;
   const now = Date.now();
-  const presence = presenceOf(store.data.code);
-  const base = { ...store.data, now, presence };
-  // Serialise once for everyone, once more for admins (they also receive the secrets).
-  const plain = new Map<string, string>();
+  // For each kind of viewer (admin / host / one captain / audience): the state split into parts, as text.
+  const groups = new Map<string, Map<string, string>>();
   for (const c of set) {
-    const cacheKey = c.isAdmin ? 'admin' : `${c.me.role}:${c.me.captainId ?? ''}`;
-    let payload = plain.get(cacheKey);
-    if (!payload) {
-      const snap: Snapshot = { ...base, me: c.me };
-      if (c.isAdmin) snap.secrets = store.secrets;
-      if (c.me.captainId) snap.strategy = store.strategies[c.me.captainId] ?? [];
-      payload = JSON.stringify(snap);
-      plain.set(cacheKey, payload);
+    const groupKey = c.isAdmin ? 'admin' : `${c.me.role}:${c.me.captainId ?? ''}`;
+    let parts = groups.get(groupKey);
+    if (!parts) {
+      parts = new Map<string, string>();
+      for (const [k, v] of Object.entries(snapshot(store, c.me, c.isAdmin, now))) if (k !== 'now') parts.set(k, JSON.stringify(v));
+      groups.set(groupKey, parts);
     }
+    let body: string;
+    if (!c.last || !c.deltas) {
+      body = `{${[...parts].map(([k, v]) => `${JSON.stringify(k)}:${v}`).join(',')},"now":${now}}`;
+    } else {
+      const changed = [...parts].filter(([k, v]) => c.last!.get(k) !== v);
+      if (changed.length === 0) continue; // nothing new for this screen: send nothing
+      body = `{"delta":true,${changed.map(([k, v]) => `${JSON.stringify(k)}:${v}`).join(',')}${changed.length ? ',' : ''}"now":${now}}`;
+    }
+    c.last = parts;
     try {
-      c.send(payload);
+      c.send(body);
     } catch {
       /* a dead socket is cleaned up by its own close handler */
     }
@@ -255,7 +280,7 @@ app.get('/api/events/:code/stream', (req, res, next) => {
   });
   res.write('retry: 2000\n\n');
   const unregister = register(store, client);
-  client.send(JSON.stringify(snapshot(store, client.me, client.isAdmin)));
+  sendFull(store, client);
 
   const heartbeat = setInterval(() => res.write(': ping\n\n'), 20_000);
   req.on('close', () => {
@@ -405,13 +430,24 @@ app.post(
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '7d', immutable: true, index: false }));
 app.get('/api/health', (_req, res) => res.json({ ok: true, auctions: events.size }));
 // short alias used by the server's update/health checks
-app.get('/healthz', (_req, res) => res.json({ ok: true, auctions: events.size, version: VERSION }));
+app.get('/healthz', (_req, res) => {
+  // `live` = auctions with a player on the block or a break running right now (the self-updater waits for 0)
+  let live = 0;
+  for (const s of events.values()) if (s.data.live.phase === 'spinning' || s.data.live.phase === 'bidding' || s.data.live.break) live++;
+  res.json({ ok: true, auctions: events.size, live, version: VERSION });
+});
 
 // Built web app (production). In development Vite serves the UI and proxies /api here.
 const WEB_DIST = path.resolve('dist/web');
 if (existsSync(WEB_DIST)) {
+  // Files under /assets have a fingerprint in their name, so a browser can keep them for a year
+  // (saves a lot of data when 30 phones open the app). The page itself must always be re-checked.
+  app.use('/assets', express.static(path.join(WEB_DIST, 'assets'), { index: false, maxAge: '365d', immutable: true, fallthrough: false }));
   app.use(express.static(WEB_DIST, { index: false, maxAge: '1h' }));
-  app.get(/^(?!\/api\/|\/uploads\/).*/, (_req, res) => res.sendFile(path.join(WEB_DIST, 'index.html')));
+  app.get(/^(?!\/api\/|\/uploads\/|\/assets\/).*/, (_req, res) => {
+    res.set('Cache-Control', 'no-cache');
+    res.sendFile(path.join(WEB_DIST, 'index.html'));
+  });
 }
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
@@ -467,6 +503,7 @@ server.on('upgrade', (req, socket, head) => {
     const client: Client = {
       send: (json) => ws.readyState === ws.OPEN && ws.send(json),
       close: () => ws.close(),
+      deltas: true,
       me: { role: actor.role, captainId: actor.captainId },
       isAdmin: actor.isAdmin,
     };
@@ -475,7 +512,7 @@ server.on('upgrade', (req, socket, head) => {
     ws.on('error', () => ws.terminate());
     const unregister = register(store, client);
     ws.on('close', unregister);
-    client.send(JSON.stringify(snapshot(store, client.me, client.isAdmin)));
+    sendFull(store, client);
   });
 });
 

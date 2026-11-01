@@ -37,7 +37,7 @@ export function teamStats(data: Pick<EventData, 'players'>, captain: Captain): T
  * The most this captain can bid right now: purse left minus whatever they must keep back to still
  * reach the minimum squad size (priced at the cheapest players left in the pool).
  */
-export function maxBid(data: EventData, captain: Captain, excludePlayerId?: string | null): number {
+export function maxBid(data: Omit<EventData, 'log'>, captain: Captain, excludePlayerId?: string | null): number {
   const { settings } = data;
   const { remaining, count } = teamStats(data, captain);
   if (!settings.reserveRule || settings.minSquad <= 0) return remaining;
@@ -56,7 +56,7 @@ export type BidBlock =
   | { ok: false; reason: string };
 
 /** Everything that stops `captain` from bidding `amount` on the current player. */
-export function checkBid(data: EventData, captain: Captain, amount: number): BidBlock {
+export function checkBid(data: Omit<EventData, 'log'>, captain: Captain, amount: number): BidBlock {
   const { live, settings } = data;
   const player = data.players.find((p) => p.id === live.playerId);
   if (live.phase !== 'bidding' || !player) return { ok: false, reason: 'Bidding is not open' };

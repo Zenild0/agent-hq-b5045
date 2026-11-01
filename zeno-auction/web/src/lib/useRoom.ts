@@ -27,6 +27,7 @@ export function useRoom(code: string, key: string | null): Room {
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [status, setStatus] = useState<RoomStatus>('connecting');
   const offset = useRef(0);
+  const current = useRef<Snapshot | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -43,6 +44,7 @@ export function useRoom(code: string, key: string | null): Room {
       if (next.now < lastNow) return;
       lastNow = next.now;
       offset.current = next.now - Date.now();
+      current.current = next;
       setSnap(next);
       setStatus('live');
     };
@@ -109,6 +111,13 @@ export function useRoom(code: string, key: string | null): Room {
             stopPolling();
             clearTimeout(retryTimer);
             ws?.close();
+            return;
+          }
+          if (msg?.delta) {
+            // a partial update: only the parts that changed — lay them over what we already have
+            if (!current.current) return;
+            const { delta: _d, ...parts } = msg;
+            apply({ ...current.current, ...parts } as Snapshot);
             return;
           }
           apply(msg as Snapshot);

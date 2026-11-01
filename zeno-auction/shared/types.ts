@@ -157,7 +157,8 @@ export interface Me {
 }
 
 /** What every connected client receives. */
-export interface Snapshot extends EventData {
+/** (The activity log stays on the server — no screen shows it, and it was a sizeable part of every update.) */
+export interface Snapshot extends Omit<EventData, 'log'> {
   now: number;
   me: Me;
   presence: { captains: string[]; viewers: number };

@@ -160,6 +160,55 @@ const post = (path, body, headers = {}) => j(path, { method: 'POST', headers: { 
     r = await j(`/api/events/${code}/exists`); t('other auctions are untouched', r.status === 200);
   }
 
+  // ---- light live updates, caching, health ----
+  {
+    const room = await post('/api/events', { settings: { name: 'Delta', drawMode: 'manual' } });
+    const rc = room.body.code, ra = room.body.adminKey, rh = room.body.hostKey;
+    const rcmd = (key, action, params) => post(`/api/events/${rc}/cmd`, { action, params }, { 'x-key': key });
+    await rcmd(ra, 'captain.add', { team: 'A' }); await rcmd(ra, 'captain.add', { team: 'B' });
+    await rcmd(ra, 'players.import', { rows: Array.from({ length: 30 }, (_, i) => ({ name: 'P' + i })) });
+    const rs0 = (await j(`/api/events/${rc}/state?key=${ra}`)).body;
+    const rtok = rs0.captains.map(c => rs0.secrets.captainTokens[c.id]);
+    const wd = await wsOpen(`/api/events/${rc}/ws`);
+    t('first WS message is the complete state', wd.opened && !wd.msgs[0].delta && Array.isArray(wd.msgs[0].players) && wd.msgs[0].players.length === 30);
+    t('the activity log is not sent to screens', wd.msgs[0].log === undefined && rs0.log === undefined);
+    await rcmd(rh, 'pick', { playerId: rs0.players[0].id });
+    await rcmd(rtok[0], 'bid', {});
+    await new Promise(x => setTimeout(x, 400));
+    const last = wd.msgs[wd.msgs.length - 1];
+    t('later messages carry only what changed', last.delta === true && last.live && last.players === undefined && last.settings === undefined && last.captains === undefined, Object.keys(last).join());
+    t('…and are much smaller than the full state', JSON.stringify(last).length * 4 < JSON.stringify(wd.msgs[0]).length, `${JSON.stringify(last).length} vs ${JSON.stringify(wd.msgs[0]).length}`);
+    // applying the partial updates gives exactly what the server would have sent in full
+    let merged = {}; for (const m of wd.msgs) { const { delta, ...rest } = m; merged = { ...merged, ...rest }; }
+    const fresh = (await j(`/api/events/${rc}/state`)).body;
+    t('partial updates add up to the full state', JSON.stringify(merged.live) === JSON.stringify(fresh.live) && JSON.stringify(merged.players) === JSON.stringify(fresh.players));
+    await rcmd(rh, 'sold', {});
+    await new Promise(x => setTimeout(x, 400));
+    const afterSale = wd.msgs[wd.msgs.length - 1];
+    t('a sale updates players and live together', afterSale.delta && afterSale.players && afterSale.live);
+    const adminWs = await wsOpen(`/api/events/${rc}/ws?key=${ra}`);
+    t('admin screen still gets secrets (full first message)', adminWs.msgs[0].secrets && adminWs.msgs[0].secrets.adminKey === ra);
+    t('viewers never get secrets in updates', wd.msgs.every(m => m.secrets === undefined));
+    const cWs = await wsOpen(`/api/events/${rc}/ws?key=${rtok[1]}`);
+    await rcmd(rtok[1], 'strategy.add', { playerId: rs0.players[5].id, budget: 5_000_000 });
+    await new Promise(x => setTimeout(x, 400));
+    t('a captain gets own plan in an update', cWs.msgs.some(m => m.delta && Array.isArray(m.strategy) && m.strategy.length === 1));
+    t('other screens do not get that captain\'s plan', !wd.msgs.some(m => m.strategy) && !adminWs.msgs.some(m => m.strategy));
+    [wd, adminWs, cWs].forEach(x => x.w && x.w.close());
+
+    const sse = await fetch(`${BASE}/api/events/${rc}/stream`); const reader = sse.body.getReader(); const chunk = new TextDecoder().decode((await reader.read()).value) + new TextDecoder().decode((await reader.read()).value);
+    t('the plain-HTTP stream always sends full state', chunk.includes('"players"') && !chunk.includes('"delta"'));
+    reader.cancel();
+    await fetch(`${BASE}/api/events/${rc}`, { method: 'DELETE', headers: { 'x-key': ra } });
+
+    r = await j('/healthz'); t('/healthz answers with ok and a version', r.status === 200 && r.body.ok === true && typeof r.body.version === 'string', JSON.stringify(r.body));
+    const home = await fetch(BASE + '/'); const html = await home.text();
+    t('the page itself is always re-checked (no-cache)', /no-cache/.test(home.headers.get('cache-control') || ''), home.headers.get('cache-control'));
+    const asset = (html.match(/\/assets\/[^"']+\.js/) || [])[0];
+    if (asset) { const a = await fetch(BASE + asset); t('fingerprinted assets are cached for a year', /max-age=31536000/.test(a.headers.get('cache-control') || '') && /immutable/.test(a.headers.get('cache-control') || ''), a.headers.get('cache-control')); }
+    const missing = await fetch(BASE + '/assets/nope-123.js'); t('a missing asset is a 404, not the app page', missing.status === 404 && !(await missing.text()).includes('<div id="root"'));
+  }
+
   // ---- brute-force protection: wrong keys are throttled, valid keys never are ----
   let limited = 0, firstLimitedAt = -1;
   for (let i = 0; i < 140; i++) { const q = await cmd('GUESS' + String(i).padStart(2, '0'), 'bid', {}); if (q.status === 429) { limited++; if (firstLimitedAt < 0) firstLimitedAt = i; } }

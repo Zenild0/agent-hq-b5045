@@ -23,9 +23,9 @@ test('a change is on disk within a tick, and the default data folder is the proj
 
 test('deleting an auction removes its file, its photos, and cancels a pending save', async () => {
   const { mkdirSync, writeFileSync } = await import('node:fs');
-  const dir = mkdtempSync(path.join(tmpdir(), 'zeno-del-'));
-  process.env.DATA_DIR = dir;
-  const persist = await import('./persist?del');
+  process.env.DATA_DIR ??= mkdtempSync(path.join(tmpdir(), 'zeno-del-'));
+  const persist = await import('./persist');
+  const dir = persist.DATA_DIR; // (the folder is fixed when the module is first loaded)
   const { createStore } = await import('./engine');
   const s = createStore('GONE01', {});
   persist.saveNow(s);
