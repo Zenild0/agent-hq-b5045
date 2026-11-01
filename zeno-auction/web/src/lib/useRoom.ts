@@ -3,7 +3,7 @@ import type { Snapshot } from '../../../shared/types';
 import { sendCommand } from './api';
 import { useToast } from '../components/ui';
 
-export type RoomStatus = 'connecting' | 'live' | 'offline' | 'missing' | 'blocked';
+export type RoomStatus = 'connecting' | 'live' | 'offline' | 'missing' | 'blocked' | 'deleted';
 
 export interface Room {
   snap: Snapshot | null;
@@ -101,14 +101,24 @@ export function useRoom(code: string, key: string | null): Room {
       };
       ws.onmessage = (e) => {
         try {
-          apply(JSON.parse(e.data) as Snapshot);
+          const msg = JSON.parse(e.data);
+          if (msg?.deleted) {
+            // the admin deleted this auction: stop for good, don't reconnect
+            gone = true;
+            setStatus('deleted');
+            stopPolling();
+            clearTimeout(retryTimer);
+            ws?.close();
+            return;
+          }
+          apply(msg as Snapshot);
         } catch {
           /* ignore a malformed frame */
         }
       };
       ws.onclose = () => {
         if (cancelled || gone) return;
-        setStatus((s) => (s === 'missing' || s === 'blocked' ? s : opened ? 'offline' : s));
+        setStatus((s) => (s === 'missing' || s === 'blocked' || s === 'deleted' ? s : opened ? 'offline' : s));
         void poll(); // an immediate refresh (also detects "auction not found")
         startPolling();
         scheduleRetry();

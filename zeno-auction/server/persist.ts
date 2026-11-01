@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { normalizeStore, type Store } from './engine';
@@ -65,3 +65,29 @@ export function flushAll(stores: Iterable<Store>): void {
 }
 
 export const hasUploads = () => existsSync(UPLOADS_DIR);
+
+/** Permanently removes one auction from disk: its file, any half-written copy, and its photos. */
+export function deleteEventFiles(code: string): void {
+  clearTimeout(timers.get(code)); // a save that was about to happen must not bring the file back
+  timers.delete(code);
+  const file = path.join(EVENTS_DIR, `${code}.json`);
+  rmSync(file, { force: true });
+  rmSync(`${file}.tmp`, { force: true });
+  rmSync(path.join(UPLOADS_DIR, code), { recursive: true, force: true });
+}
+
+/** One uploaded photo, or null if it is not there. `fileName` must already be validated (letters/digits + extension). */
+export function readUpload(code: string, fileName: string): Buffer | null {
+  try {
+    return readFileSync(path.join(UPLOADS_DIR, code, fileName));
+  } catch {
+    return null;
+  }
+}
+
+export function writeUploads(code: string, files: Map<string, Buffer>): void {
+  if (files.size === 0) return;
+  const dir = path.join(UPLOADS_DIR, code);
+  mkdirSync(dir, { recursive: true });
+  for (const [name, buf] of files) writeFileSync(path.join(dir, name), buf);
+}

@@ -59,3 +59,25 @@ export async function uploadImage(code: string, key: string, blob: Blob): Promis
   });
   return (await parse<{ url: string }>(res)).url;
 }
+
+/** Permanently deletes an auction (admin only). */
+export async function deleteEvent(code: string, key: string) {
+  const res = await fetch(`/api/events/${encodeURIComponent(code)}`, { method: 'DELETE', headers: { 'x-key': key } });
+  await parse<{ ok: true }>(res);
+}
+
+/** The whole auction as one file (admin only). */
+export async function exportEvent(code: string, key: string): Promise<unknown> {
+  const res = await fetch(`/api/events/${encodeURIComponent(code)}/export`, { headers: { 'x-key': key }, cache: 'no-store' });
+  return parse<unknown>(res);
+}
+
+/** Creates a brand-new auction from a saved auction file. */
+export async function restoreEvent(file: unknown) {
+  const res = await fetch('/api/events/restore', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(file),
+  });
+  return parse<{ code: string; name: string; adminKey: string; hostKey: string; players: number; teams: number }>(res);
+}

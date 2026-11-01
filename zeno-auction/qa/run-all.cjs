@@ -10,6 +10,7 @@ const suites = [
   ['UI flows: auctioneer / captain / big screen', 'qa-ui3.cjs'],
   ['Resilience: server restart, blocked WebSockets, outage', 'qa-resilience.cjs'],
   ['Late joiners: mid-spin and mid-break', 'qa-late.cjs'],
+  ['Save a copy / restore from file / delete an auction', 'qa-ui4.cjs'],
 ];
 let failed = 0;
 for (const [title, file] of suites) {

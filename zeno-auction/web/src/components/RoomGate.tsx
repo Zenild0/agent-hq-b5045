@@ -6,6 +6,15 @@ import { sfx, speak, useVoices, type SoundPrefs } from '../lib/sound';
 import { FullScreenMessage, Logo } from './ui';
 
 export function RoomGate({ room, code, children }: { room: Room; code: string; children: (snap: NonNullable<Room['snap']>) => ReactNode }) {
+  if (room.status === 'deleted')
+    return (
+      <FullScreenMessage title="This auction was deleted">
+        <p>The admin removed <b className="text-white">{code}</b> from the server. If you were part of it, ask them for the results file.</p>
+        <Link to="/" className="btn-primary mt-6">
+          Go to the home page
+        </Link>
+      </FullScreenMessage>
+    );
   if (room.status === 'missing')
     return (
       <FullScreenMessage title="Auction not found">

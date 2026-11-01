@@ -1,10 +1,10 @@
-import { Check, Loader2, Rocket } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Check, FileUp, Loader2, Rocket } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuctionPreview } from '../components/AuctionPreview';
 import { SECTIONS, SettingsForm } from '../components/SettingsForm';
 import { Logo, useToast } from '../components/ui';
-import { createEvent } from '../lib/api';
+import { createEvent, restoreEvent } from '../lib/api';
 import { saveEvent } from '../lib/session';
 import type { EventSettings } from '../../../shared/types';
 
@@ -51,6 +51,34 @@ export default function NewEvent() {
     return () => io.disconnect();
   }, []);
 
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  /** Brings back an auction from a file saved earlier ("Download the whole auction file"). */
+  const restore = async (file: File | undefined) => {
+    if (!file) return;
+    setBusy(true);
+    try {
+      if (file.size > 25 * 1024 * 1024) throw new Error('That file is too big to be an auction file.');
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(await file.text());
+      } catch {
+        throw new Error('That file could not be read — is it a ZenoBid auction file (.json)?');
+      }
+      const res = await restoreEvent(parsed);
+      saveEvent({ code: res.code, name: res.name, role: 'admin', key: res.adminKey, at: Date.now() });
+      localStorage.setItem(`zeno:key:${res.code}:admin`, res.adminKey);
+      localStorage.setItem(`zeno:key:${res.code}:host`, res.hostKey);
+      toast(`Restored “${res.name}”: ${res.players} players, ${res.teams} teams.`, 'success');
+      nav(`/e/${res.code}/admin?k=${res.adminKey}`);
+    } catch (err) {
+      toast((err as Error).message, 'error');
+      setBusy(false);
+    } finally {
+      if (fileInput.current) fileInput.current.value = '';
+    }
+  };
+
   const create = async () => {
     setBusy(true);
     try {
@@ -70,9 +98,15 @@ export default function NewEvent() {
     <div className="mx-auto max-w-7xl px-4 pb-32 pt-5 sm:px-8">
       <div className="flex items-center justify-between">
         <Logo />
-        <Link to="/" className="text-sm font-semibold text-slate-400 hover:text-white">
-          ← Back
-        </Link>
+        <div className="flex items-center gap-4">
+          <input ref={fileInput} type="file" accept=".json,application/json" className="hidden" aria-label="Choose an auction file" onChange={(e) => restore(e.target.files?.[0])} />
+          <button className="btn-ghost !py-2" onClick={() => fileInput.current?.click()} disabled={busy} title="Bring back an auction you saved on your computer">
+            <FileUp className="h-4 w-4" /> Restore from file
+          </button>
+          <Link to="/" className="text-sm font-semibold text-slate-400 hover:text-white">
+            ← Back
+          </Link>
+        </div>
       </div>
 
       <div className="mb-8 mt-8">

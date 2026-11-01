@@ -20,3 +20,22 @@ test('a change is on disk within a tick, and the default data folder is the proj
   assert.equal(persist.loadAll().get('DURA01')?.data.captains.length, 1);
   delete process.env.DATA_DIR;
 });
+
+test('deleting an auction removes its file, its photos, and cancels a pending save', async () => {
+  const { mkdirSync, writeFileSync } = await import('node:fs');
+  const dir = mkdtempSync(path.join(tmpdir(), 'zeno-del-'));
+  process.env.DATA_DIR = dir;
+  const persist = await import('./persist?del');
+  const { createStore } = await import('./engine');
+  const s = createStore('GONE01', {});
+  persist.saveNow(s);
+  mkdirSync(path.join(dir, 'uploads', 'GONE01'), { recursive: true });
+  writeFileSync(path.join(dir, 'uploads', 'GONE01', 'a.png'), 'x');
+  persist.saveSoon(s); // a save is queued…
+  persist.deleteEventFiles('GONE01'); // …but the delete wins
+  await new Promise((r) => setTimeout(r, 30));
+  assert.ok(!existsSync(path.join(dir, 'events', 'GONE01.json')), 'file gone and not brought back');
+  assert.ok(!existsSync(path.join(dir, 'uploads', 'GONE01')), 'photos gone');
+  assert.equal(persist.readUpload('GONE01', 'a.png'), null);
+  delete process.env.DATA_DIR;
+});

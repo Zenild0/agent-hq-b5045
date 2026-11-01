@@ -5,10 +5,12 @@ import path from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { Me, Snapshot } from '../shared/types';
 import { AuctionError, createStore, nextDue, randomCode, runAction, tick, type Actor, type Store } from './engine';
+import { buildArchive, restoreArchive } from './archive';
 import { clientIp } from './net';
-import { DATA_DIR, flushAll, loadAll, saveSoon, UPLOADS_DIR } from './persist';
+import { DATA_DIR, deleteEventFiles, flushAll, loadAll, readUpload, saveSoon, UPLOADS_DIR, writeUploads } from './persist';
 
 const PORT = Number(process.env.PORT ?? 8787);
+const VERSION = process.env.APP_VERSION ?? 'dev';
 const MAX_EVENTS = Number(process.env.MAX_EVENTS ?? 2000);
 const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
 const MAX_UPLOADS_PER_AUCTION = 1000;
@@ -29,6 +31,8 @@ if (process.env.NODE_ENV !== 'production' && events.size > 0) {
 /** One connected screen — over a WebSocket (normal) or Server-Sent Events (fallback). */
 interface Client {
   send: (json: string) => void;
+  /** Ends the connection (used when an auction is deleted). */
+  close: () => void;
   me: Me;
   isAdmin: boolean;
 }
@@ -132,7 +136,7 @@ function register(store: Store, client: Client): () => void {
   broadcastPresenceSoon(store);
   return () => {
     set!.delete(client);
-    broadcastPresenceSoon(store);
+    if (events.get(store.data.code) === store) broadcastPresenceSoon(store); // not for a deleted auction
   };
 }
 
@@ -169,7 +173,9 @@ for (const s of events.values()) {
 const app = express();
 app.disable('x-powered-by');
 if (process.env.TRUST_PROXY) app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : process.env.TRUST_PROXY);
-app.use(express.json({ limit: '1mb' }));
+const smallJson = express.json({ limit: '1mb' });
+// the restore route reads its own (much larger) body
+app.use((req, res, next) => (req.path === '/api/events/restore' ? next() : smallJson(req, res, next)));
 
 const wrap =
   (fn: (req: Request, res: Response) => void) =>
@@ -236,6 +242,7 @@ app.get('/api/events/:code/stream', (req, res, next) => {
   }
   const client: Client = {
     send: (json) => res.write(`data: ${json}\n\n`),
+    close: () => res.end(),
     me: { role: actor.role, captainId: actor.captainId },
     isAdmin: actor.isAdmin,
   };
@@ -272,6 +279,108 @@ app.post(
   }),
 );
 
+
+// ---------------------------------------------------------------------------------------------
+// Deleting an auction, and the "whole auction file" (download / restore)
+// ---------------------------------------------------------------------------------------------
+
+/** Removes an auction everywhere: screens are told, timers stop, memory and disk are cleared. */
+function destroyEvent(store: Store) {
+  const code = store.data.code;
+  const set = clients.get(code);
+  if (set) {
+    for (const c of [...set]) {
+      try {
+        c.send(JSON.stringify({ deleted: true }));
+        c.close();
+      } catch {
+        /* already gone */
+      }
+    }
+    clients.delete(code);
+  }
+  clearTimeout(spinTimers.get(code));
+  spinTimers.delete(code);
+  clearTimeout(presenceTimers.get(code));
+  presenceTimers.delete(code);
+  events.delete(code);
+  deleteEventFiles(code);
+}
+
+function requireAdmin(req: Request, store: Store) {
+  const actor = authorize(req.ip ?? '', store, req.header('x-key'));
+  if (actor.role !== 'admin') throw new AuctionError('Only the admin can do that', 403);
+}
+
+app.delete(
+  '/api/events/:code',
+  wrap((req, res) => {
+    const store = findEvent(req);
+    requireAdmin(req, store);
+    destroyEvent(store);
+    res.json({ ok: true });
+  }),
+);
+
+app.get(
+  '/api/events/:code/export',
+  wrap((req, res) => {
+    const store = findEvent(req);
+    requireAdmin(req, store);
+    const archive = buildArchive(store, (name) => readUpload(store.data.code, name));
+    res.set('Cache-Control', 'no-store');
+    res.json(archive);
+  }),
+);
+
+const RESTORE_LIMIT_BYTES = 25 * 1024 * 1024;
+app.post(
+  '/api/events/restore',
+  express.json({ limit: RESTORE_LIMIT_BYTES }),
+  wrap((req, res) => {
+    if (events.size >= MAX_EVENTS) throw new AuctionError('This server is full', 503);
+    let code = randomCode(6);
+    while (events.has(code)) code = randomCode(6);
+    const { store, photos } = restoreArchive(req.body, code);
+    writeUploads(code, photos);
+    events.set(code, store);
+    saveSoon(store);
+    res.status(201).json({
+      code,
+      name: store.data.settings.name,
+      adminKey: store.secrets.adminKey,
+      hostKey: store.secrets.hostKey,
+      players: store.data.players.length,
+      teams: store.data.captains.length,
+    });
+  }),
+);
+
+// An auction nobody has touched for a while can remove itself (off unless AUTO_DELETE_DAYS is set),
+// so a forgotten auction does not sit on the server forever.
+const AUTO_DELETE_DAYS = Number(process.env.AUTO_DELETE_DAYS ?? 0);
+function lastActivity(store: Store): number {
+  const d = store.data;
+  return Math.max(d.createdAt, d.log[d.log.length - 1]?.at ?? 0, d.live.lastEvent?.at ?? 0);
+}
+function sweepOldAuctions(now = Date.now()): number {
+  if (!(AUTO_DELETE_DAYS > 0)) return 0;
+  let n = 0;
+  for (const s of [...events.values()]) {
+    if (now - lastActivity(s) > AUTO_DELETE_DAYS * 86_400_000 && (clients.get(s.data.code)?.size ?? 0) === 0) {
+      console.log(`Auto-deleting auction ${s.data.code} (no activity for ${AUTO_DELETE_DAYS} days)`);
+      destroyEvent(s);
+      n++;
+    }
+  }
+  return n;
+}
+if (AUTO_DELETE_DAYS > 0) {
+  console.log(`Auctions with no activity for ${AUTO_DELETE_DAYS} day(s) are deleted automatically.`);
+  setTimeout(sweepOldAuctions, 30_000).unref();
+  setInterval(sweepOldAuctions, 6 * 3_600_000).unref();
+}
+
 const EXT: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 
 /** Raw image upload (the browser resizes first). Returns a URL to store on a player or team. */
@@ -295,6 +404,8 @@ app.post(
 
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '7d', immutable: true, index: false }));
 app.get('/api/health', (_req, res) => res.json({ ok: true, auctions: events.size }));
+// short alias used by the server's update/health checks
+app.get('/healthz', (_req, res) => res.json({ ok: true, auctions: events.size, version: VERSION }));
 
 // Built web app (production). In development Vite serves the UI and proxies /api here.
 const WEB_DIST = path.resolve('dist/web');
@@ -355,6 +466,7 @@ server.on('upgrade', (req, socket, head) => {
     tick(store, Date.now());
     const client: Client = {
       send: (json) => ws.readyState === ws.OPEN && ws.send(json),
+      close: () => ws.close(),
       me: { role: actor.role, captainId: actor.captainId },
       isAdmin: actor.isAdmin,
     };

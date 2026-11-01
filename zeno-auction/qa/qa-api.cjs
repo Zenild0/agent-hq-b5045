@@ -109,6 +109,57 @@ const post = (path, body, headers = {}) => j(path, { method: 'POST', headers: { 
   const fin = (await j(`/api/events/${code}/state`)).body.live.bids;
   t('parallel storm keeps strictly increasing, alternating bids', fin.every((b, i) => i === 0 || (b.amount > fin[i - 1].amount && b.captainId !== fin[i - 1].captainId)), `${fin.length} bids`);
 
+  // ---- save to file / restore / delete ----
+  {
+    const photo = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    const up = await fetch(`${BASE}/api/events/${code}/upload`, { method: 'POST', headers: { 'content-type': 'image/png', 'x-key': adminKey }, body: photo }).then(r => r.json());
+    t('photo uploaded for the export test', !!up.url);
+    const p0 = st.players[0].id;
+    await cmd(adminKey, 'player.update', { id: p0, patch: { photo: up.url } });
+
+    r = await j(`/api/events/${code}/export`);                         t('export without a key → 403', r.status === 403, String(r.status));
+    r = await j(`/api/events/${code}/export`, { headers: { 'x-key': hostKey } }); t('export with the host key → 403', r.status === 403);
+    r = await j(`/api/events/${code}/export`, { headers: { 'x-key': tok[0] } });  t('export with a captain PIN → 403', r.status === 403);
+    r = await j(`/api/events/${code}/export`, { headers: { 'x-key': adminKey } });
+    const file = r.body;
+    t('export returns the whole auction', r.status === 200 && file.format === 'zenobid-auction' && file.auction.players.length >= st.players.length && file.auction.captains.length === st.captains.length, String(r.status));
+    t('export has the photo inside', Object.keys(file.photos).length >= 1 && file.photos[Object.keys(file.photos)[0]].startsWith('data:image/png;base64,'));
+    t('export never contains the admin or host key', !JSON.stringify(file).includes(adminKey) && !JSON.stringify(file).includes(hostKey));
+
+    r = await post('/api/events/restore', file);
+    t('restore creates a new auction with new keys', r.status === 201 && r.body.code && r.body.code !== code && r.body.adminKey !== adminKey, JSON.stringify(r.body));
+    const re = r.body;
+    const rs = (await j(`/api/events/${re.code}/state?key=${re.adminKey}`)).body;
+    t('restored teams and players match', rs.captains.length === file.auction.captains.length && rs.players.length === file.auction.players.length);
+    t('restored captain PINs are unchanged', JSON.stringify(rs.secrets.captainTokens) === JSON.stringify(file.auction.captainPins));
+    const rp = rs.players.find(p => p.photo);
+    t('restored photo is served from the new auction', !!rp && rp.photo.startsWith(`/uploads/${re.code}/`) && (await fetch(BASE + rp.photo)).status === 200, rp && rp.photo);
+    r = await post('/api/events/restore', { hello: 'world' });          t('restore of a non-auction file → 400', r.status === 400 && r.body.ok === false, String(r.status));
+    r = await post('/api/events/restore', '{broken');                    t('restore of broken JSON → 400', r.status === 400, String(r.status));
+    r = await post('/api/events/restore', { ...file, version: 9 });      t('restore of a newer file → 400', r.status === 400);
+    const bigPhotos = { ...file, photos: { 'a.png': 'data:image/png;base64,' + 'A'.repeat(3_000_000) } };
+    r = await post('/api/events/restore', bigPhotos);                    t('an oversized photo inside a file is skipped, not fatal', r.status === 201);
+    if (r.body?.code) await fetch(`${BASE}/api/events/${r.body.code}`, { method: 'DELETE', headers: { 'x-key': r.body.adminKey } });
+
+    // delete
+    const ws2 = await wsOpen(`/api/events/${re.code}/ws?key=${re.adminKey}`);
+    t('a screen is connected before the delete', ws2.opened);
+    const del = (c, key) => fetch(`${BASE}/api/events/${c}`, { method: 'DELETE', headers: key ? { 'x-key': key } : {} }).then(async x => ({ status: x.status, body: await x.json().catch(() => null) }));
+    r = await del(re.code);                  t('delete without a key → 403', r.status === 403);
+    r = await del(re.code, re.hostKey);      t('delete with the host key → 403', r.status === 403);
+    r = await del(re.code, tok[0]);          t('delete with a captain PIN of another auction → 403', r.status === 403);
+    r = await j(`/api/events/${re.code}/exists`); t('still there after refused deletes', r.status === 200);
+    r = await del(re.code, re.adminKey);     t('delete with the admin key → 200', r.status === 200 && r.body.ok === true, JSON.stringify(r));
+    await new Promise(x => setTimeout(x, 300));
+    t('connected screens are told it was deleted', ws2.msgs.some(m => m && m.deleted === true), JSON.stringify(ws2.msgs.slice(-1)));
+    r = await j(`/api/events/${re.code}/exists`);  t('deleted auction → 404', r.status === 404);
+    r = await j(`/api/events/${re.code}/state`);   t('deleted auction state → 404', r.status === 404);
+    r = await fetch(BASE + (rp ? rp.photo : '/uploads/x/y.png')); t('deleted auction photos are gone', r.status === 404, String(r.status));
+    r = await del(re.code, re.adminKey);     t('deleting twice → 404', r.status === 404);
+    const ws3 = await wsOpen(`/api/events/${re.code}/ws`); t('cannot connect to a deleted auction', !ws3.opened && ws3.status === 404);
+    r = await j(`/api/events/${code}/exists`); t('other auctions are untouched', r.status === 200);
+  }
+
   // ---- brute-force protection: wrong keys are throttled, valid keys never are ----
   let limited = 0, firstLimitedAt = -1;
   for (let i = 0; i < 140; i++) { const q = await cmd('GUESS' + String(i).padStart(2, '0'), 'bid', {}); if (q.status === 429) { limited++; if (firstLimitedAt < 0) firstLimitedAt = i; } }

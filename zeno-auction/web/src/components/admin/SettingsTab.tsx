@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { EventSettings, Snapshot } from '../../../../shared/types';
 import type { Room } from '../../lib/useRoom';
 import { SettingsForm } from '../SettingsForm';
+import { DeleteAuction, SaveFileCard } from './AuctionFile';
 
 export function SettingsTab({ snap, room }: { snap: Snapshot; room: Room }) {
   const [draft, setDraft] = useState<EventSettings>(snap.settings);
@@ -23,6 +24,8 @@ export function SettingsTab({ snap, room }: { snap: Snapshot; room: Room }) {
       </p>
       <SettingsForm value={draft} onChange={setDraft} />
 
+      <SaveFileCard snap={snap} />
+
       <section className="card border-red-400/20 p-5">
         <h2 className="font-bold text-red-300">Danger zone</h2>
         <p className="mb-3 mt-1 text-sm text-slate-400">Start over: every player goes back to the pool, teams keep their purses, round resets to 1.</p>
@@ -32,6 +35,10 @@ export function SettingsTab({ snap, room }: { snap: Snapshot; room: Room }) {
         >
           Reset auction
         </button>
+        <div className="mt-5 border-t border-white/10 pt-4">
+          <p className="mb-3 text-sm text-slate-400">All done with this auction? Remove it from the server completely (teams, players, bids, results, photos).</p>
+          <DeleteAuction snap={snap} />
+        </div>
       </section>
 
       {dirty && (
