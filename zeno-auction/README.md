@@ -19,6 +19,7 @@ auction is its own isolated room, so the same deployment can serve any number of
 | **Live boards** | **Big screen** (share the tab on Zoom) with the player, current bid, leading team, SOLD / UNSOLD stamp and confetti. **Team board** with purse left, spent, squad and max bid for every team. The auctioneer chooses which one the room sees. |
 | **What the audience sees** | Per event: show or hide the **photo**, **description**, **role** and **base price**. Name is always shown. Photos fall back to coloured initials. |
 | **Excel import / export** | **Players tab → Import Excel** reads a `.xlsx` (Players + Teams sheets) or `.csv`, shows a preview, then adds teams, sets purses and places already-bought players. **Export Excel** downloads everything (players, teams, prices, purses spent/left). **Template** gives a blank file with a Team drop-down. Re-importing a name updates that player instead of duplicating. A ready-made file is in `templates/ZenoBid-import-template.xlsx`. |
+| **Keep it on your computer, delete it from the server** | Admin → *Settings* → **Download the whole auction file** saves one `.json` with settings, teams, players, who bought whom and for how much, the history, captains' plans and photos. **New auction → Restore from file** brings it back (new admin link, same captain PINs). **Delete this auction** (type its name to confirm) removes it, its bids and its photos from the server for good; everyone watching is told. Set `AUTO_DELETE_DAYS` and forgotten auctions delete themselves. |
 | **Practice run** | Admin → *Run the auction* → **Start a practice run**. Everyone rehearses on their real screens with the real teams and players, under a yellow PRACTICE banner. The real auction is parked untouched and comes back exactly as it was when the admin clicks **Go live**. Team / player / purse editing is locked during practice so nothing can leak across. |
 | **Captain strategy tab** | Each captain keeps a private plan: pick players and set the most they'd pay for each. It shows purse left vs. planned spend, warns when the plan is over budget, flags players other teams have bought, and shows "In your plan — up to …" when a target comes on the block. Nobody else can see it. |
 | **Strategy break** | The auctioneer sets a time (2 / 5 / 10 / 15 min or any value) and starts a break. Every screen shows a countdown with the teams bought so far; captains are switched to their Strategy tab. The auctioneer can add time or end it early; it also ends by itself. |
@@ -68,6 +69,7 @@ npm run typecheck
 ZenoBid needs a **long-running Node process** (live updates use WebSockets), so use a VPS / container host such
 as Hetzner, DigitalOcean, Render, Railway or Fly.io — not a serverless/edge platform or "cPanel" shared hosting.
 
+**On a small free Google Cloud server (e2-micro) next to another app, behind a Cloudflare Tunnel → follow [`deploy/google-cloud/GOOGLE-CLOUD.md`](./deploy/google-cloud/GOOGLE-CLOUD.md)** (beginner-friendly, with a mini coding dictionary; self-updating with rollback, nightly backups).
 **On a Windows server with Cloudflare → follow [`deploy/WINDOWS.md`](./deploy/WINDOWS.md)** (Node service + Cloudflare Tunnel, no open ports).
 **On a Linux server → follow [`deploy/README.md`](./deploy/README.md)**: point a DNS record at the
 server, run `docker compose up -d --build`, and you get `https://auction.yourdomain.com` with automatic HTTPS,
@@ -80,6 +82,7 @@ docker build -t zenobid . && docker run -p 8787:8787 -v zenobid-data:/data zenob
 ```
 
 * `DATA_DIR` (default: the project's `data/` folder) holds every auction (`events/*.json`) and uploaded photos (`uploads/`). **Keep it on a persistent disk and back it up.**
+* `AUTO_DELETE_DAYS` (default off) deletes auctions with no activity for that many days. `/healthz` reports `{ok, auctions, live, version}`.
 * `PORT` (default `8787`), `HOST` (e.g. `127.0.0.1` to listen on this machine only), `MAX_EVENTS` (default `2000`), `BAD_KEY_LIMIT` (default `120`), `TRUST_PROXY=true` when behind Caddy/nginx.
 * One server process = one source of truth, which is what keeps bids strictly ordered. Run a single instance per data directory.
 
@@ -88,12 +91,13 @@ docker build -t zenobid . && docker run -p 8787:8787 -v zenobid-data:/data zenob
 ```
 shared/    money formatting/parsing, bid-step + budget rules   (used by server AND browser)
 server/    engine.ts   every auction rule lives here (validated, tested)
-           index.ts    Express: REST commands, SSE stream, photo upload, static web app
+           index.ts    Express: REST commands, WebSocket live updates, photo upload, export/restore/delete, static web app
 web/       React + Tailwind: Home, Create, Admin, Auctioneer, Captain, Big screen
 ```
 
-The server is authoritative: clients send intents (`bid`, `call`, `sold`…) and receive a full snapshot over SSE
-after every change. The wheel's winner is chosen on the server and animated on every screen from the server's
+The server is authoritative: clients send intents (`bid`, `call`, `sold`…) and receive live updates over a WebSocket:
+the full state when they connect, afterwards only the parts that changed (a whole 40-player auction watched on 30
+screens is about 24 MB). Plain HTTP polling / SSE remain as fallbacks. The wheel's winner is chosen on the server and animated on every screen from the server's
 clock, so the big screen and the captains' phones stop together.
 
 ## Before you sell it
