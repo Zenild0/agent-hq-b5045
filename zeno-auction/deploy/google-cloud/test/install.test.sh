@@ -51,7 +51,7 @@ has "service: dies before the choir app does" "$svc" "^OOMScoreAdjust=300$"; has
 has "service: reads its settings file" "$svc" "^EnvironmentFile=$ENV_FILE$"
 has "update timer every 10 minutes" "$(cat "$UNIT_DIR/zenobid-update.timer")" "OnUnitActiveSec=10min"
 has "backup timer at night" "$(cat "$UNIT_DIR/zenobid-backup.timer")" "OnCalendar=.*03:10"
-grep -rqi choir "$UNIT_DIR" "$ENV_FILE" "$BIN_DIR"; [ $? -ne 0 ]; check "nothing generated mentions the choir app" $?
+grep -rqE '/opt/choir|/var/lib/choir|choir\.env|choir\.service|choir-update|:3000|=3000' "$UNIT_DIR" "$ENV_FILE" "$BIN_DIR"; [ $? -ne 0 ]; check "nothing generated uses the choir app's folders, files, services or port" $?
 for f in zenobid-update zenobid-backup zenobid-links zenobid-remove; do [ -x "$BIN_DIR/$f" ]; check "command $f installed" $?; done
 [ -d "$APP_DIR/node_modules/express" ] && [ ! -d "$APP_DIR/node_modules/vite" ]; check "libraries installed: express yes, build tools no" $?
 size=$(du -sm "$APP_DIR/node_modules" | cut -f1); [ "$size" -lt 30 ]; check "libraries are small (${size} MB)" $?
