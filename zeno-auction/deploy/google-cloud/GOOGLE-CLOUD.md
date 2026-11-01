@@ -145,7 +145,7 @@ If the screen looks different (Cloudflare renames things), send a screenshot —
 
 🧠 **Words:**
 - **DNS:** the internet's phone book that turns `teamauction.zenildodias.com` into "go to Cloudflare". Cloudflare adds the entry for you.
-- **Subdomain:** the first part (`auction`) — a separate address under your domain.
+- **Subdomain:** the first part (`teamauction`) — a separate address under your domain.
 - **Tunnel:** a private pipe from your server *out* to Cloudflare, so nobody needs to knock on your server's door.
 - **Reverse proxy:** Cloudflare standing in front of your app and passing visitors through.
 - **HTTP vs HTTPS:** between your server and Cloudflare it is plain `HTTP` (inside the private pipe). Visitors still get a padlocked **HTTPS** connection from Cloudflare.
