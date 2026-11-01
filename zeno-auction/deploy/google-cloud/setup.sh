@@ -33,11 +33,11 @@ if [ ! -f "$ENV_FILE" ]; then
   if [ -z "$PUBLIC_HOST" ] && [ -t 0 ]; then
     echo
     echo "Which web address will ZenoBid use? Press Enter for the suggestion."
-    read -rp "Address [auction.zenildodias.com]: " PUBLIC_HOST
+    read -rp "Address [teamauction.zenildodias.com]: " PUBLIC_HOST
   fi
-  PUBLIC_HOST="${PUBLIC_HOST:-auction.zenildodias.com}"
+  PUBLIC_HOST="${PUBLIC_HOST:-teamauction.zenildodias.com}"
   PUBLIC_HOST="${PUBLIC_HOST#https://}"; PUBLIC_HOST="${PUBLIC_HOST%/}"
-  [[ "$PUBLIC_HOST" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "That address has odd characters. Use something like auction.zenildodias.com"; exit 1; }
+  [[ "$PUBLIC_HOST" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "That address has odd characters. Use something like teamauction.zenildodias.com"; exit 1; }
 fi
 
 # ---- 3. programs ------------------------------------------------------------------------------------------
@@ -96,7 +96,7 @@ HOST=127.0.0.1
 TRUST_PROXY=true
 DATA_DIR=$DATA_DIR
 # An auction nobody has touched for this many days deletes itself (0 = never).
-AUTO_DELETE_DAYS=14
+AUTO_DELETE_DAYS=30
 MAX_EVENTS=50
 PUBLIC_URL=https://$PUBLIC_HOST
 ENV

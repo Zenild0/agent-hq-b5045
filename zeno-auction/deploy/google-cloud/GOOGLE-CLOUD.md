@@ -1,6 +1,6 @@
 # ZenoBid on your Google Cloud server — a step-by-step guide (with a mini coding dictionary)
 
-**Goal:** `https://auction.zenildodias.com` opens ZenoBid on any phone or laptop, while your choir app keeps running untouched next to it.
+**Goal:** `https://teamauction.zenildodias.com` opens ZenoBid on any phone or laptop, while your choir app keeps running untouched next to it.
 **Time:** about 30 minutes. **Extra cost:** nothing (see "Staying free").
 
 > Claude wrote and **rehearsed** the scripts on a practice copy (fake GitHub, fake service manager). The Google and Cloudflare screens could not be tested, and their buttons get renamed now and then. If a screen does not match this guide, **stop and send a screenshot** — but first hide any long code or token on it.
@@ -92,7 +92,7 @@ curl -fsSL https://raw.githubusercontent.com/Zenild0/agent-hq-b5045/deploy-zenob
 sudo bash setup.sh
 ```
 
-It will ask one thing: the web address. Press **Enter** to accept `auction.zenildodias.com` (or type your own, e.g. `bid.zenildodias.com`). That is **not a secret**.
+It will ask one thing: the web address. Press **Enter** to accept `teamauction.zenildodias.com` (or type your own, e.g. `bid.zenildodias.com`). That is **not a secret**.
 
 It then: checks the server again → reuses the swap → downloads the finished ZenoBid → installs its small libraries → creates its own user, folders and service → starts it. It ends with **SUCCESS: ZenoBid is running**.
 
@@ -102,7 +102,7 @@ It then: checks the server again → reuses the swap → downloads the finished 
 - **Node.js / npm:** Node runs JavaScript on a server. `npm` installs the libraries (ready-made code) the app uses. We install only the two it needs to run.
 - **Service (systemd):** a program kept running in the background. **systemd** is the manager that starts it at boot and restarts it if it crashes. Yours is called `zenobid`.
 - **User:** every program runs as someone. ZenoBid runs as its own plain user `zenobid` that can only write to its own data folder. If it were ever broken into, it couldn't reach the choir app.
-- **Environment variables / settings file:** values a program reads when it starts. Yours live in `/etc/zenobid.env`: the port (3001), "only listen on this computer" (`HOST=127.0.0.1`), the data folder, and `AUTO_DELETE_DAYS=14`.
+- **Environment variables / settings file:** values a program reads when it starts. Yours live in `/etc/zenobid.env`: the port (3001), "only listen on this computer" (`HOST=127.0.0.1`), the data folder, and `AUTO_DELETE_DAYS=30`.
 - **Timer:** systemd's alarm clock. One checks GitHub every 10 minutes for a new version; one makes a backup every night at 03:10.
 
 ## Part 4 — Check it is alive (on the server)
@@ -135,7 +135,7 @@ Your existing tunnel `choir-server` is already connected to the server, so we on
 2. **Networks → Tunnels →** click **choir-server**.
 3. Open **Public hostname** → **Add a public hostname**.
 4. Fill in:
-   - **Subdomain:** `auction`
+   - **Subdomain:** `teamauction`
    - **Domain:** `zenildodias.com`
    - **Type:** `HTTP`
    - **URL:** `localhost:3001`
@@ -144,7 +144,7 @@ Your existing tunnel `choir-server` is already connected to the server, so we on
 If the screen looks different (Cloudflare renames things), send a screenshot — and cover any long token first.
 
 🧠 **Words:**
-- **DNS:** the internet's phone book that turns `auction.zenildodias.com` into "go to Cloudflare". Cloudflare adds the entry for you.
+- **DNS:** the internet's phone book that turns `teamauction.zenildodias.com` into "go to Cloudflare". Cloudflare adds the entry for you.
 - **Subdomain:** the first part (`auction`) — a separate address under your domain.
 - **Tunnel:** a private pipe from your server *out* to Cloudflare, so nobody needs to knock on your server's door.
 - **Reverse proxy:** Cloudflare standing in front of your app and passing visitors through.
@@ -153,7 +153,7 @@ If the screen looks different (Cloudflare renames things), send a screenshot —
 
 ## Part 6 — Run your first auction
 
-1. Open **https://auction.zenildodias.com** on your computer and click **New auction**.
+1. Open **https://teamauction.zenildodias.com** on your computer and click **New auction**.
 2. Set it up, add teams and players, and use **Share & links** to send links to captains and the auctioneer.
 3. **Keep the admin link private** (it contains `?k=...`). It is how you control the auction. If you lose it: in the server terminal, run `sudo zenobid-links` to list every auction and its links.
 4. Practise first: the **Practice run** feature lets everyone try a mock auction that does not touch the real one.
@@ -163,7 +163,7 @@ If the screen looks different (Cloudflare renames things), send a screenshot —
 Pick what you want:
 
 - **Keep a copy on your computer, then delete from the server** *(recommended)*: Admin → **Settings → Download the whole auction file**, then **Delete this auction**. The file holds teams, players, results, history and photos. Later you can bring it back with **New auction → Restore from file**.
-- **Do nothing:** auctions with no activity for 14 days delete themselves.
+- **Do nothing:** auctions with no activity for 30 days delete themselves.
 - **You won't use ZenoBid again:** on the server run `sudo zenobid-remove` (removes the app, keeps your auction data) or `sudo zenobid-remove --all` (removes everything, asks you to type YES). Then delete the hostname in Cloudflare. The choir app is not affected.
 
 ---
@@ -193,7 +193,7 @@ Google's free server includes about **1 GB of data out per month**. ZenoBid send
 | Site says **Error 1033** or **502** | The tunnel or the app is down. `sudo systemctl status zenobid` and `sudo systemctl status cloudflared`; then `sudo systemctl restart zenobid`. |
 | Page loads but bids don't update live | Cloudflare → Network → **WebSockets** must be **On**. |
 | "Too many wrong keys" | Wait a minute — too many wrong PINs came from one connection. |
-| An auction vanished | It was deleted by hand or by the 14-day cleanup. Restore from your downloaded file or a nightly backup. |
+| An auction vanished | It was deleted by hand or by the 30-day cleanup. Restore from your downloaded file or a nightly backup. |
 | Anything else | Send Claude the output of `sudo journalctl -u zenobid -n 40 --no-pager` (it contains no passwords). |
 
 ---
