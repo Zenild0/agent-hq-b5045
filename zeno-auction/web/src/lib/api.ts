@@ -81,3 +81,35 @@ export async function restoreEvent(file: unknown) {
   });
   return parse<{ code: string; name: string; adminKey: string; hostKey: string; players: number; teams: number }>(res);
 }
+
+export interface PlatformInfo {
+  env: 'production' | 'test';
+  payments: boolean;
+  price: number;
+  operatorName: string;
+  contact: string;
+  limits: { teams: number; players: number; photos: number; photoBytes: number; logoBytes: number; screensPerAuction: number; auctionsOnServer: number; autoDeleteDays: number };
+}
+export async function getPlatformInfo() {
+  return parse<PlatformInfo>(await fetch('/api/platform'));
+}
+
+/** "I have paid": sends the UPI reference for the developer to approve. */
+export async function requestUnlock(code: string, adminKey: string, ref: string, payer: string) {
+  const res = await fetch(`/api/events/${encodeURIComponent(code)}/unlock/request`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-key': adminKey },
+    body: JSON.stringify({ ref, payer }),
+  });
+  await parse<{ ok: true }>(res);
+}
+
+/** Calls the developer API with the developer key (kept only in this browser tab). */
+export async function devCall<T = any>(key: string, path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+  const res = await fetch(`/api/dev${path}`, {
+    method: init.method ?? 'GET',
+    headers: { 'content-type': 'application/json', 'x-dev-key': key },
+    body: init.body === undefined ? undefined : JSON.stringify(init.body),
+  });
+  return parse<T>(res);
+}

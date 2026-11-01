@@ -168,7 +168,7 @@ export default function NewEvent() {
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--hairline)] bg-ink-950/85 p-4 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-0 sm:px-4">
           <p className="hidden items-center gap-2 text-sm text-slate-400 sm:flex">
-            <Check className="h-4 w-4 text-emerald-400" /> Next: add your teams and players.
+            <Check className="h-4 w-4 text-emerald-400" /> Next: add your teams and players. · <Link to="/terms" target="_blank" className="underline hover:text-white">Terms of use</Link>
           </p>
           <button className="btn-primary ml-auto !px-7 !py-3 text-base" onClick={create} disabled={busy || !settings.name.trim()}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}

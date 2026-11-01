@@ -6,7 +6,7 @@ HTTP / WebSocket API. They are what was used to test the app before release.
 ```bash
 npm install                                   # installs playwright (the package only)
 npx playwright install chromium               # one-time browser download
-npm run build && npm start &                  # the app on http://localhost:8787
+DEV_KEY=qa-developer-key-1234 npm start &     # (after npm run build) the app on http://localhost:8787 — DEV_KEY switches on the payment / developer features the last two suites test
 npm run qa                                    # runs everything (≈ 8 min)
 ```
 
@@ -23,6 +23,8 @@ Run one script on its own with `node qa/qa-api.cjs`.
 | `qa-resilience.cjs` | Server restart mid-auction, WebSockets blocked (polling fallback), outage |
 | `qa-late.cjs` | A screen opened halfway through a wheel spin or a break |
 | `qa-ui4.cjs` | Download the whole auction file, restore it from the create screen (and clear messages for wrong files), delete with typed confirmation, big screen told "deleted" |
+| `qa-pay.cjs` | Going live: locked until paid or granted, practice always free, UPI reference request, developer approve / reject / grant / take back, live unlock on the admin screen, signed unlock surviving "Restore from file" (forgeries ignored), price 0 = free, developer-key throttle. Needs `DEV_KEY` on the server |
+| `qa-ui5.cjs` | Theme picker (29 themes), light/dark switch (per device, organiser default), brand logo / banner / "Powered by ZenoBid", team-list sorting (captain's own, auctioneer's for the big screen), unlock dialog with QR, developer page, Terms page. Needs `DEV_KEY` |
 | `qa-multitab.cjs N` | N tabs in one browser, then a bid (the regression test for the "6 tabs" bug) |
 
 The engine rules are also covered by `npm test`, including a randomised stress test

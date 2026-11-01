@@ -168,6 +168,65 @@ Pick what you want:
 
 ---
 
+## Part 8 — The test copy (try new features safely first)
+
+**Rule: nothing new goes to the real site until you have tried it on the test copy and said "go".**
+
+A *test copy* (also called a **staging environment**) is a second ZenoBid next to the real one, with its **own** address, port, data and update branch. Auctions you create there are throw-away; they can never touch your real auctions. It shows a purple **"Test copy"** ribbon on every page so nobody mistakes it for the real site.
+
+| | Real site | Test copy |
+|---|---|---|
+| Address | `teamauction.zenildodias.com` | `teamauction-test.zenildodias.com` |
+| Door (port) | 3001 | 3002 |
+| Follows GitHub branch | `deploy-zenobid` | `staging-zenobid` |
+| Data folder | `/var/lib/zenobid` | `/var/lib/zenobid-test` |
+| Memory cap | 300 MB | 200 MB |
+| Auto-deletes idle auctions after | 30 days | 7 days |
+
+**Set it up (once):**
+
+1. In the SSH window:
+   ```
+   curl -fsSL https://raw.githubusercontent.com/Zenild0/agent-hq-b5045/staging-zenobid/deploy/google-cloud/setup.sh -o setup-test.sh
+   ```
+   ```
+   sudo NAME=zenobid-test PORT=3002 BRANCH=staging-zenobid PUBLIC_HOST=teamauction-test.zenildodias.com bash setup-test.sh
+   ```
+   (`NAME` is what makes it a separate copy. The script refuses a test copy that tries to follow the real branch, or any name containing "choir".)
+2. Cloudflare → Zero Trust → Networks → Tunnels → **choir-server** → **Add route** (Published application): Subdomain `teamauction-test`, Domain `zenildodias.com`, Service URL **`http://localhost:3002`** → Save.
+3. **Lock it so only you can open it** (recommended): Zero Trust → **Access → Applications → Add an application → Self-hosted** → name `ZenoBid test`, domain `teamauction-test.zenildodias.com` → add a policy **Allow → Emails → your email address** → Save. Cloudflare will email you a one-time code whenever you open the test address. (Screens move around; send a screenshot if it doesn't match.)
+
+**How a new feature reaches you:**
+1. Claude builds it and runs all the automated tests.
+2. Claude publishes it to the `staging-zenobid` branch. The test copy downloads it within 10 minutes (or right away: `sudo zenobid-test-update`).
+3. You try it at the test address, on your phone and laptop.
+4. When you say **"go"**, Claude publishes the same build to `deploy-zenobid`, and the real site updates itself (never while an auction is live).
+
+Remove the test copy any time with `sudo zenobid-test-remove --all`. The real site and the choir app are not affected.
+
+## Part 9 — Payments and the developer page
+
+By default everything is free. These features switch on only when **you** add a developer key on the server. The key is a secret: it lives only in `/etc/zenobid.env`, written by you. **Never paste it in a chat or on GitHub.**
+
+1. Create the key and save it (this writes it straight into the file and shows nothing):
+   ```
+   echo "DEV_KEY=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')" | sudo tee -a /etc/zenobid.env > /dev/null
+   ```
+   ```
+   sudo systemctl restart zenobid
+   ```
+2. To read the key yourself (it appears only on your screen), run `sudo grep DEV_KEY /etc/zenobid.env`.
+3. Open **https://teamauction.zenildodias.com/dev** and enter the key. There you can:
+   - set the **price** and your **UPI ID** (price 0 = free for everyone),
+   - **approve** payments (each shows the reference the admin typed: check it in your UPI app first),
+   - **grant free access** to any auction, or take it back,
+   - create a ready-unlocked auction to hand to someone, and delete any auction.
+4. Setting a price only affects auctions created **after** that; existing auctions stay as they are. Set-up and **practice runs are always free**; the payment is needed only to go live.
+
+If the key ever leaks: edit the `DEV_KEY=` line with `sudo nano /etc/zenobid.env` and restart the service.
+
+---
+
 ## Updates, backups and safety nets
 
 - **Updates:** when Claude publishes a new version to the `deploy-zenobid` branch, your server downloads it within 10 minutes and restarts ZenoBid for a few seconds. **It never updates while an auction is live.** If the new version doesn't start, it **rolls back** to the previous one automatically and remembers the bad one. Update right now: `sudo zenobid-update`.
@@ -189,7 +248,7 @@ Google's free server includes about **1 GB of data out per month**. ZenoBid send
 
 | What you see | Try |
 |---|---|
-| `preflight.sh` says ✗ about the port | Something else uses 3001. Run `sudo PORT=3002 bash setup.sh` and use `localhost:3002` in Cloudflare. |
+| `preflight.sh` says ✗ about the port | Something else uses 3001. Run `sudo PORT=3004 bash setup.sh` and use `http://localhost:3004` in Cloudflare. |
 | Site says **Error 1033** or **502** | The tunnel or the app is down. `sudo systemctl status zenobid` and `sudo systemctl status cloudflared`; then `sudo systemctl restart zenobid`. |
 | Page loads but bids don't update live | Cloudflare → Network → **WebSockets** must be **On**. |
 | "Too many wrong keys" | Wait a minute — too many wrong PINs came from one connection. |
@@ -200,4 +259,4 @@ Google's free server includes about **1 GB of data out per month**. ZenoBid send
 
 ## Dictionary (A–Z)
 
-**Backup** – a spare copy of your data. **Branch** – one version line of a repo. **Build** – turning source code into runnable files. **Command** – one typed instruction. **Commit** – a saved snapshot of changes in git. **Cron/timer** – a scheduled job. **DNS** – the internet's phone book. **Environment variable** – a setting a program reads on start. **git** – the tool that tracks versions of code. **GitHub** – a website that stores git repos. **Health check** – a tiny "are you OK?" page. **HTTP/HTTPS** – the language of web pages / its padlocked version. **JSON** – a simple text format for data; auction files are JSON. **localhost** – this very computer. **Node.js** – runs JavaScript on servers. **npm** – installs libraries for Node. **Port** – a numbered door on a computer. **Pull/fetch** – download new changes. **Push** – upload your changes. **Repo** – a project's folder on GitHub. **Reverse proxy** – a front desk passing visitors to the right app. **Rollback** – going back to the last working version. **Script** – a file of commands. **Server** – an always-on computer others visit. **Service** – a program kept running by the system. **SSH** – secure remote terminal. **Subdomain** – the front part of an address (`auction.`). **`sudo`** – run as administrator. **Swap** – disk used as emergency memory. **systemd** – the manager of services and timers on Linux. **Terminal** – the window where you type commands. **Tunnel** – a private pipe to Cloudflare. **VM** – a rented slice of a computer. **WebSocket** – an always-open line for instant updates.
+**Backup** – a spare copy of your data. **Environment (staging / production)** – a copy of the app for one purpose: *production* is the real site, *staging* is the rehearsal copy where new things are tried first. **Branch** – one version line of a repo. **Build** – turning source code into runnable files. **Command** – one typed instruction. **Commit** – a saved snapshot of changes in git. **Cron/timer** – a scheduled job. **DNS** – the internet's phone book. **Environment variable** – a setting a program reads on start. **git** – the tool that tracks versions of code. **GitHub** – a website that stores git repos. **Health check** – a tiny "are you OK?" page. **HTTP/HTTPS** – the language of web pages / its padlocked version. **JSON** – a simple text format for data; auction files are JSON. **localhost** – this very computer. **Node.js** – runs JavaScript on servers. **npm** – installs libraries for Node. **Port** – a numbered door on a computer. **Secret key** – a long random password a program checks (like `DEV_KEY`); it lives in a settings file and nowhere public. **Pull/fetch** – download new changes. **Push** – upload your changes. **Repo** – a project's folder on GitHub. **Reverse proxy** – a front desk passing visitors to the right app. **Rollback** – going back to the last working version. **Script** – a file of commands. **Server** – an always-on computer others visit. **Service** – a program kept running by the system. **SSH** – secure remote terminal. **Subdomain** – the front part of an address (`auction.`). **`sudo`** – run as administrator. **Swap** – disk used as emergency memory. **systemd** – the manager of services and timers on Linux. **Terminal** – the window where you type commands. **Tunnel** – a private pipe to Cloudflare. **VM** – a rented slice of a computer. **WebSocket** – an always-open line for instant updates.

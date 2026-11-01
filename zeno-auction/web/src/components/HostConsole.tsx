@@ -76,8 +76,15 @@ export function HostConsole({ snap, room, tickSound }: { snap: Snapshot; room: R
 
   const visiblePool = pool.filter((p) => !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.role.toLowerCase().includes(search.toLowerCase()));
 
+  const locked = snap.unlock.status === 'locked' || snap.unlock.status === 'pending';
+
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+      {locked && !snap.practice && (
+        <div className="card border-gold/40 p-3.5 text-sm text-slate-300 xl:col-span-2">
+          <b className="text-white">This auction is not unlocked yet.</b> Practice runs work as normal; to start the real auction the admin needs to unlock it (Admin → the banner at the top).
+        </div>
+      )}
       {/* ---------------- what the room sees ---------------- */}
       <div className="min-w-0 space-y-4">
         <div className="flex items-center justify-between text-xs text-slate-400">

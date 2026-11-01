@@ -9,6 +9,7 @@ import { PageTitle } from '../components/PageTitle';
 import { PracticeBanner } from '../components/PracticeBanner';
 import { RoomGate, SoundControls } from '../components/RoomGate';
 import { EventLogo } from '../components/Brand';
+import { UnlockBanner } from '../components/admin/Unlock';
 import { SquadSortToggle } from '../components/ui';
 import { GOLD, useEventAppearance } from '../lib/appearance';
 import { PlayersTab } from '../components/admin/PlayersTab';
@@ -124,6 +125,7 @@ export default function Admin() {
 
               {/* ------------------------------- content ------------------------------- */}
               <main className="min-w-0 space-y-5">
+                <UnlockBanner snap={snap} />
                 <KpiStrip snap={snap} />
 
                 {!ready && (

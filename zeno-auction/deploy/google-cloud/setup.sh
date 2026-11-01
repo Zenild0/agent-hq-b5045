@@ -1,21 +1,33 @@
 #!/usr/bin/env bash
 # One-time setup of ZenoBid as a SECOND app on the same server as the choir app.
 # Safe to run again: it never overwrites /etc/zenobid.env or your auction data.
+# Run it again with NAME=zenobid-test PORT=3002 BRANCH=staging-zenobid to make a separate test copy.
 # It never touches the choir app (/opt/choir, /var/lib/choir, /etc/choir.env, the "choir" service, port 3000).
 set -euo pipefail
 
 # ---- settings (all can be overridden; the tests rely on this) ----------------------------------------
+# NAME makes a whole separate copy: its own user, folders, settings file, service, port and branch.
+#   the real site:   (nothing to set)                                  -> "zenobid", port 3001, branch deploy-zenobid
+#   a test copy:     NAME=zenobid-test PORT=3002 BRANCH=staging-zenobid  -> shows a "TEST COPY" ribbon
+NAME="${NAME:-zenobid}"
+[[ "$NAME" =~ ^[a-z][a-z0-9-]{2,30}$ ]] || { echo "NAME must be lowercase letters, digits and dashes (for example zenobid-test)."; exit 1; }
+case "$NAME" in *choir*) echo "That name belongs to the choir app. Choose another."; exit 1;; esac
+if [ "$NAME" = zenobid ]; then BRANCH="${BRANCH:-deploy-zenobid}"; else
+  [ -n "${BRANCH:-}" ] || { echo "A copy called $NAME needs its own branch: set BRANCH=staging-zenobid (never reuse deploy-zenobid)."; exit 1; }
+  [ "$BRANCH" != deploy-zenobid ] || { echo "The test copy must not follow the real branch (deploy-zenobid)."; exit 1; }
+fi
 REPO="${REPO:-https://github.com/Zenild0/agent-hq-b5045.git}"
-BRANCH="${BRANCH:-deploy-zenobid}"
 PORT="${PORT:-3001}"
-APP_DIR="${APP_DIR:-/opt/zenobid}"
-DATA_DIR="${DATA_DIR:-/var/lib/zenobid}"
-ENV_FILE="${ENV_FILE:-/etc/zenobid.env}"
-BRANCH_FILE="${BRANCH_FILE:-/etc/zenobid-branch}"
+APP_DIR="${APP_DIR:-/opt/$NAME}"
+DATA_DIR="${DATA_DIR:-/var/lib/$NAME}"
+ENV_FILE="${ENV_FILE:-/etc/$NAME.env}"
+BRANCH_FILE="${BRANCH_FILE:-/etc/$NAME-branch}"
 UNIT_DIR="${UNIT_DIR:-/etc/systemd/system}"
 BIN_DIR="${BIN_DIR:-/usr/local/bin}"
-STATE_DIR="${STATE_DIR:-/var/lib/zenobid-update}"
+STATE_DIR="${STATE_DIR:-/var/lib/$NAME-update}"
+BACKUP_ROOT="${BACKUP_DIR:-/var/backups/$NAME}"
 SKIP_SYSTEM="${ZB_SKIP_SYSTEM:-0}" # tests only: skip apt, swap, users, systemctl
+if [ "$NAME" = zenobid ]; then APP_ENV=production; MEM_MAX=300M; MEM_HIGH=240M; DELETE_DAYS=30; else APP_ENV=test; MEM_MAX=200M; MEM_HIGH=160M; DELETE_DAYS=7; fi
 
 [ "$SKIP_SYSTEM" = 1 ] || [ "$(id -u)" = 0 ] || { echo "Please run with sudo:  sudo bash setup.sh"; exit 1; }
 [ "$PORT" != 3000 ] || { echo "Port 3000 belongs to the choir app. Choose another port (for example 3001)."; exit 1; }
@@ -25,7 +37,7 @@ step() { printf '\n==> %s\n' "$*"; }
 # ---- 1. look before touching anything -----------------------------------------------------------------
 step "Checking the server (this only looks, it changes nothing)"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$HERE/preflight.sh" ]; then PORT="$PORT" bash "$HERE/preflight.sh" || { echo "Fix the ✗ items above, then run setup again."; exit 1; }; fi
+if [ -f "$HERE/preflight.sh" ]; then PORT="$PORT" NAME="$NAME" bash "$HERE/preflight.sh" || { echo "Fix the ✗ items above, then run setup again."; exit 1; }; fi
 
 # ---- 2. the address (not a secret) ----------------------------------------------------------------------
 if [ ! -f "$ENV_FILE" ]; then
@@ -80,23 +92,25 @@ step "Installing its libraries (small: only what the app needs to run)"
 
 # ---- 5. a user, a data folder and the settings file ------------------------------------------------------
 if [ "$SKIP_SYSTEM" != 1 ]; then
-  id zenobid >/dev/null 2>&1 || useradd --system --home "$DATA_DIR" --shell /usr/sbin/nologin zenobid
+  id "$NAME" >/dev/null 2>&1 || useradd --system --home "$DATA_DIR" --shell /usr/sbin/nologin "$NAME"
 fi
 mkdir -p "$DATA_DIR" "$STATE_DIR"
-[ "$SKIP_SYSTEM" = 1 ] || chown -R zenobid:zenobid "$DATA_DIR"
+[ "$SKIP_SYSTEM" = 1 ] || chown -R "$NAME:$NAME" "$DATA_DIR"
 
 if [ ! -f "$ENV_FILE" ]; then
   umask 077
   cat > "$ENV_FILE" <<ENV
-# ZenoBid settings. This file holds settings only — ZenoBid has no server-wide password or key;
-# each auction creates its own admin link. Edit with:  sudo nano $ENV_FILE   then:  sudo systemctl restart zenobid
+# ZenoBid ($NAME) settings. Edit with:  sudo nano $ENV_FILE   then:  sudo systemctl restart $NAME
+# Auctions have their own admin links, so nothing here is needed to run auctions. The one optional secret is
+# DEV_KEY (the developer page and payments): add that line yourself, never paste it anywhere else.
 NODE_ENV=production
+APP_ENV=$APP_ENV
 PORT=$PORT
 HOST=127.0.0.1
 TRUST_PROXY=true
 DATA_DIR=$DATA_DIR
 # An auction nobody has touched for this many days deletes itself (0 = never).
-AUTO_DELETE_DAYS=30
+AUTO_DELETE_DAYS=$DELETE_DAYS
 MAX_EVENTS=50
 PUBLIC_URL=https://$PUBLIC_HOST
 ENV
@@ -108,31 +122,31 @@ fi
 # ---- 6. the service and its timers ------------------------------------------------------------------------
 step "Creating the service and timers"
 install -d "$BIN_DIR" "$UNIT_DIR"
-for f in update backup; do install -m 755 "$APP_DIR/deploy/google-cloud/$f.sh" "$BIN_DIR/zenobid-$f"; done
-install -m 755 "$APP_DIR/deploy/google-cloud/uninstall.sh" "$BIN_DIR/zenobid-remove"
-cat > "$BIN_DIR/zenobid-links" <<WRAP
+for f in update backup; do install -m 755 "$APP_DIR/deploy/google-cloud/$f.sh" "$BIN_DIR/$NAME-$f"; done
+install -m 755 "$APP_DIR/deploy/google-cloud/uninstall.sh" "$BIN_DIR/$NAME-remove"
+cat > "$BIN_DIR/$NAME-links" <<WRAP
 #!/bin/sh
-exec node "$APP_DIR/deploy/google-cloud/links.cjs" "\$@"
+ENV_FILE="$ENV_FILE" exec node "$APP_DIR/deploy/google-cloud/links.cjs" "\$@"
 WRAP
-chmod 755 "$BIN_DIR/zenobid-links"
+chmod 755 "$BIN_DIR/$NAME-links"
 
-cat > "$UNIT_DIR/zenobid.service" <<UNIT
+cat > "$UNIT_DIR/$NAME.service" <<UNIT
 [Unit]
-Description=ZenoBid live team auctions
+Description=ZenoBid live team auctions ($NAME)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=zenobid
+User=$NAME
 WorkingDirectory=$APP_DIR
 EnvironmentFile=$ENV_FILE
-Environment=NODE_OPTIONS=--max-old-space-size=192
+Environment=NODE_OPTIONS=--max-old-space-size=160
 ExecStart=/usr/bin/node dist-server/index.js
 Restart=always
 RestartSec=3
 # Keep it small and polite: if the server ever runs short of memory, ZenoBid is stopped before the choir app.
-MemoryHigh=240M
-MemoryMax=300M
+MemoryHigh=$MEM_HIGH
+MemoryMax=$MEM_MAX
 OOMScoreAdjust=300
 Nice=5
 NoNewPrivileges=true
@@ -145,32 +159,33 @@ ReadWritePaths=$DATA_DIR
 WantedBy=multi-user.target
 UNIT
 
-cat > "$UNIT_DIR/zenobid-update.service" <<UNIT
+cat > "$UNIT_DIR/$NAME-update.service" <<UNIT
 [Unit]
-Description=Update ZenoBid from GitHub
+Description=Update $NAME from GitHub
 [Service]
 Type=oneshot
-ExecStart=$BIN_DIR/zenobid-update
+ExecStart=$BIN_DIR/$NAME-update
 UNIT
-cat > "$UNIT_DIR/zenobid-update.timer" <<UNIT
+cat > "$UNIT_DIR/$NAME-update.timer" <<UNIT
 [Unit]
-Description=Check GitHub for a new ZenoBid every 10 minutes
+Description=Check GitHub for a new $NAME every 10 minutes
 [Timer]
 OnBootSec=5min
 OnUnitActiveSec=10min
 [Install]
 WantedBy=timers.target
 UNIT
-cat > "$UNIT_DIR/zenobid-backup.service" <<UNIT
+cat > "$UNIT_DIR/$NAME-backup.service" <<UNIT
 [Unit]
-Description=Nightly ZenoBid backup
+Description=Nightly $NAME backup
 [Service]
 Type=oneshot
-ExecStart=$BIN_DIR/zenobid-backup
+ExecStart=$BIN_DIR/$NAME-backup
+Environment=BACKUP_DIR=$BACKUP_ROOT
 UNIT
-cat > "$UNIT_DIR/zenobid-backup.timer" <<UNIT
+cat > "$UNIT_DIR/$NAME-backup.timer" <<UNIT
 [Unit]
-Description=Nightly ZenoBid backup
+Description=Nightly $NAME backup
 [Timer]
 OnCalendar=*-*-* 03:10:00
 Persistent=true
@@ -181,15 +196,15 @@ UNIT
 if [ "$SKIP_SYSTEM" = 1 ]; then echo "(test mode: not starting anything)"; exit 0; fi
 
 systemctl daemon-reload
-systemctl enable --now zenobid.service zenobid-update.timer zenobid-backup.timer >/dev/null 2>&1
+systemctl enable --now "$NAME.service" "$NAME-update.timer" "$NAME-backup.timer" >/dev/null 2>&1
 for _ in $(seq 1 20); do curl -fsS -m 2 "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1 && break; sleep 1; done
 
 echo
 if curl -fsS -m 5 "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1; then
-  echo "SUCCESS: ZenoBid is running on this server (port $PORT). The choir app was not touched."
+  echo "SUCCESS: ZenoBid ($NAME) is running on this server (port $PORT). The choir app was not touched."
   echo "Check it:   curl http://127.0.0.1:$PORT/healthz"
 else
-  echo "ZenoBid did not start. Look at:  sudo journalctl -u zenobid -n 40 --no-pager"
+  echo "ZenoBid did not start. Look at:  sudo journalctl -u $NAME -n 40 --no-pager"
   exit 1
 fi
 echo

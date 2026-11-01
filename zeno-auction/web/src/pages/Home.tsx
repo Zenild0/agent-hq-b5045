@@ -187,6 +187,9 @@ export default function Home() {
         <footer className="mt-12 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
           <Logo />
           <span>Live team auctions · works with any currency, sport or industry</span>
+          <Link to="/terms" className="font-semibold underline-offset-2 hover:text-white hover:underline">
+            Terms of use
+          </Link>
         </footer>
       </div>
     </div>

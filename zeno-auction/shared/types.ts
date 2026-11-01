@@ -159,6 +159,18 @@ export interface StrategyItem {
   note: string;
 }
 
+/** Whether this auction may go live. Practice runs and set-up are always free. */
+export type UnlockStatus = 'free' | 'locked' | 'pending' | 'unlocked';
+
+/** What the screens are told about unlocking (the payee details and reference only go to the admin). */
+export interface Unlock {
+  status: UnlockStatus;
+  price: number; // in rupees
+  by: '' | 'payment' | 'grant';
+  payee?: { upiId: string; payeeName: string; note: string };
+  ref?: string;
+}
+
 export interface Secrets {
   adminKey: string;
   hostKey: string;
@@ -178,6 +190,7 @@ export interface Snapshot extends Omit<EventData, 'log'> {
   now: number;
   me: Me;
   presence: { captains: string[]; viewers: number };
+  unlock: Unlock;
   /** Only sent to the admin. */
   secrets?: Secrets;
   /** Only sent to a captain: their own plan. */

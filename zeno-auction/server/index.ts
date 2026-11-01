@@ -4,14 +4,17 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import path from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { LIMITS } from '../shared/limits';
-import type { Me, Snapshot } from '../shared/types';
+import type { Me, Snapshot, Unlock } from '../shared/types';
 import { AuctionError, createStore, nextDue, randomCode, runAction, tick, type Actor, type Store } from './engine';
 import { buildArchive, restoreArchive } from './archive';
 import { clientIp } from './net';
+import { currentGate, devEnabled, getPlatform, isDevKey, refreshAccess, savePlatform } from './platform';
 import { DATA_DIR, deleteEventFiles, flushAll, loadAll, readUpload, saveSoon, UPLOADS_DIR, writeUploads } from './persist';
 
 const PORT = Number(process.env.PORT ?? 8787);
 // Which build is running: set by the packaging step as a VERSION file next to the app (or by APP_VERSION).
+// "test" marks a separate test copy of the app (it shows a ribbon on every page so it is never mistaken for the real site)
+const APP_ENV = process.env.APP_ENV === 'test' ? 'test' : 'production';
 const VERSION = process.env.APP_VERSION ?? (existsSync('VERSION') ? readFileSync('VERSION', 'utf8').trim().slice(0, 80) : 'dev');
 const MAX_EVENTS = Number(process.env.MAX_EVENTS ?? 2000);
 const MAX_UPLOAD_BYTES = LIMITS.photoBytes;
@@ -91,10 +94,22 @@ function presenceOf(code: string) {
   return { captains: [...captains], viewers: set.size };
 }
 
+/** What a screen may know about unlocking. Only the admin gets the payment details. */
+function unlockInfo(store: Store, isAdmin: boolean): Unlock {
+  const a = store.access;
+  const u: Unlock = { status: a.status, price: a.status === 'locked' ? currentGate().price : a.price, by: a.by };
+  if (isAdmin && (a.status === 'locked' || a.status === 'pending')) {
+    const c = getPlatform();
+    u.payee = { upiId: c.upiId, payeeName: c.payeeName, note: c.note };
+    if (a.status === 'pending') u.ref = a.ref;
+  }
+  return u;
+}
+
 /** The whole state as one object, as one screen should see it. */
 function snapshot(store: Store, me: Me, isAdmin: boolean, now = Date.now()): Snapshot {
   const { log: _log, ...data } = store.data; // the activity log is not sent to screens
-  const snap: Snapshot = { ...data, now, me, presence: presenceOf(store.data.code) };
+  const snap: Snapshot = { ...data, now, me, presence: presenceOf(store.data.code), unlock: unlockInfo(store, isAdmin) };
   if (isAdmin) snap.secrets = store.secrets;
   if (me.captainId) snap.strategy = store.strategies[me.captainId] ?? []; // a captain's plan is private to them
   return snap;
@@ -221,6 +236,7 @@ function findEvent(req: Request): Store {
   const store = events.get(code);
   if (!store) throw new AuctionError('Auction not found — check the code', 404);
   tick(store, Date.now());
+  refreshAccess(store);
   return store;
 }
 
@@ -230,7 +246,7 @@ app.post(
     if (events.size >= MAX_EVENTS) throw new AuctionError('This server is full', 503);
     let code = randomCode(6);
     while (events.has(code)) code = randomCode(6);
-    const store = createStore(code, req.body?.settings);
+    const store = createStore(code, req.body?.settings, Date.now(), currentGate());
     events.set(code, store);
     saveSoon(store);
     res.status(201).json({ code, adminKey: store.secrets.adminKey, hostKey: store.secrets.hostKey });
@@ -370,7 +386,7 @@ app.post(
     if (events.size >= MAX_EVENTS) throw new AuctionError('This server is full', 503);
     let code = randomCode(6);
     while (events.has(code)) code = randomCode(6);
-    const { store, photos } = restoreArchive(req.body, code);
+    const { store, photos } = restoreArchive(req.body, code, Date.now(), currentGate());
     writeUploads(code, photos);
     events.set(code, store);
     saveSoon(store);
@@ -382,6 +398,143 @@ app.post(
       players: store.data.players.length,
       teams: store.data.captains.length,
     });
+  }),
+);
+
+
+// ---------------------------------------------------------------------------------------------
+// Unlocking an auction (paying to go live) and the developer's own page
+// ---------------------------------------------------------------------------------------------
+
+/** What anyone may know: the price, who runs this, and this server's limits (for the Terms of use). */
+app.get('/api/platform', (_req, res) => {
+  const c = getPlatform();
+  const g = currentGate();
+  res.json({
+    env: APP_ENV,
+    payments: g.required,
+    price: g.required ? g.price : 0,
+    operatorName: c.operatorName,
+    contact: c.contact,
+    limits: { ...LIMITS, screensPerAuction: MAX_SCREENS, auctionsOnServer: MAX_EVENTS, autoDeleteDays: AUTO_DELETE_DAYS },
+  });
+});
+
+/** The admin says "I have paid" and gives the UPI reference; the developer then approves it. */
+app.post(
+  '/api/events/:code/unlock/request',
+  wrap((req, res) => {
+    const store = findEvent(req);
+    requireAdmin(req, store);
+    const a = store.access;
+    if (a.status === 'unlocked' || a.status === 'free') throw new AuctionError('This auction does not need unlocking.');
+    const ref = String(req.body?.ref ?? '').trim();
+    if (!/^[A-Za-z0-9-]{6,40}$/.test(ref)) throw new AuctionError('Enter the UPI reference / transaction ID from your payment app (6–40 letters and numbers).');
+    a.status = 'pending';
+    a.ref = ref;
+    a.payer = String(req.body?.payer ?? '').trim().slice(0, 60);
+    a.price = currentGate().price;
+    a.requestedAt = Date.now();
+    saveSoon(store);
+    broadcast(store);
+    res.json({ ok: true });
+  }),
+);
+
+const devBadKeys = new Map<string, { count: number; reset: number }>();
+function requireDev(req: Request) {
+  if (!devEnabled()) throw new AuctionError('Not found', 404);
+  const ip = req.ip ?? '';
+  const key = req.header('x-dev-key');
+  if (!isDevKey(key)) {
+    // its own counter, so guessing at this page can never lock anyone out of an auction (and vice versa)
+    const now = Date.now();
+    let e = devBadKeys.get(ip);
+    if (!e || now > e.reset) devBadKeys.set(ip, (e = { count: 0, reset: now + 60_000 }));
+    if (++e.count > 20) throw new AuctionError('Too many wrong keys — wait a minute.', 429);
+    throw new AuctionError('Wrong developer key', 403);
+  }
+}
+
+app.get(
+  '/api/dev/overview',
+  wrap((req, res) => {
+    requireDev(req);
+    const auctions = [...events.values()]
+      .map((s) => ({
+        code: s.data.code,
+        name: s.data.settings.name,
+        createdAt: s.data.createdAt,
+        lastActivity: lastActivity(s),
+        teams: s.data.captains.length,
+        players: s.data.players.length,
+        sold: s.data.players.filter((p) => p.status === 'sold').length,
+        screens: clients.get(s.data.code)?.size ?? 0,
+        status: s.access.status,
+        by: s.access.by,
+        ref: s.access.ref,
+        payer: s.access.payer,
+        price: s.access.price,
+        requestedAt: s.access.requestedAt,
+      }))
+      .sort((a, b) => b.createdAt - a.createdAt);
+    res.json({ config: getPlatform(), gate: currentGate(), auctions, limits: { events: MAX_EVENTS, screens: MAX_SCREENS } });
+  }),
+);
+
+app.put(
+  '/api/dev/config',
+  wrap((req, res) => {
+    requireDev(req);
+    res.json({ config: savePlatform(req.body) });
+  }),
+);
+
+app.post(
+  '/api/dev/auctions/:code/:action',
+  wrap((req, res) => {
+    requireDev(req);
+    const store = findEvent(req);
+    const a = store.access;
+    const now = Date.now();
+    switch (req.params.action) {
+      case 'approve': // a payment checked in the developer's UPI app
+        if (a.status !== 'pending') throw new AuctionError('There is no payment waiting for this auction.');
+        Object.assign(a, { status: 'unlocked', by: 'payment', decidedAt: now });
+        break;
+      case 'reject': // the payment could not be found: back to locked
+        Object.assign(a, { status: 'locked', ref: '', payer: '', decidedAt: now });
+        break;
+      case 'grant': // free access given by the developer
+        Object.assign(a, { status: 'unlocked', by: 'grant', decidedAt: now });
+        break;
+      case 'lock': // take access back
+        Object.assign(a, { status: currentGate().required ? 'locked' : 'free', by: '', ref: '', payer: '', decidedAt: now });
+        break;
+      case 'delete':
+        destroyEvent(store);
+        return void res.json({ ok: true });
+      default:
+        throw new AuctionError('Unknown action', 404);
+    }
+    saveSoon(store);
+    broadcast(store);
+    res.json({ ok: true });
+  }),
+);
+
+/** The developer creates an auction that is already unlocked, to hand over to someone (they get its admin link). */
+app.post(
+  '/api/dev/create',
+  wrap((req, res) => {
+    requireDev(req);
+    let code = randomCode(6);
+    while (events.has(code)) code = randomCode(6);
+    const store = createStore(code, req.body?.settings);
+    Object.assign(store.access, { status: 'unlocked', by: 'grant', decidedAt: Date.now() });
+    events.set(code, store);
+    saveSoon(store);
+    res.status(201).json({ code, adminKey: store.secrets.adminKey, hostKey: store.secrets.hostKey });
   }),
 );
 
@@ -438,7 +591,7 @@ app.get('/healthz', (_req, res) => {
   // `live` = auctions with a player on the block or a break running right now (the self-updater waits for 0)
   let live = 0;
   for (const s of events.values()) if (s.data.live.phase === 'spinning' || s.data.live.phase === 'bidding' || s.data.live.break) live++;
-  res.json({ ok: true, auctions: events.size, live, version: VERSION });
+  res.json({ ok: true, auctions: events.size, live, version: VERSION, env: APP_ENV });
 });
 
 // Built web app (production). In development Vite serves the UI and proxies /api here.

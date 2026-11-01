@@ -5,6 +5,7 @@ import { themeIds } from '../shared/themes';
 import { checkBid, effectiveBase, maxBid, nextBidAmount, sortedTiers, teamStats } from '../shared/rules';
 import type {
   Captain,
+  UnlockStatus,
   EventData,
   LiveState,
   LogItem,
@@ -33,8 +34,23 @@ export interface Stash {
   log: LogItem[];
 }
 
+/** Server-side record of whether this auction may go live (see platform.ts for who decides). */
+export interface UnlockAccess {
+  status: UnlockStatus;
+  price: number;
+  by: '' | 'payment' | 'grant';
+  ref: string; // the UPI reference the admin entered
+  payer: string;
+  requestedAt: number;
+  decidedAt: number;
+}
+export const freeAccess = (): UnlockAccess => ({ status: 'free', price: 0, by: '', ref: '', payer: '', requestedAt: 0, decidedAt: 0 });
+export const isOpen = (a: UnlockAccess) => a.status === 'free' || a.status === 'unlocked';
+
 export interface Store {
   data: EventData;
+  /** Whether going live is allowed. Missing on auctions saved before payments existed (those are free). */
+  access: UnlockAccess;
   secrets: Secrets;
   /** Captains' private plans, keyed by captain id. Never part of the shared state. */
   strategies: Record<string, StrategyItem[]>;
@@ -45,6 +61,7 @@ export interface Store {
 export function normalizeStore(store: Store): Store {
   store.strategies ??= {};
   store.stash ??= null;
+  store.access ??= freeAccess();
   store.data.practice ??= false;
   store.data.live.break ??= null;
   store.data.live.squadSort ??= 'price';
@@ -166,9 +183,10 @@ export function mergeSettings(base: EventSettings, patch: unknown): EventSetting
 // Creating and mutating events
 // ---------------------------------------------------------------------------------------------
 
-export function createStore(code: string, settingsPatch: unknown, now = Date.now()): Store {
+export function createStore(code: string, settingsPatch: unknown, now = Date.now(), gate: { required: boolean; price: number } = { required: false, price: 0 }): Store {
   const settings = mergeSettings(DEFAULT_SETTINGS, settingsPatch);
   return {
+    access: gate.required ? { ...freeAccess(), status: 'locked', price: gate.price } : freeAccess(),
     data: {
       code,
       createdAt: now,
@@ -268,6 +286,9 @@ function allowed(actor: Actor, access: Access): boolean {
 /** Changes to who is in the auction can't be part of a practice run (they would be lost or leak into the real one). */
 const ROSTER_LOCKED = new Set(['captain.add', 'captain.budget', 'captains.topup', 'captain.remove', 'player.add', 'players.import', 'player.update', 'player.remove', 'demo.load']);
 
+/** Actions that start the real auction. */
+const GO_LIVE = new Set(['draw', 'pick']);
+
 const actions: Record<string, { access: Access; run: Handler }> = {};
 const on = (name: string, access: Access, run: Handler) => {
   actions[name] = { access, run };
@@ -277,6 +298,9 @@ export function runAction(store: Store, actor: Actor, name: string, params: unkn
   const action = typeof name === 'string' && Object.hasOwn(actions, name) ? actions[name] : undefined; // (not inherited keys like "constructor")
   if (!action) throw new AuctionError(`Unknown action “${String(name).slice(0, 40)}”`, 404);
   if (!allowed(actor, action.access)) throw new AuctionError('You are not allowed to do that', 403);
+  // Going live (putting a player on the block) needs the auction to be unlocked. Practice is always free.
+  if (GO_LIVE.has(name) && !store.data.practice && !isOpen(store.access))
+    throw new AuctionError('This auction is not unlocked yet. The admin can unlock it under Settings → Unlock to go live. Practice runs are free.', 402);
   if (store.data.practice && ROSTER_LOCKED.has(name))
     throw new AuctionError('Teams and players are locked during a practice run — click “Go live” first to edit them');
   tick(store, now);

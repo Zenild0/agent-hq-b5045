@@ -4,11 +4,13 @@
 #   - if the new version does not start, goes back to the previous one and remembers the bad one
 # Everything below can be overridden with environment variables (the tests do exactly that).
 set -u
-APP_DIR="${APP_DIR:-/opt/zenobid}"
-ENV_FILE="${ENV_FILE:-/etc/zenobid.env}"
-BRANCH="${BRANCH:-$(cat /etc/zenobid-branch 2>/dev/null || echo deploy-zenobid)}"
-SERVICE="${SERVICE:-zenobid}"
-STATE_DIR="${STATE_DIR:-/var/lib/zenobid-update}"
+# The installed copy is called <name>-update (zenobid-update, zenobid-test-update …) and works on that copy only.
+NAME="${NAME:-$(basename "$0" | sed -n 's/^\(.*\)-update$/\1/p')}"; NAME="${NAME:-zenobid}"
+APP_DIR="${APP_DIR:-/opt/$NAME}"
+ENV_FILE="${ENV_FILE:-/etc/$NAME.env}"
+BRANCH="${BRANCH:-$(cat "/etc/$NAME-branch" 2>/dev/null || echo deploy-zenobid)}"
+SERVICE="${SERVICE:-$NAME}"
+STATE_DIR="${STATE_DIR:-/var/lib/$NAME-update}"
 WAIT_SECONDS="${WAIT_SECONDS:-25}"
 SYSTEMCTL="${SYSTEMCTL:-systemctl}"
 NPM="${NPM:-npm}"
@@ -16,7 +18,7 @@ BIN_DIR="${BIN_DIR:-/usr/local/bin}"
 
 envval() { grep -E "^$1=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2-; }
 PORT="${PORT:-$(envval PORT)}"; PORT="${PORT:-3001}"
-DATA_DIR="${DATA_DIR:-$(envval DATA_DIR)}"; DATA_DIR="${DATA_DIR:-/var/lib/zenobid}"
+DATA_DIR="${DATA_DIR:-$(envval DATA_DIR)}"; DATA_DIR="${DATA_DIR:-/var/lib/$NAME}"
 
 log() { echo "$(date -Is) $*"; }
 
@@ -67,7 +69,7 @@ if [ "$OK" = 1 ]; then
       # So that a newer version of this very script takes effect from the next run on.
       # (install replaces the file instead of editing it, so the copy running right now is not disturbed.)
       for f in update backup; do
-        [ -f "$APP_DIR/deploy/google-cloud/$f.sh" ] && install -m 755 "$APP_DIR/deploy/google-cloud/$f.sh" "$BIN_DIR/zenobid-$f" 2>/dev/null || true
+        [ -f "$APP_DIR/deploy/google-cloud/$f.sh" ] && install -m 755 "$APP_DIR/deploy/google-cloud/$f.sh" "$BIN_DIR/$NAME-$f" 2>/dev/null || true
       done
       exit 0
     fi

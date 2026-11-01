@@ -7,6 +7,7 @@
 import { randomBytes } from 'node:crypto';
 import { AuctionError, DEFAULT_SETTINGS, MAX_CAPTAINS, MAX_PLAYERS, createStore, mergeSettings, randomCode, type Store } from './engine';
 import { LIMITS } from '../shared/limits';
+import { unlockProof, verifyUnlockProof } from './platform';
 import type { Captain, LogItem, Player, StrategyItem } from '../shared/types';
 
 export const ARCHIVE_FORMAT = 'zenobid-auction';
@@ -31,6 +32,9 @@ export interface Archive {
     /** Captain PINs, so the PINs people already have keep working after a restore. */
     captainPins: Record<string, string>;
     strategies: Store['strategies'];
+    /** The auction's original code, and — if it was unlocked — a signed claim that lets a restore stay unlocked. */
+    sourceCode: string;
+    unlock: { by: string; proof: string } | null;
   };
   /** photo file name → data URL */
   photos: Record<string, string>;
@@ -90,6 +94,8 @@ export function buildArchive(store: Store, readPhoto: PhotoReader, now = Date.no
       log,
       captainPins: { ...store.secrets.captainTokens },
       strategies: JSON.parse(JSON.stringify(store.strategies)),
+      sourceCode: d.code,
+      unlock: store.access.status === 'unlocked' && store.access.by ? { by: store.access.by, proof: unlockProof(d.code, store.access.by) } : null,
     },
     photos,
   };
@@ -118,7 +124,7 @@ export interface Restored {
  * does not look right is dropped or fixed rather than trusted. Throws AuctionError(400) for a file
  * that is not a ZenoBid auction file at all.
  */
-export function restoreArchive(file: unknown, code: string, now = Date.now()): Restored {
+export function restoreArchive(file: unknown, code: string, now = Date.now(), gate: { required: boolean; price: number } = { required: false, price: 0 }): Restored {
   if (!isObj(file) || file.format !== ARCHIVE_FORMAT || !isObj(file.auction)) {
     throw new AuctionError('That does not look like a ZenoBid auction file.');
   }
@@ -126,7 +132,7 @@ export function restoreArchive(file: unknown, code: string, now = Date.now()): R
     throw new AuctionError('That file was made by a newer version of ZenoBid — update the app first.');
   }
   const a = file.auction;
-  const store = createStore(code, a.settings ?? {}, now);
+  const store = createStore(code, a.settings ?? {}, now, gate);
   const d = store.data;
 
   // photos: decode, check type and size, store under fresh random names
@@ -219,6 +225,11 @@ export function restoreArchive(file: unknown, code: string, now = Date.now()): R
   const log: LogItem[] = [];
   for (const l of rawLog.slice(-300)) if (isObj(l) && typeof l.text === 'string') log.push({ at: whole(l.at, now), text: l.text.slice(0, 300) });
   d.log = [...log, { at: now, text: `Auction restored from a saved file (${d.players.length} players, ${d.captains.length} teams)` }];
+
+  // a paid / granted unlock carries over, but only with the server's own signature on it
+  if (gate.required && isObj(a.unlock) && typeof a.sourceCode === 'string' && (a.unlock.by === 'payment' || a.unlock.by === 'grant') && verifyUnlockProof(a.sourceCode, a.unlock.by, a.unlock.proof)) {
+    store.access = { ...store.access, status: 'unlocked', by: a.unlock.by, decidedAt: now };
+  }
 
   // captains' private plans
   if (isObj(a.strategies)) {

@@ -8,7 +8,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 GC="$(cd "$HERE/.." && pwd)"
 APP_SRC="$(cd "$GC/../.." && pwd)"
 T="$(mktemp -d)"
-trap 'kill $(cat "$T/pid" 2>/dev/null) 2>/dev/null; rm -rf "$T"' EXIT
+trap 'kill $(cat "$T/pid" "$T/pid2" 2>/dev/null) 2>/dev/null; rm -rf "$T"' EXIT
 PORT=$((20000 + RANDOM % 20000))
 pass=0; fail=0
 check() { if [ "$2" = "0" ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "  FAIL: $1"; fi; }
@@ -97,6 +97,40 @@ for _ in $(seq 1 30); do curl -fsS -m 1 "http://127.0.0.1:$PORT/healthz" >/dev/n
 eq "after restoring the backup the auction is back" "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/api/events/$code/exists")" "200"
 rss=$(awk '/VmRSS/ {print int($2/1024)}' /proc/$(cat "$T/pid")/status 2>/dev/null); [ "${rss:-999}" -lt 150 ]; check "memory use is small (${rss:-?} MB resident)" $?
 
+
+echo "== a separate TEST copy next to the real one"
+before=$(cat "$ENV_FILE" "$UNIT_DIR/zenobid.service" | sha256sum)
+git -C "$T/origin.git" branch staging-zenobid deploy-zenobid
+TP=$((PORT + 1))
+tcopy() { env NAME=zenobid-test PORT=$TP BRANCH=staging-zenobid APP_DIR="$T/opt/zenobid-test" DATA_DIR="$T/var/zenobid-test" ENV_FILE="$T/etc/zenobid-test.env" BRANCH_FILE="$T/etc/zenobid-test-branch" STATE_DIR="$T/var/zenobid-test-update" PUBLIC_HOST=test.example.org "$@"; }
+tcopy bash "$GC/setup.sh" >"$T/test-setup.log" 2>&1; eq "the test copy installs" "$?" "0"
+tenv=$(cat "$T/etc/zenobid-test.env")
+has "test copy: its own port" "$tenv" "^PORT=$TP$"; has "test copy: marked as a test" "$tenv" "^APP_ENV=test$"
+has "test copy: its own data folder" "$tenv" "^DATA_DIR=$T/var/zenobid-test$"; has "test copy: short auto-delete" "$tenv" "^AUTO_DELETE_DAYS=7$"
+has "test copy: its own address" "$tenv" "^PUBLIC_URL=https://test.example.org$"
+for f in zenobid-test.service zenobid-test-update.timer zenobid-test-backup.timer; do [ -f "$UNIT_DIR/$f" ]; check "test copy: unit $f" $?; done
+tsvc=$(cat "$UNIT_DIR/zenobid-test.service"); has "test copy: its own user" "$tsvc" "^User=zenobid-test$"; has "test copy: smaller memory cap" "$tsvc" "^MemoryMax=200M$"; has "test copy: only writes its own data" "$tsvc" "^ReadWritePaths=$T/var/zenobid-test$"
+has "test copy: updates follow the test branch only" "$(cat "$T/etc/zenobid-test-branch")" "staging-zenobid"
+has "test copy: update timer runs ITS update command" "$(cat "$UNIT_DIR/zenobid-test-update.service")" "zenobid-test-update"
+for f in zenobid-test-update zenobid-test-backup zenobid-test-links zenobid-test-remove; do [ -x "$BIN_DIR/$f" ]; check "test copy: command $f" $?; done
+after=$(cat "$ENV_FILE" "$UNIT_DIR/zenobid.service" | sha256sum); eq "the REAL copy's settings and service were not touched" "$before" "$after"
+tcopy env BRANCH= bash "$GC/setup.sh" >/dev/null 2>&1; eq "a test copy without its own branch is refused" "$?" "1"
+NAME=zenobid-test BRANCH=deploy-zenobid ENV_FILE="$T/etc/x.env" bash "$GC/setup.sh" >/dev/null 2>&1; eq "a test copy may not follow the real branch" "$?" "1"
+NAME=choir-copy BRANCH=staging-zenobid ENV_FILE="$T/etc/y.env" bash "$GC/setup.sh" >/dev/null 2>&1; eq "a name containing 'choir' is refused" "$?" "1"
+NAME='Bad Name' BRANCH=staging-zenobid ENV_FILE="$T/etc/z.env" bash "$GC/setup.sh" >/dev/null 2>&1; eq "a strange name is refused" "$?" "1"
+( cd "$T/opt/zenobid-test"; set -a; . "$T/etc/zenobid-test.env" 2>/dev/null; set +a; exec nohup node dist-server/index.js ) >"$T/test-app.log" 2>&1 &
+echo $! > "$T/pid2"
+for _ in $(seq 1 30); do curl -fsS -m 1 "http://127.0.0.1:$TP/healthz" >/dev/null 2>&1 && break; sleep 0.5; done
+has "test copy answers and says it is a test" "$(curl -fsS "http://127.0.0.1:$TP/healthz")" '"env":"test"'
+has "the real copy says it is production" "$(curl -fsS "http://127.0.0.1:$PORT/healthz")" '"env":"production"'
+has "the page tells everyone it is a test" "$(curl -fsS "http://127.0.0.1:$TP/api/platform")" '"env":"test"'
+real_before=$(ls "$DATA_DIR/events" | wc -l)
+curl -fsS -X POST -H 'content-type: application/json' -d '{"settings":{"name":"Only in test"}}' "http://127.0.0.1:$TP/api/events" >/dev/null; sleep 0.5
+eq "an auction made in the test copy is not on the real one" "$(ls "$DATA_DIR/events" | wc -l)" "$real_before"
+[ "$(ls "$T/var/zenobid-test/events" | wc -l)" = 1 ]; check "…it is saved in the test copy's own folder" $?
+kill "$(cat "$T/pid2")" 2>/dev/null
+bash -n "$GC/uninstall.sh"; check "the remove command is valid" $?
+NAME=choir bash "$GC/uninstall.sh" >/dev/null 2>&1; eq "the remove command refuses the choir app's name" "$?" "1"
 echo
 echo "install rehearsal: $pass passed, $fail failed"
 [ "$fail" = 0 ]

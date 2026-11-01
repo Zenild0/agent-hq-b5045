@@ -3,6 +3,7 @@
 #   bash preflight.sh
 set -u
 PORT="${PORT:-3001}"
+NAME="${NAME:-zenobid}"
 bad=0; warn=0
 say()  { printf '%s\n' "$*"; }
 ok()   { say "  ✓ $*"; }
@@ -26,9 +27,9 @@ say "== Your other app (the choir app) — we only LOOK, we never touch it"
 if systemctl is-active --quiet choir 2>/dev/null; then ok "the choir service is running (it will be left alone)"; else say "     (the choir service is not running here — that is fine if this is a different server)"; fi
 if listening 3000; then ok "port 3000 is in use by the choir app — ZenoBid will NOT use it"; fi
 
-say "== ZenoBid's door (port $PORT)"
-if systemctl is-active --quiet zenobid 2>/dev/null; then ok "ZenoBid is already installed and running (re-running setup is safe)"
-elif listening "$PORT"; then fail "port $PORT is already used by something else — pick another with: sudo PORT=3002 bash setup.sh"
+say "== ${NAME}'s door (port $PORT)"
+if systemctl is-active --quiet "$NAME" 2>/dev/null; then ok "$NAME is already installed and running (re-running setup is safe)"
+elif listening "$PORT"; then fail "port $PORT is already used by something else — pick another with: sudo PORT=3004 bash setup.sh"
 else ok "port $PORT is free"; fi
 
 say "== Software"
