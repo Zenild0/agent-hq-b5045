@@ -8,7 +8,7 @@ import { fmtClock, useCountdown } from '../lib/useCountdown';
 import type { Room } from '../lib/useRoom';
 import { Stage } from './Stage';
 import { TeamStrip } from './TeamBoard';
-import { PlayerAvatar, TeamDot } from './ui';
+import { PlayerAvatar, SquadSortToggle, TeamDot } from './ui';
 
 const CALL_LABEL = ['GOING ONCE…', 'GOING TWICE…', 'GOING THRICE…', 'SOLD! 🔨'];
 const CALL_STYLE = ['cta-gold', 'cta-orange', 'cta-red', 'cta-green'];
@@ -189,6 +189,10 @@ export function HostConsole({ snap, room, tickSound }: { snap: Snapshot; room: R
             >
               <LayoutGrid className="h-4 w-4" /> Big screen: team board
             </button>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+            <span>Team lists on the big screen</span>
+            <SquadSortToggle value={live.squadSort ?? 'price'} onChange={(v) => run('squad.sort', { sort: v })} />
           </div>
         </div>
 

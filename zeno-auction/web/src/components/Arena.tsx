@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { formatMoney } from '../../../shared/money';
-import { checkBid, effectiveBase, maxBid, nextBidAmount, SPIN_FLASH_MS, teamStats } from '../../../shared/rules';
+import { checkBid, effectiveBase, maxBid, nextBidAmount, sortSquad, SPIN_FLASH_MS, teamStats } from '../../../shared/rules';
 import type { Bid, Captain, Player, Snapshot } from '../../../shared/types';
 import { BreakView } from './BreakView';
 import { Confetti } from './Confetti';
@@ -480,7 +480,7 @@ function TeamsRail({ snap }: { snap: Snapshot }) {
 function TeamCard({ snap, captain: c, leading, justSoldId, compact = false }: { snap: Snapshot; captain: Captain; leading: boolean; justSoldId?: string; compact?: boolean }) {
   const { settings } = snap;
   const st = teamStats(snap, c);
-  const squad = [...st.players].sort((a, b) => b.price - a.price);
+  const squad = sortSquad(st.players, snap.live.squadSort ?? 'price');
   const pct = c.budget > 0 ? Math.max(0, Math.min(100, (st.remaining / c.budget) * 100)) : 0;
   const limit = maxBid(snap, c, snap.live.playerId);
   return (

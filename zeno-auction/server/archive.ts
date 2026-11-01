@@ -6,12 +6,13 @@
 
 import { randomBytes } from 'node:crypto';
 import { AuctionError, DEFAULT_SETTINGS, MAX_CAPTAINS, MAX_PLAYERS, createStore, mergeSettings, randomCode, type Store } from './engine';
+import { LIMITS } from '../shared/limits';
 import type { Captain, LogItem, Player, StrategyItem } from '../shared/types';
 
 export const ARCHIVE_FORMAT = 'zenobid-auction';
 export const ARCHIVE_VERSION = 1;
-export const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
-export const MAX_PHOTOS = 1000;
+export const MAX_PHOTO_BYTES = LIMITS.photoBytes;
+export const MAX_PHOTOS = LIMITS.photos;
 
 const MIME_BY_EXT: Record<string, string> = { jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
 const EXT_BY_MIME: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };

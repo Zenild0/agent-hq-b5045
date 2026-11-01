@@ -34,6 +34,9 @@ export interface EventSettings {
   totalRounds: number;
 }
 
+/** 'price' = highest price first; 'added' = in the order they were bought (first bought at the top). */
+export type SquadSort = 'price' | 'added';
+
 export type PlayerStatus = 'available' | 'sold' | 'unsold';
 
 export interface Player {
@@ -113,6 +116,8 @@ export interface LiveState {
   spin: SpinInfo | null;
   result: LiveResult | null;
   screen: 'stage' | 'board';
+  /** How every team's list of players is ordered on the big screen and the team board. */
+  squadSort: SquadSort;
   break: BreakState | null;
   seq: number;
   lastEvent: LiveEvent | null;

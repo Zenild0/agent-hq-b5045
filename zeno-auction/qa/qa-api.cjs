@@ -65,7 +65,7 @@ const post = (path, body, headers = {}) => j(path, { method: 'POST', headers: { 
   r = await up(adminKey, 'image/svg+xml', '<svg onload=alert(1)/>'); t('SVG upload rejected', r.status === 400, String(r.status));
   r = await up(adminKey, 'text/html', '<script>1</script>'); t('HTML upload rejected', r.status === 400, String(r.status));
   r = await up(adminKey, 'image/jpeg', Buffer.alloc(0));   t('empty upload rejected', r.status === 400, String(r.status));
-  r = await up(adminKey, 'image/jpeg', Buffer.alloc(2_200_000)); t('2.2 MB upload → 413', r.status === 413, String(r.status));
+  r = await up(adminKey, 'image/jpeg', Buffer.alloc(1_100_000)); t('1.1 MB upload → 413 (limit is 1 MB)', r.status === 413, String(r.status));
   r = await up(adminKey, 'image/jpeg', jpeg);              t('valid jpeg → 201', r.status === 201 && /^\/uploads\//.test(r.body.url), JSON.stringify(r.body));
   if (r.body?.url) { const img = await fetch(BASE + r.body.url); t('uploaded file served as image', img.status === 200 && /image\/jpeg/.test(img.headers.get('content-type'))); }
   // path traversal must never expose the event files (which contain the admin key)

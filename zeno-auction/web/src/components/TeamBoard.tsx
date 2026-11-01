@@ -1,10 +1,11 @@
 import { formatMoney } from '../../../shared/money';
-import { maxBid, teamStats } from '../../../shared/rules';
-import type { Snapshot } from '../../../shared/types';
+import { maxBid, sortSquad, teamStats } from '../../../shared/rules';
+import type { Snapshot, SquadSort } from '../../../shared/types';
 import { PlayerAvatar } from './ui';
 
 /** Full team-by-team view: purse left, spend, squad. Meant for the big screen or a quick look. */
-export function TeamBoard({ snap, big = false, highlightId }: { snap: Snapshot; big?: boolean; highlightId?: string }) {
+export function TeamBoard({ snap, big = false, highlightId, sort }: { snap: Snapshot; big?: boolean; highlightId?: string; sort?: SquadSort }) {
+  const order = sort ?? snap.live.squadSort ?? 'price';
   const { settings, captains } = snap;
   const online = new Set(snap.presence.captains);
   const cols = captains.length <= 2 ? 'md:grid-cols-2' : captains.length === 3 ? 'md:grid-cols-3' : captains.length <= 4 ? 'md:grid-cols-2 xl:grid-cols-4' : 'md:grid-cols-2 xl:grid-cols-3';
@@ -63,7 +64,7 @@ export function TeamBoard({ snap, big = false, highlightId }: { snap: Snapshot; 
 
             <ul className="mt-3 space-y-1.5">
               {st.players.length === 0 && <li className="py-3 text-center text-xs text-slate-500">No players yet</li>}
-              {st.players.map((p) => (
+              {sortSquad(st.players, order).map((p) => (
                 <li key={p.id} className="flex items-center gap-2.5 rounded-lg bg-ink-900/80 p-1.5 pr-3">
                   <PlayerAvatar player={p} showPhoto={settings.display.showPhoto} className="h-9 w-9 shrink-0 rounded-lg text-[10px]" />
                   <div className="min-w-0 flex-1">

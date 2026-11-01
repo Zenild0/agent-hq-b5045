@@ -1,7 +1,7 @@
 import { AlertCircle, Check, CheckCircle2, Copy, Info, X } from 'lucide-react';
 import { Children, cloneElement, createContext, isValidElement, useCallback, useContext, useEffect, useId, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import type { Captain, Player } from '../../../shared/types';
+import type { Captain, Player, SquadSort } from '../../../shared/types';
 
 // ---- toasts ---------------------------------------------------------------------------------
 
@@ -296,5 +296,28 @@ export function TeamBadge({ captain, className = '' }: { captain: Pick<Captain, 
       {captain.logo ? <img src={captain.logo} alt="" className="h-6 w-6 rounded-full object-cover" /> : <TeamDot captain={captain} size={12} />}
       {captain.team}
     </span>
+  );
+}
+
+/** Two small buttons to order a team's players by price or by the order they were bought. */
+export function SquadSortToggle({ value, onChange, className = '' }: { value: SquadSort; onChange: (v: SquadSort) => void; className?: string }) {
+  const opts: { v: SquadSort; label: string }[] = [
+    { v: 'price', label: 'Highest price' },
+    { v: 'added', label: 'Order bought' },
+  ];
+  return (
+    <div className={`inline-flex rounded-xl border border-[var(--hairline)] bg-ink-900/60 p-0.5 text-xs font-semibold ${className}`} role="group" aria-label="Order of players in each team">
+      {opts.map((o) => (
+        <button
+          key={o.v}
+          type="button"
+          aria-pressed={value === o.v}
+          onClick={() => onChange(o.v)}
+          className={`rounded-lg px-3 py-1.5 transition ${value === o.v ? 'bg-gold/15 text-gold' : 'text-slate-400 hover:text-white'}`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
   );
 }

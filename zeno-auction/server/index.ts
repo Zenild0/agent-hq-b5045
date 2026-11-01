@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
+import { LIMITS } from '../shared/limits';
 import type { Me, Snapshot } from '../shared/types';
 import { AuctionError, createStore, nextDue, randomCode, runAction, tick, type Actor, type Store } from './engine';
 import { buildArchive, restoreArchive } from './archive';
@@ -13,8 +14,11 @@ const PORT = Number(process.env.PORT ?? 8787);
 // Which build is running: set by the packaging step as a VERSION file next to the app (or by APP_VERSION).
 const VERSION = process.env.APP_VERSION ?? (existsSync('VERSION') ? readFileSync('VERSION', 'utf8').trim().slice(0, 80) : 'dev');
 const MAX_EVENTS = Number(process.env.MAX_EVENTS ?? 2000);
-const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
-const MAX_UPLOADS_PER_AUCTION = 1000;
+const MAX_UPLOAD_BYTES = LIMITS.photoBytes;
+const MAX_UPLOADS_PER_AUCTION = LIMITS.photos;
+// Watching screens (phones, big screens) per auction. Memory is no problem (400 screens cost ~4 MB) —
+// the free internet allowance is: each screen watching a full auction downloads ~0.8 MB.
+const MAX_SCREENS = Number(process.env.MAX_SCREENS ?? 250);
 
 const events = loadAll();
 console.log(`ZenoBid · data in ${DATA_DIR} · ${events.size} auction(s) loaded`);
@@ -487,6 +491,12 @@ server.on('upgrade', (req, socket, head) => {
   const store = match ? events.get(match[1].toUpperCase()) : undefined;
   if (!match || !store) {
     socket.write('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  if ((clients.get(store.data.code)?.size ?? 0) >= MAX_SCREENS) {
+    // Extra screens are not turned away: the app falls back to refreshing every few seconds.
+    socket.write('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
     socket.destroy();
     return;
   }

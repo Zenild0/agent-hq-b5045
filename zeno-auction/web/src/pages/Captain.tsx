@@ -2,7 +2,8 @@ import { Gavel } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { formatMoney } from '../../../shared/money';
-import { checkBid, maxBid, nextBidAmount, stepFor, teamStats } from '../../../shared/rules';
+import { checkBid, maxBid, nextBidAmount, sortSquad, stepFor, teamStats } from '../../../shared/rules';
+import { useOwnSquadSort } from '../lib/squadSort';
 import type { Snapshot } from '../../../shared/types';
 import { HeartPill, Heartbeat } from '../components/Heartbeat';
 import { KeyPrompt } from '../components/KeyPrompt';
@@ -13,7 +14,7 @@ import { StrategyTab } from '../components/StrategyTab';
 import { RoomGate, SoundControls } from '../components/RoomGate';
 import { Stage } from '../components/Stage';
 import { TeamBoard, TeamStrip } from '../components/TeamBoard';
-import { LogoMark, PlayerAvatar, Tabs } from '../components/ui';
+import { LogoMark, PlayerAvatar, SquadSortToggle, Tabs } from '../components/ui';
 import { usePageKey } from '../lib/session';
 import { useAuctionSound, useSoundPrefs } from '../lib/sound';
 import { useTempo } from '../lib/tempo';
@@ -28,6 +29,7 @@ export default function Captain() {
   const [busy, setBusy] = useState(false);
   useAuctionSound(room.snap, prefs);
   const tempo = useTempo(room.snap, room.serverNow);
+  const [sort, setSort] = useOwnSquadSort(code, room.snap?.live.squadSort ?? 'price');
 
   // When the auctioneer calls a strategy break, open the planning tab for the captain.
   const onBreak = !!room.snap?.live.break;
@@ -127,7 +129,10 @@ export default function Captain() {
             )}
 
             {snap.live.screen === 'board' && live.phase === 'idle' ? (
-              <TeamBoard snap={snap} highlightId={me.id} />
+              <div className="space-y-3">
+                <SquadSortToggle value={sort} onChange={setSort} />
+                <TeamBoard snap={snap} highlightId={me.id} sort={sort} />
+              </div>
             ) : (
               <Stage snap={snap} serverNow={room.serverNow} compact tickSound={prefs.sfx} />
             )}
@@ -148,7 +153,8 @@ export default function Captain() {
             ) : tab === 'squad' ? (
               <div className="space-y-2">
                 {st.players.length === 0 && <p className="card p-6 text-center text-sm text-slate-400">No players yet — go win some!</p>}
-                {st.players.map((p) => (
+                {st.players.length > 1 && <SquadSortToggle value={sort} onChange={setSort} />}
+                {sortSquad(st.players, sort).map((p) => (
                   <div key={p.id} className="card flex items-center gap-3 p-2.5">
                     <PlayerAvatar player={p} showPhoto={settings.display.showPhoto} className="h-12 w-12 rounded-xl text-xs" />
                     <div className="min-w-0 flex-1">
@@ -160,7 +166,10 @@ export default function Captain() {
                 ))}
               </div>
             ) : (
-              <TeamBoard snap={snap} highlightId={me.id} />
+              <div className="space-y-3">
+                <SquadSortToggle value={sort} onChange={setSort} />
+                <TeamBoard snap={snap} highlightId={me.id} sort={sort} />
+              </div>
             )}
 
             {/* ---- bid bar ---- */}

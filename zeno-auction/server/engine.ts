@@ -1,5 +1,6 @@
 import { randomBytes, randomInt } from 'node:crypto';
 import { formatMoney, type MoneyFmt } from '../shared/money';
+import { LIMITS } from '../shared/limits';
 import { checkBid, effectiveBase, maxBid, nextBidAmount, sortedTiers, teamStats } from '../shared/rules';
 import type {
   Captain,
@@ -45,12 +46,13 @@ export function normalizeStore(store: Store): Store {
   store.stash ??= null;
   store.data.practice ??= false;
   store.data.live.break ??= null;
+  store.data.live.squadSort ??= 'price';
   return store;
 }
 
 export const SPIN_MS = 7000; // 5.2 s of spinning + 1.8 s of the winner's name flashing
-export const MAX_PLAYERS = 500;
-export const MAX_CAPTAINS = 32;
+export const MAX_PLAYERS = LIMITS.players;
+export const MAX_CAPTAINS = LIMITS.teams;
 const WHEEL_SLICES = 24;
 
 const COLORS = ['#ff3d81', '#29e0ff', '#ffc933', '#7cf29a', '#b388ff', '#ff8a3d', '#4d8bff', '#f25cf0'];
@@ -164,7 +166,7 @@ export function createStore(code: string, settingsPatch: unknown, now = Date.now
 }
 
 function emptyLive(): EventData['live'] {
-  return { phase: 'idle', playerId: null, bids: [], call: 0, spin: null, result: null, screen: 'stage', break: null, seq: 0, lastEvent: null };
+  return { phase: 'idle', playerId: null, bids: [], call: 0, spin: null, result: null, screen: 'stage', squadSort: 'price', break: null, seq: 0, lastEvent: null };
 }
 
 function emit(d: EventData, type: LiveEventType, now: number, extra: Partial<EventData['live']['lastEvent'] & object> = {}) {
@@ -698,11 +700,16 @@ on('screen.set', 'host', ({ data }, p) => {
   data.live.screen = p.screen === 'board' ? 'board' : 'stage';
 });
 
+/** The auctioneer chooses how the team lists are ordered on the big screen: by price, or in the order bought. */
+on('squad.sort', 'host', ({ data }, p) => {
+  data.live.squadSort = p.sort === 'added' ? 'added' : 'price';
+});
+
 on('reset', 'admin', ({ data }, _p, _a, now) => {
   for (const p of data.players) Object.assign(p, { status: 'available', teamId: null, price: 0, soldRound: 0 });
   data.round = 1;
-  const { screen, seq } = data.live;
-  data.live = { ...emptyLive(), screen, seq };
+  const { screen, seq, squadSort } = data.live;
+  data.live = { ...emptyLive(), screen, seq, squadSort };
   emit(data, 'idle', now);
   note(data, data.practice ? 'Practice restarted' : 'Auction reset', now);
 });
@@ -757,8 +764,8 @@ on('practice.start', 'admin', (store, _p, _a, now) => {
   });
   for (const pl of data.players) resetPlayer(pl);
   data.round = 1;
-  const { screen, seq } = data.live;
-  data.live = { ...emptyLive(), screen, seq };
+  const { screen, seq, squadSort } = data.live;
+  data.live = { ...emptyLive(), screen, seq, squadSort };
   data.log = [];
   data.practice = true;
   emit(data, 'practice', now);
@@ -779,7 +786,7 @@ on('practice.end', 'admin', (store, _p, _a, now) => {
     // (should not happen) no stash to restore: just leave a clean board
     for (const pl of data.players) resetPlayer(pl);
     data.round = 1;
-    data.live = { ...emptyLive(), screen: data.live.screen, seq: data.live.seq };
+    data.live = { ...emptyLive(), screen: data.live.screen, seq: data.live.seq, squadSort: data.live.squadSort };
   }
   store.stash = null;
   data.practice = false;

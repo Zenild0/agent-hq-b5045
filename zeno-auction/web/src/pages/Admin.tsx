@@ -8,7 +8,7 @@ import { KeyPrompt } from '../components/KeyPrompt';
 import { PageTitle } from '../components/PageTitle';
 import { PracticeBanner } from '../components/PracticeBanner';
 import { RoomGate, SoundControls } from '../components/RoomGate';
-import { Logo } from '../components/ui';
+import { Logo, SquadSortToggle } from '../components/ui';
 import { PlayersTab } from '../components/admin/PlayersTab';
 import { SettingsTab } from '../components/admin/SettingsTab';
 import { ShareTab } from '../components/admin/ShareTab';
@@ -165,7 +165,15 @@ export default function Admin() {
                   ))}
                 {tab === 'teams' && <TeamsTab snap={snap} room={room} adminKey={key!} />}
                 {tab === 'players' && <PlayersTab snap={snap} room={room} adminKey={key!} />}
-                {tab === 'board' && <TeamBoard snap={snap} highlightId={snap.live.bids[snap.live.bids.length - 1]?.captainId} />}
+                {tab === 'board' && (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-400">
+                      <span>Order of players in each team (also what the big screen shows)</span>
+                      <SquadSortToggle value={snap.live.squadSort ?? 'price'} onChange={(v) => room.act('squad.sort', { sort: v })} />
+                    </div>
+                    <TeamBoard snap={snap} highlightId={snap.live.bids[snap.live.bids.length - 1]?.captainId} />
+                  </div>
+                )}
                 {tab === 'settings' && <SettingsTab snap={snap} room={room} />}
                 {tab === 'share' && <ShareTab snap={snap} />}
               </main>

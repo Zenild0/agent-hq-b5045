@@ -498,3 +498,27 @@ test('captains keep a private plan of players and the most they will pay', () =>
   runAction(s, ADMIN, 'captain.remove', { id: teams[0] });
   assert.equal(s.strategies[teams[0]], undefined);
 });
+
+test('team lists can be ordered by price or by the order players were bought', async () => {
+  const { sortSquad } = await import('../shared/rules');
+  const { s, teams } = setup({}, 3);
+  const [a, b, c] = s.data.players;
+  runAction(s, ADMIN, 'player.assign', { id: a.id, captainId: teams[0], price: 30 * L }, 1000);
+  runAction(s, ADMIN, 'player.assign', { id: b.id, captainId: teams[0], price: 90 * L }, 2000);
+  runAction(s, ADMIN, 'player.assign', { id: c.id, captainId: teams[0], price: 50 * L }, 3000);
+  const mine = s.data.players.filter((p) => p.teamId === teams[0]);
+  assert.deepEqual(sortSquad(mine, 'price').map((p) => p.name), ['Player 2', 'Player 3', 'Player 1']);
+  assert.deepEqual(sortSquad(mine, 'added').map((p) => p.name), ['Player 1', 'Player 2', 'Player 3']);
+  // players with no purchase time (placed before the app was used) come first when ordering by purchase
+  mine[2].soldAt = 0;
+  assert.equal(sortSquad(mine, 'added')[0].name, 'Player 3');
+  // only the auctioneer (or admin) can change it, and it survives a reset
+  assert.equal(s.data.live.squadSort, 'price');
+  throwsAuction(() => runAction(s, captain(s, teams[0]), 'squad.sort', { sort: 'added' }), /not allowed/);
+  runAction(s, HOST, 'squad.sort', { sort: 'added' });
+  assert.equal(s.data.live.squadSort, 'added');
+  runAction(s, ADMIN, 'reset', {});
+  assert.equal(s.data.live.squadSort, 'added');
+  runAction(s, HOST, 'squad.sort', { sort: 'nonsense' });
+  assert.equal(s.data.live.squadSort, 'price');
+});

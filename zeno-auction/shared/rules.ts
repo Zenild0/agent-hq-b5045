@@ -1,4 +1,4 @@
-import type { Bid, Captain, EventData, EventSettings, IncrementTier, Player } from './types';
+import type { Bid, Captain, EventData, EventSettings, IncrementTier, Player, SquadSort } from './types';
 
 /** The step applied to a bid that currently stands at `current`. */
 export function stepFor(increments: IncrementTier[], current: number): number {
@@ -75,3 +75,12 @@ export function sortedTiers(tiers: IncrementTier[]): IncrementTier[] {
 
 /** The last part of a spin where the winning name flashes before bidding opens. */
 export const SPIN_FLASH_MS = 1800;
+
+/**
+ * A team's players in the order to show them. 'price': most expensive first. 'added': the order they were
+ * bought (players placed before the app was used, which have no purchase time, come first).
+ */
+export function sortSquad(players: readonly Player[], mode: SquadSort): Player[] {
+  const added = (a: Player, b: Player) => (a.soldAt ?? 0) - (b.soldAt ?? 0) || a.order - b.order;
+  return [...players].sort(mode === 'added' ? added : (a, b) => b.price - a.price || added(a, b));
+}
