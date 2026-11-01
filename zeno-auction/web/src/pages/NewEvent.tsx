@@ -4,12 +4,17 @@ import { Link, useNavigate } from 'react-router-dom';
 import { AuctionPreview } from '../components/AuctionPreview';
 import { SECTIONS, SettingsForm } from '../components/SettingsForm';
 import { Logo, useToast } from '../components/ui';
+import { ModeToggle } from '../components/Brand';
+import { useEventAppearance } from '../lib/appearance';
 import { createEvent, restoreEvent } from '../lib/api';
 import { saveEvent } from '../lib/session';
 import type { EventSettings } from '../../../shared/types';
 
 // Mirrors the server defaults so the form is filled in before the first round-trip.
 const DEFAULTS: EventSettings = {
+  theme: 'midnight-gold',
+  mode: 'dark',
+  brand: { logo: '', eventLogo: '', eventLogoStyle: 'side', color: '#2f6bff' },
   name: 'Office Premier League',
   sport: 'Cricket',
   tagline: 'The Zeno team auction',
@@ -32,6 +37,7 @@ const DEFAULTS: EventSettings = {
 
 export default function NewEvent() {
   const [settings, setSettings] = useState(DEFAULTS);
+  useEventAppearance(settings); // the whole page previews the chosen theme
   const [busy, setBusy] = useState(false);
   const [active, setActive] = useState<string>(SECTIONS[0].id);
   const nav = useNavigate();
@@ -100,6 +106,7 @@ export default function NewEvent() {
         <Logo />
         <div className="flex items-center gap-4">
           <input ref={fileInput} type="file" accept=".json,application/json" className="hidden" aria-label="Choose an auction file" onChange={(e) => restore(e.target.files?.[0])} />
+          <ModeToggle />
           <button className="btn-ghost !py-2" onClick={() => fileInput.current?.click()} disabled={busy} title="Bring back an auction you saved on your computer">
             <FileUp className="h-4 w-4" /> Restore from file
           </button>
@@ -129,7 +136,7 @@ export default function NewEvent() {
                   className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition ${on ? 'bg-gold/10 text-gold' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
                 >
                   <span
-                    className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-bold ${on ? 'text-ink-950' : 'border border-[var(--hairline)] text-slate-400'}`}
+                    className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-bold ${on ? 'text-onaccent' : 'border border-[var(--hairline)] text-slate-400'}`}
                     style={on ? { background: 'var(--gold-grad)' } : undefined}
                   >
                     {i + 1}

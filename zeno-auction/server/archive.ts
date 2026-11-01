@@ -60,8 +60,10 @@ export function buildArchive(store: Store, readPhoto: PhotoReader, now = Date.no
     const buf = readPhoto(name);
     if (buf && buf.length <= MAX_PHOTO_BYTES) photos[name] = `data:${MIME_BY_EXT[name.split('.')[1]]};base64,${buf.toString('base64')}`;
   };
+  const settings = JSON.parse(JSON.stringify(d.settings)) as Store['data']['settings'];
   for (const p of players) grab(p.photo);
   for (const c of captains) grab(c.logo);
+  if (settings.brand) for (const u of [settings.brand.logo, settings.brand.eventLogo]) grab(u);
 
   // Photos are stored under the *old* code; rewrite to a neutral prefix so the file stands alone.
   const neutral = (url: string) => {
@@ -70,6 +72,10 @@ export function buildArchive(store: Store, readPhoto: PhotoReader, now = Date.no
   };
   for (const p of players) p.photo = neutral(p.photo);
   for (const c of captains) c.logo = neutral(c.logo);
+  if (settings.brand) {
+    settings.brand.logo = neutral(settings.brand.logo);
+    settings.brand.eventLogo = neutral(settings.brand.eventLogo);
+  }
 
   return {
     format: ARCHIVE_FORMAT,
@@ -77,7 +83,7 @@ export function buildArchive(store: Store, readPhoto: PhotoReader, now = Date.no
     exportedAt: now,
     note: 'ZenoBid auction file. Keep it safe: it contains team PINs. Restore it from the "Restore from file" button when creating an auction.',
     auction: {
-      settings: d.settings,
+      settings,
       round: real ? real.round : d.round,
       captains,
       players,
@@ -122,7 +128,6 @@ export function restoreArchive(file: unknown, code: string, now = Date.now()): R
   const a = file.auction;
   const store = createStore(code, a.settings ?? {}, now);
   const d = store.data;
-  d.settings = mergeSettings(DEFAULT_SETTINGS, a.settings);
 
   // photos: decode, check type and size, store under fresh random names
   const photos = new Map<string, Buffer>();
@@ -143,6 +148,11 @@ export function restoreArchive(file: unknown, code: string, now = Date.now()): R
     const s = text(v, 300);
     return renamed.get(s) ?? (/^https?:\/\//.test(s) ? s : '');
   };
+
+  // settings (the brand logos point at the photos restored above)
+  const rawSettings = isObj(a.settings) ? { ...a.settings } : {};
+  if (isObj(rawSettings.brand)) rawSettings.brand = { ...rawSettings.brand, logo: pic(rawSettings.brand.logo), eventLogo: pic(rawSettings.brand.eventLogo) };
+  d.settings = mergeSettings(DEFAULT_SETTINGS, rawSettings);
 
   // teams
   const rawCaptains = Array.isArray(a.captains) ? a.captains : [];

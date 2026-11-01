@@ -1,3 +1,4 @@
+import { teamInk } from '../lib/appearance';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { formatMoney } from '../../../shared/money';
 import { checkBid, effectiveBase, maxBid, nextBidAmount, sortSquad, SPIN_FLASH_MS, teamStats } from '../../../shared/rules';
@@ -120,7 +121,7 @@ function IdleHero({ snap }: { snap: Snapshot }) {
                   <PlayerAvatar player={p} showPhoto={snap.settings.display.showPhoto} className="h-12 w-12 shrink-0 rounded-lg text-[10px]" />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-lg font-bold">{p.name}</div>
-                    <div className="truncate text-sm font-semibold" style={{ color: team?.color }}>
+                    <div className="truncate text-sm font-semibold" style={{ color: teamInk(team?.color) }}>
                       {team?.team}
                     </div>
                   </div>
@@ -156,7 +157,7 @@ function BidHero({ snap }: { snap: Snapshot }) {
               {result.kind === 'sold' ? 'SOLD!' : 'UNSOLD'}
             </div>
             {result.kind === 'sold' && winner && (
-              <div className="mt-4 font-stage text-[clamp(2rem,4.4vw,4.6rem)] font-bold tracking-wide" style={{ color: winner.color }}>
+              <div className="mt-4 font-stage text-[clamp(2rem,4.4vw,4.6rem)] font-bold tracking-wide" style={{ color: teamInk(winner.color) }}>
                 {player.name} → {winner.team}
                 <div className="text-[0.8em] text-white">for {formatMoney(result.price ?? 0, snap.settings)}</div>
               </div>
@@ -197,7 +198,7 @@ function PlayerCard({ snap, player }: { snap: Snapshot; player: Player }) {
           {d.showRole && player.role && <span className="chip bg-black/40">{player.role}</span>}
           {bidding && <span className="chip border-emerald-400/40 bg-emerald-400/15 text-emerald-300">● LIVE</span>}
         </div>
-        <h2 className="font-stage font-extrabold uppercase leading-[0.9] tracking-tight drop-shadow-[0_4px_24px_rgba(0,0,0,0.8)]" style={{ fontSize: `min(${vw}vw, 15vh)` }}>
+        <h2 className="font-stage font-extrabold uppercase leading-[0.9] tracking-tight drop-shadow-[0_4px_24px_rgb(var(--shadow)/var(--shadow-a))]" style={{ fontSize: `min(${vw}vw, 15vh)` }}>
           {player.name}
         </h2>
         {d.showDescription && player.description && <p className="line-clamp-3 max-w-[40ch] text-[clamp(0.95rem,1.35vw,1.4rem)] text-slate-200">{player.description}</p>}
@@ -279,7 +280,7 @@ function BidWar({ snap, player }: { snap: Snapshot; player: Player }) {
           <div
             key={`${shown}-${motion?.key ?? 0}`}
             className={`font-display font-extrabold leading-none tracking-tight ${motion?.dir === 'down' ? 'animate-dropflash' : 'animate-bump'}`}
-            style={{ fontSize: 'min(6vw, 10vh)', color: motion?.dir === 'down' ? '#ff3d57' : (leader?.color ?? '#fff'), textShadow: leader ? `0 0 50px ${leader.color}66` : undefined }}
+            style={{ fontSize: 'min(6vw, 10vh)', color: motion?.dir === 'down' ? '#ff3d57' : (teamInk(leader?.color) ?? 'rgb(var(--white))'), textShadow: leader ? `0 0 50px ${leader.color}66` : undefined }}
           >
             {fmt(shown)}
           </div>
@@ -409,13 +410,13 @@ function BidLadder({ snap, player, nextAmount }: { snap: Snapshot; player: Playe
             <li
               key={c.id}
               className={`relative flex min-h-0 flex-1 items-center gap-3 overflow-hidden rounded-xl px-3 transition-opacity ${state === 'out' ? 'opacity-35' : ''} ${lead ? 'animate-glow' : ''}`}
-              style={{ background: '#0d0d24', ['--glow' as string]: `${c.color}66`, outline: lead ? `2px solid ${c.color}` : '1px solid rgba(255,255,255,0.06)' } as CSSProperties}
+              style={{ background: 'rgb(var(--ink-800))', ['--glow' as string]: `${c.color}66`, outline: lead ? `2px solid ${c.color}` : '1px solid var(--hairline)' } as CSSProperties}
             >
               <div className="absolute inset-y-0 left-0 transition-all duration-500 ease-out" style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${c.color}55, ${c.color}15)` }} />
               <span className="relative w-5 text-center font-display text-sm font-bold text-slate-500">{amount > 0 ? i + 1 : ''}</span>
               <span className="relative flex min-w-0 flex-1 items-center gap-2">
                 {c.logo ? <img src={c.logo} alt="" className="h-6 w-6 rounded-full object-cover" /> : <TeamDot captain={c} size={12} />}
-                <span className="truncate font-bold" style={{ color: c.color, fontSize: 'min(1.5vw, 3.1vh)' }}>
+                <span className="truncate font-bold" style={{ color: teamInk(c.color), fontSize: 'min(1.5vw, 3.1vh)' }}>
                   {c.team}
                 </span>
                 {c.name && <span className="hidden truncate text-sm text-slate-400 xl:inline">· {c.name}</span>}
@@ -493,7 +494,7 @@ function TeamCard({ snap, captain: c, leading, justSoldId, compact = false }: { 
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             {c.logo && <img src={c.logo} alt="" className="h-6 w-6 rounded-full object-cover" />}
-            <h3 className="truncate font-display text-[clamp(1.05rem,1.7vw,1.7rem)] font-extrabold leading-tight" style={{ color: c.color }}>
+            <h3 className="truncate font-display text-[clamp(1.05rem,1.7vw,1.7rem)] font-extrabold leading-tight" style={{ color: teamInk(c.color) }}>
               {c.team}
             </h3>
           </div>

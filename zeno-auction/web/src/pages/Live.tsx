@@ -7,9 +7,10 @@ import { PracticeBanner } from '../components/PracticeBanner';
 import { RoomGate, SoundControls } from '../components/RoomGate';
 import { Tape } from '../components/Tape';
 import { TeamBoard } from '../components/TeamBoard';
-import { Logo } from '../components/ui';
+import { EventBanner, EventLogo, EventSideLogo, PoweredBy, hasBrand } from '../components/Brand';
 import { useAuctionSound, useSoundPrefs } from '../lib/sound';
 import { useTempo } from '../lib/tempo';
+import { GOLD, HOT, useEventAppearance } from '../lib/appearance';
 import { useRoom } from '../lib/useRoom';
 
 /** The big-screen view: share this tab on Zoom. Follows whatever the auctioneer chooses to show. */
@@ -19,6 +20,7 @@ export default function Live({ forceBoard = false }: { forceBoard?: boolean }) {
   const [prefs, updatePrefs] = useSoundPrefs();
   useAuctionSound(room.snap, prefs);
   const tempo = useTempo(room.snap, room.serverNow);
+  useEventAppearance(room.snap?.settings);
 
   return (
     <RoomGate room={room} code={code}>
@@ -31,10 +33,11 @@ export default function Live({ forceBoard = false }: { forceBoard?: boolean }) {
           <>
             <PageTitle title={`${settings.name} · Live`} />
             <PracticeBanner snap={snap} />
-            <div className="mx-auto flex min-h-screen max-w-[1800px] flex-col gap-3 p-4 sm:p-6" style={{ ['--accent' as string]: settings.accent }}>
+            <div className="mx-auto flex min-h-screen max-w-[1800px] flex-col gap-3 p-4 sm:p-6">
+              <EventBanner settings={settings} />
               <header className="flex flex-wrap items-center gap-x-5 gap-y-3">
                 <div className="flex min-w-0 items-center gap-4">
-                  <Logo />
+                  <EventLogo settings={settings} />
                   <div className="hidden min-w-0 border-l border-[var(--hairline)] pl-4 sm:block">
                     <div className="truncate font-display text-base font-bold leading-tight">{settings.name}</div>
                     <div className="truncate text-xs text-slate-400">{settings.tagline}</div>
@@ -42,9 +45,10 @@ export default function Live({ forceBoard = false }: { forceBoard?: boolean }) {
                 </div>
 
                 {/* the room's heartbeat: slow when calm, racing in a bidding war */}
-                <Heartbeat tempo={tempo} color={tempo.intensity > 0.55 ? '#ff5c7a' : '#f2b84b'} className="order-last h-9 w-full min-w-0 flex-1 md:order-none md:w-auto" />
+                <Heartbeat tempo={tempo} color={tempo.intensity > 0.55 ? HOT : GOLD} className="order-last h-9 w-full min-w-0 flex-1 md:order-none md:w-auto" />
 
                 <div className="ml-auto flex flex-wrap items-center gap-2">
+                  <EventSideLogo settings={settings} />
                   <HeartPill tempo={tempo} />
                   <span className="chip border-gold/40 bg-gold/10 font-bold text-gold">
                     Join code <span className="num tracking-widest">{code}</span>
@@ -73,6 +77,7 @@ export default function Live({ forceBoard = false }: { forceBoard?: boolean }) {
                   <Arena snap={snap} serverNow={room.serverNow} tickSound={prefs.sfx} beat={tempo.beat} />
                 )}
               </main>
+              {hasBrand(settings) && <PoweredBy className="self-center pb-1 sm:hidden" />}
             </div>
           </>
         );

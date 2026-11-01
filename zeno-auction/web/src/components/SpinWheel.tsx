@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Player } from '../../../shared/types';
+import { contrast } from '../../../shared/themes';
+import { useAppearance } from '../lib/appearance';
 import { sfx } from '../lib/sound';
 
-// navy / royal blue / champagne gold: a roulette that looks like it belongs in a private bank
-const PALETTE = ['#1d46b8', '#f2b84b', '#2f6bff', '#ffe29a', '#14286b', '#d9a03a'];
-const LIGHT_SEGMENTS = new Set(['#f2b84b', '#ffe29a', '#d9a03a']);
+// The slices use the theme's colours (Midnight Gold: navy / royal blue / champagne gold).
+const isLight = (hex: string) => contrast(hex, '#070f26') > contrast(hex, '#f4f7ff');
 const R = 188;
 const C = 200;
 
@@ -41,6 +42,7 @@ export function SpinWheel({
   size?: string;
   hideWinner?: boolean;
 }) {
+  const PALETTE = useAppearance().palette.wheel;
   const n = players.length;
   const seg = 360 / n;
   const targetIdx = Math.max(0, players.findIndex((p) => p.id === targetId));
@@ -106,7 +108,7 @@ export function SpinWheel({
       </svg>
       <svg
         viewBox="0 0 400 400"
-        className={`h-full w-full ${stopped ? 'drop-shadow-[0_0_44px_rgba(242,184,75,0.6)]' : 'drop-shadow-[0_18px_30px_rgba(0,0,0,0.5)]'}`}
+        className={`h-full w-full ${stopped ? 'drop-shadow-[0_0_44px_rgb(var(--accent)/0.6)]' : 'drop-shadow-[0_18px_30px_rgba(0,0,0,0.5)]'}`}
         style={{
           transform: `rotate(${anim.rot}deg)`,
           transition: anim.ms ? `transform ${anim.ms}ms cubic-bezier(0.215, 0.61, 0.355, 1)` : 'none',
@@ -129,7 +131,7 @@ export function SpinWheel({
               dominantBaseline="central"
               fontSize={fontSize}
               fontWeight={800}
-              fill={LIGHT_SEGMENTS.has(color) ? '#070f26' : '#f4f7ff'}
+              fill={isLight(color) ? '#070f26' : '#f4f7ff'}
               style={{ fontFamily: 'Inter, sans-serif' }}
             >
               {clip(p.name, n)}
@@ -145,7 +147,7 @@ export function SpinWheel({
 
       {stopped && winner && !hideWinner && (
         <div className="pointer-events-none absolute inset-x-0 -bottom-[24%] text-center">
-          <div className="inline-block animate-pop rounded-2xl border-4 border-gold bg-ink-950/95 px-8 py-2 shadow-[0_0_60px_rgba(255,201,51,0.5)]">
+          <div className="inline-block animate-pop rounded-2xl border-4 border-gold bg-ink-950/95 px-8 py-2 shadow-[0_0_60px_rgb(var(--accent)/0.5)]">
             <span className="animate-pulse font-stage text-[clamp(2.2rem,5.4vw,4rem)] font-extrabold tracking-wide text-gold">{winner.name}</span>
           </div>
         </div>

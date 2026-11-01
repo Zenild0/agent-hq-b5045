@@ -16,7 +16,18 @@ export interface DisplayOptions {
   showBasePrice: boolean;
 }
 
+/** A company's own branding: shown instead of the ZenoBid logo, always with "Powered by ZenoBid". */
+export interface BrandSettings {
+  logo: string; // the company logo (an uploaded image)
+  eventLogo: string; // an optional second logo for this event
+  eventLogoStyle: 'side' | 'banner'; // beside the company logo, or as a wide banner across the top
+  color: string; // the brand colour (taken from the logo; can be changed)
+}
+
 export interface EventSettings {
+  theme: string; // see shared/themes.ts
+  mode: 'dark' | 'light'; // the look people see by default (each person can switch on their own device)
+  brand: BrandSettings;
   name: string;
   sport: string;
   tagline: string;

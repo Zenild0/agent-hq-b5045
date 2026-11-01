@@ -7,7 +7,7 @@ export function PracticeBanner({ snap, room }: { snap: Snapshot; room?: Room }) 
   if (!snap.practice) return null;
   const admin = snap.me.role === 'admin' && room;
   return (
-    <div className="sticky top-0 z-[80] flex flex-wrap items-center justify-center gap-x-4 gap-y-2 bg-amber-400 px-4 py-2 text-sm font-bold text-ink-950">
+    <div className="sticky top-0 z-[80] flex flex-wrap items-center justify-center gap-x-4 gap-y-2 bg-amber-400 px-4 py-2 text-sm font-bold text-[#0b1020]">
       <span className="flex items-center gap-2">
         <FlaskConical className="h-4 w-4" /> PRACTICE RUN — nothing here counts. The real auction is untouched.
       </span>

@@ -1,8 +1,12 @@
-import { Plus, Trash2 } from 'lucide-react';
+import { ImagePlus, Loader2, Plus, Trash2 } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { formatMoney } from '../../../shared/money';
 import type { EventSettings } from '../../../shared/types';
 import { MoneyInput } from './MoneyInput';
-import { Field, Segmented, Toggle } from './ui';
+import { dominantColor } from '../lib/brandColor';
+import { resizeLogo } from '../lib/image';
+import { ThemePicker } from './ThemePicker';
+import { Field, Segmented, Toggle, useToast } from './ui';
 
 const SPORTS = ['Cricket', 'Football', 'Basketball', 'Kabaddi', 'Volleyball', 'Esports', 'Hackathon', 'Other'];
 const CURRENCIES = [
@@ -19,6 +23,7 @@ export const SECTIONS = [
   { id: 'event', label: 'The event' },
   { id: 'money', label: 'Money' },
   { id: 'audience', label: 'What the audience sees' },
+  { id: 'look', label: 'Look & feel' },
   { id: 'next', label: 'Who comes next' },
   { id: 'squad', label: 'Squad rules' },
 ] as const;
@@ -34,7 +39,58 @@ function Section({ id, title, hint, children }: { id: string; title: string; hin
   );
 }
 
-export function SettingsForm({ value, onChange }: { value: EventSettings; onChange: (next: EventSettings) => void }) {
+/** Picks a logo file, shrinks it, uploads it, and reports the address of the stored image. */
+function LogoSlot({ label, hint, url, upload, onDone, onClear, disabledHint }: { label: string; hint: string; url: string; upload?: (b: Blob) => Promise<string>; onDone: (url: string, blob: Blob) => void; onClear: () => void; disabledHint: string }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const { toast } = useToast();
+  return (
+    <div className="rounded-xl border border-[var(--hairline)] bg-ink-900/50 p-3">
+      <div className="mb-2 text-sm font-semibold">{label}</div>
+      <div className="flex items-center gap-3">
+        <div className="grid h-16 w-28 shrink-0 place-items-center overflow-hidden rounded-lg border border-[var(--hairline)] bg-ink-950/60">
+          {url ? <img src={url} alt="" className="max-h-full max-w-full object-contain" /> : <ImagePlus className="h-5 w-5 text-slate-500" />}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-slate-400">{upload ? hint : disabledHint}</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <input
+              ref={input}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              aria-label={label}
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                if (!f || !upload) return;
+                setBusy(true);
+                try {
+                  const blob = await resizeLogo(f);
+                  onDone(await upload(blob), blob);
+                } catch (err) {
+                  toast((err as Error).message, 'error');
+                } finally {
+                  setBusy(false);
+                  if (input.current) input.current.value = '';
+                }
+              }}
+            />
+            <button type="button" className="btn-ghost !py-1.5 !text-xs" disabled={!upload || busy} onClick={() => input.current?.click()}>
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />} {url ? 'Change' : 'Upload'}
+            </button>
+            {url && (
+              <button type="button" className="btn-ghost !py-1.5 !text-xs" onClick={onClear}>
+                Remove
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function SettingsForm({ value, onChange, upload }: { value: EventSettings; onChange: (next: EventSettings) => void; upload?: (blob: Blob) => Promise<string> }) {
   const set = <K extends keyof EventSettings>(key: K, v: EventSettings[K]) => onChange({ ...value, [key]: v });
   const fmt = value;
   const currency = CURRENCIES.find((c) => c.symbol === value.symbol && c.moneyStyle === value.moneyStyle)?.id ?? 'custom';
@@ -159,6 +215,72 @@ export function SettingsForm({ value, onChange }: { value: EventSettings; onChan
           <Toggle label="Base price" hint="Show the opening price" checked={value.display.showBasePrice} onChange={(v) => set('display', { ...value.display, showBasePrice: v })} />
         </div>
         <p className="hint">The player's name is always shown.</p>
+      </Section>
+
+      <Section id="look" title="Look & feel" hint="Pick a theme for every screen of this auction. Each person can still switch between light and dark on their own device.">
+        <Field label="Default look">
+          <Segmented
+            value={value.mode}
+            onChange={(v) => set('mode', v)}
+            options={[
+              { value: 'dark', label: 'Dark', hint: 'Best for a big screen on a call' },
+              { value: 'light', label: 'Light', hint: 'Best in a bright room' },
+            ]}
+          />
+        </Field>
+        <ThemePicker value={value.theme} onChange={(id) => set('theme', id)} mode={value.mode} />
+
+        <div className={`rounded-xl border p-4 ${value.theme === 'brand' ? 'border-gold ring-2 ring-gold/40' : 'border-[var(--hairline)]'}`}>
+          <label className="flex cursor-pointer items-start gap-3">
+            <input type="radio" name="theme" className="mt-1 accent-[#f2b84b]" checked={value.theme === 'brand'} onChange={() => set('theme', 'brand')} />
+            <span>
+              <span className="block font-display font-bold">Your brand</span>
+              <span className="block text-sm text-slate-400">Show your company logo and use its colours. “Powered by ZenoBid” always appears beside it.</span>
+            </span>
+          </label>
+          {value.theme === 'brand' && (
+            <div className="mt-4 space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <LogoSlot
+                  label="Company logo"
+                  hint="Shown top-left instead of the ZenoBid logo. A PNG with a clear background works best."
+                  disabledHint="Create the auction first, then add your logo here (Settings → Look & feel)."
+                  url={value.brand.logo}
+                  upload={upload}
+                  onDone={async (url, blob) => onChange({ ...value, brand: { ...value.brand, logo: url, color: await dominantColor(blob) } })}
+                  onClear={() => set('brand', { ...value.brand, logo: '' })}
+                />
+                <LogoSlot
+                  label="Event logo (optional)"
+                  hint="A second logo for this event, e.g. the tournament crest."
+                  disabledHint="Create the auction first, then add it here."
+                  url={value.brand.eventLogo}
+                  upload={upload}
+                  onDone={(url) => set('brand', { ...value.brand, eventLogo: url })}
+                  onClear={() => set('brand', { ...value.brand, eventLogo: '' })}
+                />
+              </div>
+              {value.brand.eventLogo && (
+                <Field label="Where the event logo goes">
+                  <Segmented
+                    value={value.brand.eventLogoStyle}
+                    onChange={(v) => set('brand', { ...value.brand, eventLogoStyle: v })}
+                    options={[
+                      { value: 'side', label: 'On the other side', hint: 'Opposite the company logo' },
+                      { value: 'banner', label: 'As a banner', hint: 'Wide strip across the top' },
+                    ]}
+                  />
+                </Field>
+              )}
+              <Field label="Brand colour" hint="Taken from your logo automatically. Change it if it isn’t quite right.">
+                <div className="flex items-center gap-3">
+                  <input type="color" aria-label="Brand colour" value={value.brand.color} onChange={(e) => set('brand', { ...value.brand, color: e.target.value })} className="h-10 w-14 cursor-pointer rounded-lg border border-[var(--hairline)] bg-transparent p-1" />
+                  <span className="num text-sm text-slate-400">{value.brand.color}</span>
+                </div>
+              </Field>
+            </div>
+          )}
+        </div>
       </Section>
 
       <Section id="next" title="Who comes up next">

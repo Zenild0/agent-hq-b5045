@@ -1,3 +1,4 @@
+import { teamInk } from '../lib/appearance';
 import { useEffect, useState } from 'react';
 import { formatMoney } from '../../../shared/money';
 import { effectiveBase, nextBidAmount, SPIN_FLASH_MS } from '../../../shared/rules';
@@ -117,7 +118,7 @@ export function Stage({
             className={`font-display font-extrabold leading-none tracking-tight animate-bump ${
               compact ? 'my-2 text-6xl' : 'my-3 text-[clamp(4rem,10vw,10.5rem)]'
             }`}
-            style={{ color: leader?.color ?? '#fff' }}
+            style={{ color: teamInk(leader?.color) ?? 'rgb(var(--white))' }}
           >
             {formatMoney(top?.amount ?? base, settings)}
           </div>

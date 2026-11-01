@@ -1,6 +1,7 @@
 import { randomBytes, randomInt } from 'node:crypto';
 import { formatMoney, type MoneyFmt } from '../shared/money';
 import { LIMITS } from '../shared/limits';
+import { themeIds } from '../shared/themes';
 import { checkBid, effectiveBase, maxBid, nextBidAmount, sortedTiers, teamStats } from '../shared/rules';
 import type {
   Captain,
@@ -47,6 +48,10 @@ export function normalizeStore(store: Store): Store {
   store.data.practice ??= false;
   store.data.live.break ??= null;
   store.data.live.squadSort ??= 'price';
+  const st = store.data.settings;
+  st.theme ??= DEFAULT_SETTINGS.theme;
+  st.mode ??= 'dark';
+  st.brand ??= { ...DEFAULT_SETTINGS.brand };
   return store;
 }
 
@@ -72,6 +77,9 @@ const secretKey = () => randomBytes(12).toString('base64url');
 // ---------------------------------------------------------------------------------------------
 
 export const DEFAULT_SETTINGS: EventSettings = {
+  theme: 'midnight-gold',
+  mode: 'dark',
+  brand: { logo: '', eventLogo: '', eventLogoStyle: 'side', color: '#2f6bff' },
   name: 'Office Premier League',
   sport: 'Cricket',
   tagline: 'The Zeno team auction',
@@ -103,7 +111,7 @@ const bool = (v: unknown, fallback: boolean): boolean => (typeof v === 'boolean'
 /** Merge a partial patch into settings, discarding anything invalid. */
 export function mergeSettings(base: EventSettings, patch: unknown): EventSettings {
   const p = (patch && typeof patch === 'object' ? patch : {}) as Record<string, unknown>;
-  const next: EventSettings = { ...base, display: { ...base.display } };
+  const next: EventSettings = { ...base, display: { ...base.display }, brand: { ...base.brand } };
 
   next.name = str(p.name, base.name, 80) || base.name;
   next.sport = str(p.sport, base.sport, 40) || base.sport;
@@ -118,6 +126,19 @@ export function mergeSettings(base: EventSettings, patch: unknown): EventSetting
   next.maxSquad = num(p.maxSquad, base.maxSquad, 0);
   next.reserveRule = bool(p.reserveRule, base.reserveRule);
   next.totalRounds = Math.max(1, num(p.totalRounds, base.totalRounds, 1));
+  if (typeof p.theme === 'string' && themeIds.includes(p.theme)) next.theme = p.theme;
+  if (p.mode === 'dark' || p.mode === 'light') next.mode = p.mode;
+  if (p.brand && typeof p.brand === 'object') {
+    const b = p.brand as Record<string, unknown>;
+    // only pictures uploaded to this server (or an https link) — never anything that could run script
+    const pic = (v: unknown, old: string) => (typeof v === 'string' ? (v === '' || /^\/uploads\/[A-Z0-9]{6}\/[A-Za-z0-9]+\.(jpg|png|webp)$/.test(v) || /^https:\/\/[^\s"'<>]{1,280}$/.test(v) ? v : old) : old);
+    next.brand = {
+      logo: pic(b.logo, base.brand.logo),
+      eventLogo: pic(b.eventLogo, base.brand.eventLogo),
+      eventLogoStyle: b.eventLogoStyle === 'banner' ? 'banner' : b.eventLogoStyle === 'side' ? 'side' : base.brand.eventLogoStyle,
+      color: typeof b.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(b.color) ? b.color : base.brand.color,
+    };
+  }
 
   if (p.display && typeof p.display === 'object') {
     const d = p.display as Record<string, unknown>;

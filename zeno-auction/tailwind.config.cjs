@@ -6,21 +6,32 @@
  *   pearl  soft white for type on dark
  *   hot    coral-red (outbid, drops, last call)   cyan: cool highlight
  */
+const v = (name) => `rgb(var(--${name}) / <alpha-value>)`;
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: ['./web/index.html', './web/src/**/*.{ts,tsx}'],
   theme: {
     extend: {
+      // Every colour is a CSS variable ("r g b") filled in by the active theme (shared/themes.ts), so the
+      // whole app can switch theme and light/dark without rebuilding.
       colors: {
-        ink: { 950: '#040918', 900: '#070f26', 800: '#0b1636', 700: '#12214a', 600: '#1b2f63', 500: '#2a4488' },
-        royal: { DEFAULT: '#2f6bff', 300: '#8fb0ff', 400: '#5b8cff', 600: '#1f4fd6' },
-        gold: { DEFAULT: '#f2b84b', soft: '#ffe29a', deep: '#c98a12' },
-        pearl: '#f4f7ff',
-        hot: '#ff5c7a',
-        cyan: { DEFAULT: '#5cc8ff' },
+        ink: { 950: v('ink-950'), 900: v('ink-900'), 800: v('ink-800'), 700: v('ink-700'), 600: v('ink-600'), 500: v('ink-500') },
+        royal: { DEFAULT: v('royal'), 300: v('royal-300'), 400: v('royal-400'), 600: v('royal-600') },
+        gold: { DEFAULT: v('gold'), soft: v('gold-soft'), deep: v('gold-deep') },
+        onaccent: v('on-accent'),
+        pearl: v('pearl'),
+        white: v('white'),
+        hot: v('hot'),
+        cyan: { DEFAULT: v('cyan') },
+        slate: { 100: v('slate-100'), 200: v('slate-200'), 300: v('slate-300'), 400: v('slate-400'), 500: v('slate-500'), 600: v('slate-600') },
+        emerald: { 100: v('emerald-100'), 200: v('emerald-200'), 300: v('emerald-300'), 400: v('emerald-400'), 950: v('emerald-950') },
+        red: { 100: v('red-100'), 200: v('red-200'), 300: v('red-300'), 400: v('red-400'), 500: v('red-500') },
+        amber: { 100: v('amber-100'), 200: v('amber-200'), 300: v('amber-300'), 400: v('amber-400'), 500: v('amber-500') },
+        orange: { 400: v('orange-400') },
       },
       fontFamily: {
-        display: ['Sora', 'Inter', 'system-ui', 'sans-serif'],
+        display: 'var(--font-display)',
         stage: ['"Barlow Condensed"', 'Impact', 'Arial Narrow', 'sans-serif'],
         sans: ['Inter', 'system-ui', 'sans-serif'],
       },

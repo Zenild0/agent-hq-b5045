@@ -1,3 +1,4 @@
+import { ModeToggle } from '../components/Brand';
 import { ArrowRight, BadgeDollarSign, Gavel, HeartPulse, Image, LayoutDashboard, Mic, Shuffle, Smartphone, Sparkles, Timer, Trophy, Users, Zap } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -39,6 +40,7 @@ export default function Home() {
             <a href="#use" className="hidden px-3 text-sm font-semibold text-slate-300 hover:text-white sm:block">
               Use cases
             </a>
+            <ModeToggle />
             <Link to="/join" className="btn-ghost">
               Join with a code
             </Link>
@@ -140,7 +142,7 @@ export default function Home() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {FEATURES.map((f) => (
               <div key={f.title} className="card card-lift p-6">
-                <span className="grid h-11 w-11 place-items-center rounded-xl text-ink-950" style={{ background: 'var(--gold-grad)' }}>
+                <span className="grid h-11 w-11 place-items-center rounded-xl text-onaccent" style={{ background: 'var(--gold-grad)' }}>
                   <f.icon className="h-5 w-5" strokeWidth={2.4} />
                 </span>
                 <h3 className="mt-4 font-display text-lg font-bold">{f.title}</h3>
@@ -169,7 +171,7 @@ export default function Home() {
 
         {/* ------------------------------ closing ------------------------------ */}
         <section className="card overflow-hidden p-8 text-center sm:p-14">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(600px_240px_at_50%_0%,rgba(242,184,75,0.18),transparent)]" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(600px_240px_at_50%_0%,rgb(var(--accent)/0.18),transparent)]" />
           <div className="relative">
             <div className="mx-auto mb-4 flex w-fit items-center gap-4 text-slate-300">
               <Users className="h-5 w-5" /> <Smartphone className="h-5 w-5" /> <Mic className="h-5 w-5" /> <Trophy className="h-5 w-5" /> <Image className="h-5 w-5" /> <Zap className="h-5 w-5" />

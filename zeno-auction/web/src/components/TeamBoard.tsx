@@ -1,3 +1,4 @@
+import { teamInk } from '../lib/appearance';
 import { formatMoney } from '../../../shared/money';
 import { maxBid, sortSquad, teamStats } from '../../../shared/rules';
 import type { Snapshot, SquadSort } from '../../../shared/types';
@@ -30,7 +31,7 @@ export function TeamBoard({ snap, big = false, highlightId, sort }: { snap: Snap
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   {c.logo && <img src={c.logo} alt="" className="h-7 w-7 rounded-full object-cover" />}
-                  <h3 className={`truncate font-display font-extrabold ${big ? 'text-xl xl:text-2xl' : 'text-xl'}`} style={{ color: c.color }}>
+                  <h3 className={`truncate font-display font-extrabold ${big ? 'text-xl xl:text-2xl' : 'text-xl'}`} style={{ color: teamInk(c.color) }}>
                     {c.team}
                   </h3>
                 </div>
@@ -96,7 +97,7 @@ export function TeamStrip({ snap, leaderId }: { snap: Snapshot; leaderId?: strin
             className={`min-w-[150px] flex-1 rounded-xl border bg-ink-800/80 px-3 py-2 transition ${lead ? 'animate-glow border-transparent' : 'border-white/10'}`}
             style={{ ['--glow' as string]: `${c.color}88`, borderColor: lead ? c.color : undefined }}
           >
-            <div className="flex items-center gap-1.5 text-xs font-bold" style={{ color: c.color }}>
+            <div className="flex items-center gap-1.5 text-xs font-bold" style={{ color: teamInk(c.color) }}>
               <span className="h-2 w-2 rounded-full" style={{ background: c.color }} />
               <span className="truncate">{c.team}</span>
               <span className="ml-auto text-slate-400">{st.count}</span>

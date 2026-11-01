@@ -1,3 +1,4 @@
+import { ModeToggle } from '../components/Brand';
 import { ArrowRight, Eye, Loader2, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -39,9 +40,12 @@ export default function Join() {
       >
         <div className="flex items-center justify-between">
           <Logo />
-          <Link to="/" className="text-xs font-semibold text-slate-400 hover:text-white">
-            ← Home
-          </Link>
+          <div className="flex items-center gap-3">
+            <ModeToggle />
+            <Link to="/" className="text-xs font-semibold text-slate-400 hover:text-white">
+              ← Home
+            </Link>
+          </div>
         </div>
         <div>
           <p className="eyebrow">Join the room</p>

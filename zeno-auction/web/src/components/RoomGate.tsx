@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { Room } from '../lib/useRoom';
 import { sfx, speak, useVoices, type SoundPrefs } from '../lib/sound';
+import { ModeToggle } from './Brand';
 import { FullScreenMessage, Logo } from './ui';
 
 export function RoomGate({ room, code, children }: { room: Room; code: string; children: (snap: NonNullable<Room['snap']>) => ReactNode }) {
@@ -55,7 +56,7 @@ export function RoomGate({ room, code, children }: { room: Room; code: string; c
   return (
     <>
       {room.status === 'offline' && (
-        <div className="fixed inset-x-0 top-0 z-[90] bg-gradient-to-r from-hot to-[#e0334f] py-1.5 text-center text-xs font-bold text-white">Connection lost — reconnecting…</div>
+        <div className="fixed inset-x-0 top-0 z-[90] bg-gradient-to-r from-hot to-[#e0334f] py-1.5 text-center text-xs font-bold text-[#fff]">Connection lost — reconnecting…</div>
       )}
       {children(room.snap)}
     </>
@@ -110,6 +111,7 @@ export function SoundControls({ prefs, update }: { prefs: SoundPrefs; update: (p
           ))}
         </select>
       )}
+      <ModeToggle />
     </div>
   );
 }

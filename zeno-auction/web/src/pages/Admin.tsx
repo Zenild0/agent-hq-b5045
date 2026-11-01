@@ -8,7 +8,9 @@ import { KeyPrompt } from '../components/KeyPrompt';
 import { PageTitle } from '../components/PageTitle';
 import { PracticeBanner } from '../components/PracticeBanner';
 import { RoomGate, SoundControls } from '../components/RoomGate';
-import { Logo, SquadSortToggle } from '../components/ui';
+import { EventLogo } from '../components/Brand';
+import { SquadSortToggle } from '../components/ui';
+import { GOLD, useEventAppearance } from '../lib/appearance';
 import { PlayersTab } from '../components/admin/PlayersTab';
 import { SettingsTab } from '../components/admin/SettingsTab';
 import { ShareTab } from '../components/admin/ShareTab';
@@ -28,6 +30,7 @@ export default function Admin() {
   const [prefs, updatePrefs] = useSoundPrefs();
   useAuctionSound(room.snap, prefs);
 
+  useEventAppearance(room.snap?.settings);
   const name = room.snap?.settings.name;
   useEffect(() => {
     if (key && name && room.snap?.me.role === 'admin') saveEvent({ code, name, role: 'admin', key, at: Date.now() });
@@ -66,7 +69,7 @@ export default function Admin() {
               <aside className="mb-5 lg:mb-0">
                 <div className="lg:sticky lg:top-6 lg:space-y-5">
                   <div className="mb-4 flex items-center justify-between lg:mb-0">
-                    <Logo />
+                    <EventLogo settings={snap.settings} />
                     <div className="lg:hidden">
                       <SoundControls prefs={prefs} update={updatePrefs} />
                     </div>
@@ -97,7 +100,7 @@ export default function Admin() {
                           role="tab"
                           aria-selected={on}
                           onClick={() => pick(n.id)}
-                          className={`flex items-center gap-2.5 whitespace-nowrap rounded-xl px-3.5 py-2.5 text-left text-sm font-semibold transition ${on ? 'text-ink-950 shadow-[0_8px_20px_-10px_rgba(242,184,75,0.9)]' : 'text-slate-300 hover:bg-white/5 hover:text-white'}`}
+                          className={`flex items-center gap-2.5 whitespace-nowrap rounded-xl px-3.5 py-2.5 text-left text-sm font-semibold transition ${on ? 'text-onaccent shadow-[0_8px_20px_-10px_rgb(var(--accent)/0.9)]' : 'text-slate-300 hover:bg-white/5 hover:text-white'}`}
                           style={on ? { background: 'var(--gold-grad)' } : undefined}
                         >
                           {n.icon}
@@ -124,7 +127,7 @@ export default function Admin() {
                 <KpiStrip snap={snap} />
 
                 {!ready && (
-                  <div className="card flex flex-wrap items-center gap-x-8 gap-y-3 border-gold/30 p-4" style={{ background: 'linear-gradient(90deg, rgba(242,184,75,0.09), transparent)' }}>
+                  <div className="card flex flex-wrap items-center gap-x-8 gap-y-3 border-gold/30 p-4" style={{ background: 'linear-gradient(90deg, rgb(var(--accent)/0.09), transparent)' }}>
                     <div className="font-display font-bold">Get ready to auction</div>
                     <Step done={snap.captains.length >= 2} label={`Add at least 2 teams (${snap.captains.length})`} onClick={() => pick('teams')} />
                     <Step done={players > 0} label={`Add players (${players})`} onClick={() => pick('players')} />
@@ -138,7 +141,7 @@ export default function Admin() {
                 )}
 
                 {tab === 'control' && ready && !snap.practice && (
-                  <div className="card flex flex-wrap items-center gap-4 border-amber-400/30 p-4" style={{ background: 'linear-gradient(90deg, rgba(251,191,36,0.07), transparent)' }}>
+                  <div className="card flex flex-wrap items-center gap-4 border-amber-400/30 p-4" style={{ background: 'linear-gradient(90deg, rgb(var(--amber-400)/0.07), transparent)' }}>
                     <FlaskConical className="h-6 w-6 shrink-0 text-amber-300" />
                     <div className="min-w-[240px] flex-1">
                       <div className="font-display font-bold">Practice run</div>
@@ -188,7 +191,7 @@ export default function Admin() {
 function Step({ done, label, onClick }: { done: boolean; label: string; onClick: () => void }) {
   return (
     <button onClick={onClick} className="flex items-center gap-2 text-sm text-slate-300 hover:text-white">
-      <span className={`grid h-5 w-5 place-items-center rounded-full border ${done ? 'border-emerald-400 bg-emerald-400 text-ink-950' : 'border-white/30'}`}>{done && <Check className="h-3 w-3" strokeWidth={3} />}</span>
+      <span className={`grid h-5 w-5 place-items-center rounded-full border ${done ? 'border-emerald-400 bg-emerald-400 text-emerald-950' : 'border-white/30'}`}>{done && <Check className="h-3 w-3" strokeWidth={3} />}</span>
       {label}
     </button>
   );
@@ -198,7 +201,7 @@ function Step({ done, label, onClick }: { done: boolean; label: string; onClick:
 // KPI strip — the dashboard numbers at a glance
 // ---------------------------------------------------------------------------------------------
 
-function Sparkline({ values, color = '#f2b84b' }: { values: number[]; color?: string }) {
+function Sparkline({ values, color = GOLD }: { values: number[]; color?: string }) {
   if (values.length < 2) return <div className="h-8" />;
   const max = Math.max(...values, 1);
   const pts = values.map((v, i) => `${(i / (values.length - 1)) * 100},${30 - (v / max) * 26}`).join(' ');
@@ -206,12 +209,12 @@ function Sparkline({ values, color = '#f2b84b' }: { values: number[]; color?: st
     <svg viewBox="0 0 100 32" preserveAspectRatio="none" className="h-8 w-full" aria-hidden>
       <defs>
         <linearGradient id="spark" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor={color} stopOpacity="0.35" />
-          <stop offset="1" stopColor={color} stopOpacity="0" />
+          <stop offset="0" style={{ stopColor: color }} stopOpacity="0.35" />
+          <stop offset="1" style={{ stopColor: color }} stopOpacity="0" />
         </linearGradient>
       </defs>
       <polygon points={`0,32 ${pts} 100,32`} fill="url(#spark)" />
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+      <polyline points={pts} fill="none" style={{ stroke: color }} strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
     </svg>
   );
 }

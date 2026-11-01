@@ -14,10 +14,12 @@ import { StrategyTab } from '../components/StrategyTab';
 import { RoomGate, SoundControls } from '../components/RoomGate';
 import { Stage } from '../components/Stage';
 import { TeamBoard, TeamStrip } from '../components/TeamBoard';
+import { EventBanner, EventLogo, EventSideLogo, PoweredBy, hasBrand } from '../components/Brand';
 import { LogoMark, PlayerAvatar, SquadSortToggle, Tabs } from '../components/ui';
 import { usePageKey } from '../lib/session';
 import { useAuctionSound, useSoundPrefs } from '../lib/sound';
 import { useTempo } from '../lib/tempo';
+import { HOT, useEventAppearance, teamInk } from '../lib/appearance';
 import { useRoom } from '../lib/useRoom';
 
 export default function Captain() {
@@ -29,6 +31,7 @@ export default function Captain() {
   const [busy, setBusy] = useState(false);
   useAuctionSound(room.snap, prefs);
   const tempo = useTempo(room.snap, room.serverNow);
+  useEventAppearance(room.snap?.settings);
   const [sort, setSort] = useOwnSquadSort(code, room.snap?.live.squadSort ?? 'price');
 
   // When the auctioneer calls a strategy break, open the planning tab for the captain.
@@ -79,26 +82,32 @@ export default function Captain() {
           <>
           <PageTitle title={`${me.team} · Captain`} />
           <PracticeBanner snap={snap} />
-          <div className="mx-auto flex min-h-screen max-w-3xl flex-col gap-4 p-3 pb-48 sm:p-5 sm:pb-48" style={{ ['--accent' as string]: me.color }}>
+          <div className="mx-auto flex min-h-screen max-w-3xl flex-col gap-4 p-3 pb-48 sm:p-5 sm:pb-48">
             <header className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2.5">
-                <LogoMark size={32} />
-                <span className="font-display text-lg font-extrabold tracking-tight">
-                  Zeno<span className="text-gold-grad">Bid</span>
-                </span>
-              </div>
+              {hasBrand(snap.settings) ? (
+                <EventLogo settings={snap.settings} />
+              ) : (
+                <div className="flex items-center gap-2.5">
+                  <LogoMark size={32} />
+                  <span className="font-display text-lg font-extrabold tracking-tight">
+                    Zeno<span className="text-gold-grad">Bid</span>
+                  </span>
+                </div>
+              )}
               <div className="flex items-center gap-2">
+                <EventSideLogo settings={snap.settings} />
                 <HeartPill tempo={tempo} className="!px-2.5 !py-1" />
                 <SoundControls prefs={prefs} update={updatePrefs} />
               </div>
             </header>
+            <EventBanner settings={snap.settings} />
 
             <section className="card relative overflow-hidden p-4 sm:p-5" style={{ boxShadow: `0 1px 0 rgba(255,255,255,0.07) inset, 0 24px 48px -28px rgba(0,0,0,0.75), 0 0 60px -28px ${me.color}` }}>
               <div className="absolute inset-x-0 top-0 h-1" style={{ background: `linear-gradient(90deg, ${me.color}, transparent)` }} />
               <div className="flex items-center gap-4">
                 <PurseRing remaining={st.remaining} total={me.budget} fmt={settings} color={me.color} />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-display text-2xl font-extrabold leading-tight" style={{ color: me.color }}>
+                  <div className="truncate font-display text-2xl font-extrabold leading-tight" style={{ color: teamInk(me.color) }}>
                     {me.team}
                   </div>
                   <div className="truncate text-xs text-slate-400">{me.name ? `Captain ${me.name}` : 'Captain'}</div>
@@ -175,18 +184,18 @@ export default function Captain() {
             {/* ---- bid bar ---- */}
             <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--hairline)] bg-ink-950/90 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-xl sm:p-4" style={{ ['--beat' as string]: `${tempo.beat}s` } as React.CSSProperties}>
               <div className="mx-auto max-w-3xl">
-                <Heartbeat tempo={tempo} color={tempo.intensity > 0.55 ? '#ff5c7a' : me.color} className="mb-1 h-5 w-full opacity-80" />
+                <Heartbeat tempo={tempo} color={tempo.intensity > 0.55 ? HOT : me.color} className="mb-1 h-5 w-full opacity-80" />
                 <StatusLine open={open} iLead={iLead} outbid={open && iBidOnThis && !iLead} reason={block.ok ? '' : block.reason} />
                 <button
                   disabled={!block.ok || busy}
                   onClick={() => place(min)}
-                  className={`relative isolate w-full overflow-hidden rounded-2xl py-4 font-display text-2xl font-extrabold tracking-tight transition active:scale-[0.97] disabled:opacity-45 ${block.ok ? 'animate-beat text-ink-950' : iLead ? 'text-emerald-950' : 'text-slate-300'}`}
+                  className={`relative isolate w-full overflow-hidden rounded-2xl py-4 font-display text-2xl font-extrabold tracking-tight transition active:scale-[0.97] disabled:opacity-45 ${block.ok ? 'animate-beat text-onaccent' : iLead ? 'text-emerald-950' : 'text-slate-300'}`}
                   style={{
-                    background: block.ok ? 'var(--gold-grad)' : iLead ? 'linear-gradient(135deg,#6ee7b7,#34d399 55%,#10b981)' : 'rgba(160,190,255,0.12)',
-                    boxShadow: block.ok ? '0 1px 0 rgba(255,255,255,.6) inset, 0 12px 34px -8px rgba(242,184,75,.7)' : undefined,
+                    background: block.ok ? 'var(--gold-grad)' : iLead ? 'linear-gradient(135deg,#6ee7b7,#34d399 55%,#10b981)' : 'rgb(var(--line)/0.12)',
+                    boxShadow: block.ok ? '0 1px 0 rgba(255,255,255,.6) inset, 0 12px 34px -8px rgb(var(--accent)/.7)' : undefined,
                   }}
                 >
-                  {block.ok && <span className="pointer-events-none absolute inset-y-0 left-0 -z-10 w-1/3 animate-shine bg-gradient-to-r from-transparent via-white/45 to-transparent" />}
+                  {block.ok && <span className="pointer-events-none absolute inset-y-0 left-0 -z-10 w-1/3 animate-shine bg-gradient-to-r from-transparent via-[rgba(255,255,255,0.45)] to-transparent" />}
                   <Gavel className="mr-2 inline h-6 w-6 -translate-y-0.5" />
                   {open ? (block.ok ? `BID ${formatMoney(min, settings)}` : iLead ? 'YOU LEAD' : 'CAN’T BID') : 'WAITING…'}
                 </button>

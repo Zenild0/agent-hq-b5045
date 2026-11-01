@@ -29,9 +29,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               key={t.id}
               className={`pointer-events-auto flex max-w-md animate-rise items-start gap-2.5 rounded-2xl border px-4 py-3 text-sm font-medium shadow-2xl backdrop-blur-xl ${
                 t.kind === 'error'
-                  ? 'border-hot/40 bg-[#2a0d1a]/95 text-red-100'
+                  ? 'border-hot/50 bg-ink-800 text-red-100'
                   : t.kind === 'success'
-                    ? 'border-emerald-400/40 bg-[#062a22]/95 text-emerald-100'
+                    ? 'border-emerald-400/50 bg-ink-800 text-emerald-100'
                     : 'border-royal/40 bg-ink-800/95 text-pearl'
               }`}
             >
@@ -51,12 +51,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 export function LogoMark({ size = 36 }: { size?: number }) {
   const id = useId().replace(/:/g, '');
   return (
-    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden className="shrink-0 drop-shadow-[0_6px_14px_rgba(242,184,75,0.35)]">
+    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden className="shrink-0 drop-shadow-[0_6px_14px_rgb(var(--accent)/0.35)]">
       <defs>
         <linearGradient id={`g${id}`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#ffe9ac" />
-          <stop offset=".5" stopColor="#f2b84b" />
-          <stop offset="1" stopColor="#c98a12" />
+          <stop offset="0" style={{ stopColor: 'rgb(var(--accent-soft))' }} />
+          <stop offset=".5" style={{ stopColor: 'rgb(var(--accent))' }} />
+          <stop offset="1" style={{ stopColor: 'rgb(var(--accent-deep))' }} />
         </linearGradient>
         <linearGradient id={`b${id}`} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor="#1b2f63" />
@@ -151,7 +151,7 @@ export function Segmented<T extends string>({
           type="button"
           onClick={() => onChange(o.value)}
           className={`rounded-xl border px-3 py-2.5 text-left transition ${
-            value === o.value ? 'border-gold/70 bg-gold/[0.09] shadow-[0_0_24px_-8px_rgba(242,184,75,0.6)]' : 'border-[var(--hairline)] bg-ink-900/60 hover:border-royal-300/30'
+            value === o.value ? 'border-gold/70 bg-gold/[0.09] shadow-[0_0_24px_-8px_rgb(var(--accent)/0.6)]' : 'border-[var(--hairline)] bg-ink-900/60 hover:border-royal-300/30'
           }`}
         >
           <span className="block text-sm font-semibold">{o.label}</span>
@@ -172,7 +172,7 @@ export function Tabs<T extends string>({ value, onChange, tabs }: { value: T; on
           aria-selected={value === t.id}
           onClick={() => onChange(t.id)}
           className={`flex items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold transition ${
-            value === t.id ? 'text-ink-950 shadow-[0_6px_18px_-8px_rgba(242,184,75,0.8)]' : 'text-slate-300 hover:bg-white/5 hover:text-white'
+            value === t.id ? 'text-onaccent shadow-[0_6px_18px_-8px_rgb(var(--accent)/0.8)]' : 'text-slate-300 hover:bg-white/5 hover:text-white'
           }`}
           style={value === t.id ? { background: 'var(--gold-grad)' } : undefined}
         >
@@ -278,7 +278,7 @@ export function PlayerAvatar({ player, className = '', showPhoto = true }: { pla
     return <img src={player.photo} alt={player.name} onError={() => setBroken(true)} className={`object-cover ${className}`} draggable={false} />;
   }
   return (
-    <div className={`grid place-items-center font-display font-bold text-white/95 ${className}`} style={{ background: avatarGradient(player.name) }}>
+    <div className={`grid place-items-center font-display font-bold text-[rgba(255,255,255,0.95)] ${className}`} style={{ background: avatarGradient(player.name) }}>
       <span className="select-none" style={{ fontSize: '2.2em' }}>
         {initials(player.name)}
       </span>

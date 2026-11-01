@@ -26,3 +26,30 @@ export async function resizeImage(file: Blob, max = 720, quality = 0.86): Promis
 }
 
 export const normaliseName = (s: string) => s.toLowerCase().replace(/\.[a-z0-9]+$/, '').replace(/[^a-z0-9]+/g, '');
+
+/**
+ * Shrinks a logo for upload. Keeps transparency (PNG) unless the picture is a photo-style JPEG.
+ * Stays under the 1 MB limit by reducing the size a step at a time.
+ */
+export async function resizeLogo(file: Blob, max = 600): Promise<Blob> {
+  const bitmap = await createImageBitmap(file).catch(() => {
+    throw new Error("That file couldn't be read as an image — please use a PNG, JPG or WebP logo.");
+  });
+  const keepPng = file.type !== 'image/jpeg';
+  for (let side = max; side >= 150; side = Math.round(side * 0.7)) {
+    const scale = Math.min(1, side / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const g = canvas.getContext('2d');
+    if (!g) throw new Error('Could not process that image');
+    g.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, keepPng ? 'image/png' : 'image/jpeg', 0.9));
+    if (blob && blob.size <= LIMITS.logoBytes) {
+      bitmap.close();
+      return blob;
+    }
+  }
+  bitmap.close();
+  throw new Error('That logo is too detailed to shrink under 1 MB — try a simpler file.');
+}

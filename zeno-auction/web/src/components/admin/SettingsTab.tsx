@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { EventSettings, Snapshot } from '../../../../shared/types';
 import type { Room } from '../../lib/useRoom';
+import { uploadImage } from '../../lib/api';
+import { useEventAppearance } from '../../lib/appearance';
 import { SettingsForm } from '../SettingsForm';
 import { DeleteAuction, SaveFileCard } from './AuctionFile';
 
@@ -8,6 +10,7 @@ export function SettingsTab({ snap, room }: { snap: Snapshot; room: Room }) {
   const [draft, setDraft] = useState<EventSettings>(snap.settings);
   const saved = useRef(JSON.stringify(snap.settings));
   const dirty = JSON.stringify(draft) !== saved.current;
+  useEventAppearance(draft); // unsaved theme changes preview straight away
 
   // Pick up changes made elsewhere only while the form is untouched.
   useEffect(() => {
@@ -22,7 +25,7 @@ export function SettingsTab({ snap, room }: { snap: Snapshot; room: Room }) {
       <p className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
         Changes apply immediately, even mid-auction — e.g. switch what the audience sees, or change the bid steps before round 2. Bids already placed keep their amounts.
       </p>
-      <SettingsForm value={draft} onChange={setDraft} />
+      <SettingsForm value={draft} onChange={setDraft} upload={snap.secrets ? (blob) => uploadImage(snap.code, snap.secrets!.adminKey, blob) : undefined} />
 
       <SaveFileCard snap={snap} />
 

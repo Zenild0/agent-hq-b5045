@@ -63,7 +63,7 @@ export function CodeBoxes({
           }}
           className={`h-14 w-10 rounded-xl border text-center font-display text-2xl font-bold uppercase text-pearl transition focus:outline-none sm:h-16 sm:w-12 sm:text-3xl ${
             ch.trim() ? 'border-gold/60 bg-gold/[0.08]' : 'border-[var(--hairline)] bg-ink-900/70'
-          } focus:border-gold focus:shadow-[0_0_0_3px_rgba(242,184,75,0.2)]`}
+          } focus:border-gold focus:shadow-[0_0_0_3px_rgb(var(--accent)/0.2)]`}
         />
       ))}
     </div>

@@ -1,3 +1,4 @@
+import { GOLD, HOT, teamInk } from '../lib/appearance';
 import { useEffect, useState } from 'react';
 import { formatMoney } from '../../../shared/money';
 import { Heartbeat } from './Heartbeat';
@@ -35,13 +36,13 @@ export function HeroDemo() {
 
   return (
     <div className="relative mx-auto w-full max-w-[520px] animate-floaty" style={{ ['--beat' as string]: `${60 / bpm}s` } as React.CSSProperties}>
-      <div className="absolute -inset-10 -z-10 rounded-[3rem] bg-[radial-gradient(closest-side,rgba(47,107,255,0.35),transparent)] blur-2xl" />
-      <div className="card overflow-hidden p-0 shadow-[0_50px_90px_-30px_rgba(0,0,0,0.9),0_0_0_1px_rgba(242,184,75,0.12)]">
+      <div className="absolute -inset-10 -z-10 rounded-[3rem] bg-[radial-gradient(closest-side,rgb(var(--royal)/0.35),transparent)] blur-2xl" />
+      <div className="card overflow-hidden p-0 shadow-[0_50px_90px_-30px_rgba(0,0,0,0.9),0_0_0_1px_rgb(var(--accent)/0.12)]">
         <div className="flex items-center gap-3 border-b border-[var(--hairline)] px-4 py-2.5">
           <span className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.18em] text-emerald-400">
             <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" /> Live
           </span>
-          <Heartbeat tempo={tempo} color={call === 3 ? '#ff5c7a' : '#f2b84b'} className="h-7 min-w-0 flex-1" />
+          <Heartbeat tempo={tempo} color={call === 3 ? HOT : GOLD} className="h-7 min-w-0 flex-1" />
           <span className="num text-[11px] font-bold text-slate-400">{bpm} BPM</span>
         </div>
 
@@ -54,7 +55,7 @@ export function HeroDemo() {
             </div>
             <div className="text-right">
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">{sold ? 'Sold for' : 'Current bid'}</p>
-              <div key={top[1]} className="animate-bump font-display text-4xl font-extrabold leading-none" style={{ color: leader.color }}>
+              <div key={top[1]} className="animate-bump font-display text-4xl font-extrabold leading-none" style={{ color: teamInk(leader.color) }}>
                 {formatMoney(top[1] * 100_000, FMT)}
               </div>
             </div>
@@ -64,9 +65,9 @@ export function HeroDemo() {
             {TEAMS.map((t, i) => {
               const lead = top[0] === i;
               return (
-                <li key={t.name} className="relative flex items-center justify-between overflow-hidden rounded-xl bg-ink-900/80 px-3 py-2" style={{ outline: lead ? `1.5px solid ${t.color}` : '1px solid rgba(160,190,255,0.1)' }}>
+                <li key={t.name} className="relative flex items-center justify-between overflow-hidden rounded-xl bg-ink-900/80 px-3 py-2" style={{ outline: lead ? `1.5px solid ${t.color}` : '1px solid rgb(var(--line)/0.1)' }}>
                   <div className="absolute inset-y-0 left-0 transition-all duration-500" style={{ width: `${best[i] ? (best[i] / top[1]) * 100 : 0}%`, background: `linear-gradient(90deg, ${t.color}40, ${t.color}10)` }} />
-                  <span className="relative flex items-center gap-2 text-sm font-bold" style={{ color: t.color }}>
+                  <span className="relative flex items-center gap-2 text-sm font-bold" style={{ color: teamInk(t.color) }}>
                     <span className="h-2 w-2 rounded-full" style={{ background: t.color }} /> {t.name} {lead && '👑'}
                   </span>
                   <span className="num relative font-display text-sm font-bold">{best[i] ? formatMoney(best[i] * 100_000, FMT) : <span className="text-xs font-medium text-slate-500">—</span>}</span>
@@ -90,7 +91,7 @@ export function HeroDemo() {
                 <div className="inline-block rounded-2xl border-[6px] border-hot px-6 font-stage text-6xl font-extrabold tracking-[0.14em] text-hot" style={{ textShadow: '0 0 30px currentColor' }}>
                   SOLD!
                 </div>
-                <div className="mt-1 font-stage text-xl font-bold tracking-wide" style={{ color: leader.color }}>
+                <div className="mt-1 font-stage text-xl font-bold tracking-wide" style={{ color: teamInk(leader.color) }}>
                   to {leader.name}
                 </div>
               </div>

@@ -1,3 +1,4 @@
+import { teamInk } from '../lib/appearance';
 import { TrendingUp } from 'lucide-react';
 import { formatMoney } from '../../../shared/money';
 import type { Snapshot } from '../../../shared/types';
@@ -18,7 +19,7 @@ export function Tape({ snap }: { snap: Snapshot }) {
         <span className="inline-flex items-center gap-2">
           <span className="font-semibold uppercase tracking-wide text-pearl">{p.name}</span>
           <span className="text-slate-500">→</span>
-          <span className="font-semibold" style={{ color: team?.color }}>
+          <span className="font-semibold" style={{ color: teamInk(team?.color) }}>
             {team?.team}
           </span>
           <span className="num font-bold text-gold">{formatMoney(p.price, settings)}</span>
