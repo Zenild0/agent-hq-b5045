@@ -1,0 +1,76 @@
+import { useEffect, useState } from 'react';
+import type { EventSettings, Snapshot } from '../../../../shared/types';
+import type { Room } from '../../lib/useRoom';
+import { uploadImage } from '../../lib/api';
+import { useEventAppearance } from '../../lib/appearance';
+import { SettingsForm } from '../SettingsForm';
+import { useToast } from '../ui';
+import { DeleteAuction, SaveFileCard } from './AuctionFile';
+
+export function SettingsTab({ snap, room }: { snap: Snapshot; room: Room }) {
+  const { toast } = useToast();
+  const [draft, setDraft] = useState<EventSettings>(snap.settings);
+  // What the form was last in step with. It is state (not a ref) so that finishing a save re-draws the page and the
+  // "unsaved changes" bar goes away even if the server's confirmation arrived before the browser knew the save was done.
+  const [saved, setSaved] = useState(JSON.stringify(snap.settings));
+  const dirty = JSON.stringify(draft) !== saved;
+  useEventAppearance(draft); // unsaved theme changes preview straight away
+
+  // Pick up changes made elsewhere only while the form is untouched.
+  useEffect(() => {
+    if (!dirty) {
+      setDraft(snap.settings);
+      setSaved(JSON.stringify(snap.settings));
+    }
+  }, [snap.settings]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-5 pb-28">
+      <p className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
+        Changes apply immediately, even mid-auction — e.g. switch what the audience sees, or change the bid steps before round 2. Bids already placed keep their amounts.
+      </p>
+      <SettingsForm value={draft} onChange={setDraft} upload={snap.secrets ? (blob) => uploadImage(snap.code, snap.secrets!.adminKey, blob) : undefined} />
+
+      <SaveFileCard snap={snap} />
+
+      <section className="card border-red-400/20 p-5">
+        <h2 className="font-bold text-red-300">Danger zone</h2>
+        <p className="mb-3 mt-1 text-sm text-slate-400">Start over: every player goes back to the pool, teams keep their purses, round resets to 1.</p>
+        <button
+          className="btn-danger"
+          onClick={() => confirm('Reset the whole auction? All sales are undone.') && room.act('reset')}
+        >
+          Reset auction
+        </button>
+        <div className="mt-5 border-t border-white/10 pt-4">
+          <p className="mb-3 text-sm text-slate-400">All done with this auction? Remove it from the server completely (teams, players, bids, results, photos).</p>
+          <DeleteAuction snap={snap} />
+        </div>
+      </section>
+
+      {dirty && (
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-white/10 bg-ink-950/95 p-4 backdrop-blur">
+          <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
+            <span className="text-sm text-slate-300">You have unsaved changes.</span>
+            <div className="flex gap-2">
+              <button className="btn-ghost" onClick={() => setDraft(JSON.parse(saved))}>
+                Discard
+              </button>
+              <button
+                className="btn-primary"
+                onClick={async () => {
+                  if (await room.act('settings.update', { patch: draft })) {
+                    setSaved(JSON.stringify(draft));
+                    toast('Settings saved.', 'success');
+                  }
+                }}
+              >
+                Save changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
