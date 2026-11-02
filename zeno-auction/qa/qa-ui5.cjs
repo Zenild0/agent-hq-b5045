@@ -180,6 +180,8 @@ const dev = (path, method = 'GET', body) => fetch(BASE + '/api/dev' + path, { me
   await xp.click('button:has-text("Players")');
   await xp.setInputFiles('input[type=file][accept=".xlsx,.csv"]', xfile);
   await xp.waitForSelector('text=Nothing is changed until you press Import');
+  t('the preview says what the auction will look like after the import', await xp.locator('text=After this import the auction will have').count() === 1 && await xp.locator('text=in the pool').count() >= 1);
+  t('…and lists things to check (a round that is too far ahead)', await xp.locator('text=Check before importing').count() === 1 && await xp.locator('li:has-text("Far Away Player")').count() >= 1);
   t('the Excel preview shows a Round column', await xp.locator('th:has-text("Round")').count() === 1);
   t('the preview says how many are saved for round 2', await xp.locator('text=2 saved for round 2').count() >= 1, await xp.locator('h4:has-text("Players")').innerText());
   t('a row too far ahead is flagged', await xp.locator('text=too far ahead').count() >= 1 && await xp.locator('text=will be skipped').count() === 1);

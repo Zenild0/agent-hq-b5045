@@ -1,3 +1,4 @@
+import { summarizeImport } from '../../../../shared/excel';
 import { useState } from 'react';
 import { formatMoney } from '../../../../shared/money';
 import type { ParsedWorkbook } from '../../../../shared/excel';
@@ -32,6 +33,12 @@ export function ExcelImportModal({ snap, room, parsed, fileName, onClose }: { sn
     isUpdate: snap.players.some((x) => lc(x.name) === lc(p.name)),
     badTeam: !!p.team && !knownTeams.has(lc(p.team)),
   }));
+  const summary = summarizeImport(parsed.players, {
+    currentRound: snap.round,
+    existing: snap.players.map((p) => ({ name: p.name, status: p.status })),
+    knownTeams: [...knownTeams],
+    blankRows: parsed.blankRows,
+  });
   const placed = playerRows.filter((p) => p.team && !p.badTeam).length;
   const nextRound = snap.round + 1;
   const hasRound = playerRows.some((p) => p.round);
@@ -76,6 +83,31 @@ export function ExcelImportModal({ snap, room, parsed, fileName, onClose }: { sn
           <p className="text-sm text-slate-300">
             Nothing is changed until you press Import. Players with a name that already exists are updated, not duplicated. A <b>Round</b> column of <b>{nextRound}</b> saves a player for round {nextRound}: hidden from captains and the big screen until that round starts.
           </p>
+        )}
+
+        {playerRows.length > 0 && (
+          <div className="rounded-xl border border-gold/30 bg-gold/5 p-3 text-sm">
+            <p className="font-semibold text-white">After this import the auction will have:</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <span className="chip">{summary.total} players</span>
+              <span className="chip border-emerald-400/40 text-emerald-300">{summary.pool} in the pool</span>
+              <span className="chip">{summary.sold} sold</span>
+              {summary.unsold > 0 && <span className="chip">{summary.unsold} unsold</span>}
+              {summary.saved > 0 && <span className="chip border-royal-300/40 text-royal-300">{summary.saved} saved for round {nextRound}</span>}
+            </div>
+            <p className="mt-2 text-xs text-slate-400">Compare this with your sheet. The Status, Spent, Left and Players columns in the file are only notes: they are not read. The <b>Team</b> and <b>Round</b> columns decide.</p>
+            {summary.warnings.length > 0 && (
+              <div className="mt-3 rounded-lg bg-amber-500/10 p-2.5 text-xs text-amber-100">
+                <p className="mb-1 font-bold">Check before importing ({summary.warnings.length}):</p>
+                <ul className="list-disc space-y-0.5 pl-4">
+                  {summary.warnings.slice(0, 12).map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+                {summary.warnings.length > 12 && <p className="mt-1">…and {summary.warnings.length - 12} more.</p>}
+              </div>
+            )}
+          </div>
         )}
 
         {teamRows.length > 0 && (

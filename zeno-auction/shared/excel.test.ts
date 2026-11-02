@@ -104,3 +104,51 @@ test('a Round column in the Excel file saves players for the next round; export 
   runAction(s, ADMIN, 'players.import', { rows: [{ name: 'Bought Early', team: 'Red', price: 5, round: 3 }] });
   assert.equal(status('Bought Early'), 'sold');
 });
+
+test('the import preview works out the same numbers as the real import, and says what to check', async () => {
+  const { summarizeImport } = await import('./excel');
+  // a file shaped like a real one that has been edited by hand: duplicates, a nameless row, a stale Status column
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Players');
+  ws.addRow(['Name', 'Team', 'Price Paid', 'Round', 'Status']);
+  ws.addRow(['Ann', 'Red', 20_000_000, 1, 'Sold']);
+  ws.addRow(['Bob', '', '', 1, 'In pool']);
+  ws.addRow(['Cat', 'Red', 5_000_000, 1, 'In pool']); // team filled, status not updated
+  ws.addRow(['', '', '', 1, 'In pool']); // a nameless row
+  ws.addRow(['Dan', '', '', 1, 'In pool']);
+  ws.addRow(['Ann', '', '', 2, '']); // already sold above: listed again for round 2
+  ws.addRow(['Eve', '', '', 2, '']);
+  ws.addRow(['Fay', '', '', 3, '']); // too far ahead
+  ws.addRow(['Gus', 'Nowhere', 3_000_000, 1, '']); // unknown team
+  ws.addRow(['Hal', '', '', 1, 'Sold']); // says Sold, no team
+  const parsed = await readWorkbook(ExcelJS, (await wb.xlsx.writeBuffer()) as ArrayBuffer);
+  assert.deepEqual(parsed.blankRows, [5]);
+
+  const s = createStore('PRV001', { defaultBudget: 100_000_000 });
+  runAction(s, ADMIN, 'captain.add', { team: 'Red' });
+  runAction(s, ADMIN, 'players.import', { rows: [{ name: 'Old Pool' }, { name: 'Old Later', later: true }] });
+  runAction(s, ADMIN, 'players.import', { later: true, rows: [{ name: 'Old Later' }] });
+  const existing = s.data.players.map((p) => ({ name: p.name, status: p.status }));
+  const sum = summarizeImport(parsed.players, { currentRound: 1, existing, knownTeams: ['Red'], blankRows: parsed.blankRows });
+
+  runAction(s, ADMIN, 'players.import', { rows: parsed.players });
+  const count = (st: string) => s.data.players.filter((p) => p.status === st).length;
+  assert.deepEqual(
+    [sum.total, sum.pool, sum.sold, sum.unsold, sum.saved],
+    [s.data.players.length, count('available'), count('sold'), count('unsold'), count('upcoming')],
+    'the preview and the real import agree',
+  );
+  const text = sum.warnings.join('\n');
+  assert.match(text, /row 4 \(Cat\): Team is Red but Status says “In pool”.*SOLD to Red/);
+  assert.match(text, /Row 5 has no name/);
+  assert.match(text, /“Ann” is listed twice \(rows 2 and 7\)/);
+  assert.match(text, /row 9 \(Fay\).*round 3/);
+  assert.match(text, /row 10 \(Gus\): team “Nowhere” does not exist/);
+  assert.match(text, /row 11 \(Hal\): Status says Sold but there is no Team/);
+  assert.equal(sum.sold, 2, 'Ann (sold, stays sold) and Cat (Team filled)');
+  assert.equal(sum.saved, 1, 'Eve is saved for round 2');
+
+  // a clean file has nothing to warn about
+  const clean = summarizeImport([{ name: 'X', role: '', basePrice: 0, description: '', photo: '', team: '', price: 0, row: 2 }], { currentRound: 1, existing: [], knownTeams: [] });
+  assert.deepEqual([clean.pool, clean.warnings.length], [1, 0]);
+});
