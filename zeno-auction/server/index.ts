@@ -109,6 +109,8 @@ function unlockInfo(store: Store, isAdmin: boolean): Unlock {
 /** The whole state as one object, as one screen should see it. */
 function snapshot(store: Store, me: Me, isAdmin: boolean, now = Date.now()): Snapshot {
   const { log: _log, ...data } = store.data; // the activity log is not sent to screens
+  // names the admin saved for the next round stay secret from captains and the big screen until that round starts
+  if (me.role !== 'admin' && me.role !== 'host') data.players = data.players.filter((p) => p.status !== 'upcoming');
   const snap: Snapshot = { ...data, now, me, presence: presenceOf(store.data.code), unlock: unlockInfo(store, isAdmin) };
   if (isAdmin) snap.secrets = store.secrets;
   if (me.captainId) snap.strategy = store.strategies[me.captainId] ?? []; // a captain's plan is private to them

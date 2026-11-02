@@ -26,6 +26,7 @@ export interface Archive {
   auction: {
     settings: Store['data']['settings'];
     round: number;
+    nextTopup: number;
     captains: Captain[];
     players: Player[];
     log: LogItem[];
@@ -89,6 +90,7 @@ export function buildArchive(store: Store, readPhoto: PhotoReader, now = Date.no
     auction: {
       settings,
       round: real ? real.round : d.round,
+      nextTopup: d.nextTopup,
       captains,
       players,
       log,
@@ -192,12 +194,13 @@ export function restoreArchive(file: unknown, code: string, now = Date.now(), ga
   const rawPlayers = Array.isArray(a.players) ? a.players : [];
   const playerIds = new Set<string>();
   d.round = Math.max(1, whole(a.round, 1, 1));
+  d.nextTopup = whole(a.nextTopup, 0);
   for (const rp of rawPlayers.slice(0, MAX_PLAYERS)) {
     if (!isObj(rp) || !ID.test(String(rp.id)) || playerIds.has(rp.id)) continue;
     const name = text(rp.name, 80);
     if (!name) continue;
     playerIds.add(rp.id);
-    let status: Player['status'] = rp.status === 'sold' || rp.status === 'unsold' ? rp.status : 'available';
+    let status: Player['status'] = rp.status === 'sold' || rp.status === 'unsold' || rp.status === 'upcoming' ? rp.status : 'available';
     // a sale only makes sense with a team that exists
     const teamId = status === 'sold' && typeof rp.teamId === 'string' && seen.has(rp.teamId) ? rp.teamId : null;
     if (status === 'sold' && !teamId) status = 'available';

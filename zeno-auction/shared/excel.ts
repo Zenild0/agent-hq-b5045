@@ -262,7 +262,7 @@ export function exportRows(data: Omit<EventData, 'log'>): { teams: SheetTeam[]; 
     photo: p.photo,
     team: p.status === 'sold' ? teamName(p.teamId) : '',
     price: p.status === 'sold' ? p.price : 0,
-    status: p.status === 'sold' ? 'Sold' : p.status === 'unsold' ? 'Unsold' : 'In pool',
+    status: p.status === 'sold' ? 'Sold' : p.status === 'unsold' ? 'Unsold' : p.status === 'upcoming' ? 'Next round' : 'In pool',
   }));
   return { teams, players };
 }

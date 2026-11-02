@@ -112,6 +112,53 @@ const dev = (path, method = 'GET', body) => fetch(BASE + '/api/dev' + path, { me
   t('a script address or path trick is not accepted as a logo', (await api.state(c.code)).settings.brand.logo === sb.brand.logo);
   t('a bad theme id is ignored', (await api.cmd(c.code, c.adminKey, 'settings.update', { patch: { theme: '<img onerror=1>' } }), (await api.state(c.code)).settings.theme === 'brand'));
 
+  // ============ round 2: names and money saved ahead ============
+  const r2 = await api.create({ name: 'Round Two Cup', drawMode: 'manual' }); await api.cmd(r2.code, r2.adminKey, 'demo.load');
+  const r2s = await api.state(r2.code, r2.adminKey);
+  // sell/mark everyone so the pool is empty: first two sold, the rest unsold
+  for (let i = 0; i < r2s.players.length; i++) {
+    if (i < 2) await api.cmd(r2.code, r2.adminKey, 'player.assign', { id: r2s.players[i].id, captainId: r2s.captains[0].id, price: 3000000 });
+    else await api.cmd(r2.code, r2.adminKey, 'player.setStatus', { id: r2s.players[i].id, status: 'unsold' });
+  }
+  const adm = await ctx.newPage(); adm.on('pageerror', e => errors.push('r2 admin pageerror: ' + e.message)); adm.on('dialog', d => d.accept());
+  await adm.goto(`${BASE}/e/${r2.code}/admin?k=${r2.adminKey}`); await adm.waitForSelector('text=Round Two Cup');
+  await adm.click('button:has-text("Players")');
+  await adm.click('button:has-text("Add player")');
+  await adm.fill('[role=dialog] input.input >> nth=0', 'Round Two Rookie');
+  t('the add-player form offers "Add for round 2"', await adm.locator('text=Add for round 2').count() >= 1);
+  await adm.check('label:has-text("Add for round 2") input'); await adm.click('[role=dialog] button:text-is("Save")'); await sleep(700);
+  const afterAdd = await api.state(r2.code, r2.adminKey);
+  t('the new name is saved as waiting for round 2', afterAdd.players.some(p => p.name === 'Round Two Rookie' && p.status === 'upcoming'));
+  t('the Players tab has a "For round 2" filter', await adm.locator('button.chip:has-text("For round 2")').count() === 1);
+  await adm.click('button:has-text("Add player")'); await adm.fill('[role=dialog] input.input >> nth=0', 'Second Rookie'); await adm.check('label:has-text("Add for round 2") input'); await adm.click('[role=dialog] button:text-is("Save")'); await sleep(500);
+  await adm.click('button:has-text("Paste a list")'); await adm.fill('textarea', 'Pasted Rookie One\nPasted Rookie Two'); await adm.check('label:has-text("These are for round 2") input'); await adm.click('button:has-text("Import 2")'); await sleep(700);
+  const afterPaste = await api.state(r2.code, r2.adminKey);
+  t('a pasted list can be saved for round 2 too', afterPaste.players.filter(p => p.status === 'upcoming').length === 4, String(afterPaste.players.filter(p => p.status === 'upcoming').length));
+  await adm.click('button:has-text("Teams")');
+  t('the Teams tab has the "Extra money for round 2" card', await adm.locator('text=Extra money for round 2').count() === 1);
+  const card = adm.locator('section:has-text("Extra money for round 2")');
+  await card.locator('input').first().fill('1cr'); await card.locator('button:has-text("Save for round 2")').click(); await sleep(700);
+  t('the extra money is saved', (await api.state(r2.code, r2.adminKey)).nextTopup === 10000000);
+  t('it says what will happen', await adm.locator('text=Every team will get').count() === 1);
+  // the auctioneer starts round 2
+  const hp = await ctx.newPage(); hp.on('pageerror', e => errors.push('r2 host pageerror: ' + e.message));
+  await hp.goto(`${BASE}/e/${r2.code}/host?k=${r2.hostKey}`); await hp.waitForSelector('text=Round 1 is done');
+  const boxText = await hp.locator('div:has(> p:has-text("Round 1 is done"))').first().innerText();
+  t('the auctioneer sees unsold + new players and the extra money', /unsold player/.test(boxText) && /4 new players/.test(boxText) && /every team gets \+/.test(boxText), boxText);
+  // a captain and the big screen do not see the saved names
+  const capTok = r2s.secrets.captainTokens[r2s.captains[0].id];
+  const capP = await ctx.newPage(); await capP.goto(`${BASE}/e/${r2.code}/captain?k=${capTok}`); await capP.waitForSelector('text=My squad'); await capP.click('button:has-text("Strategy")'); await sleep(500);
+  t('a captain\'s screen never shows the saved names', (await capP.content()).includes('Pasted Rookie') === false && (await capP.content()).includes('Round Two Rookie') === false);
+  const purseBefore = (await api.state(r2.code)).captains.map(c => c.budget);
+  await hp.click('button:has-text("Start round 2")'); await sleep(900);
+  const r2after = await api.state(r2.code, r2.adminKey);
+  t('round 2 started', r2after.round === 2);
+  t('unsold players and the new names are all in the pool', r2after.players.filter(p => p.status === 'available').length === r2s.players.length - 2 + 4, String(r2after.players.filter(p => p.status === 'available').length));
+  t('every team received the extra money', r2after.captains.every((c, i) => c.budget === purseBefore[i] + 10000000));
+  t('the saved amount is used up', r2after.nextTopup === 0);
+  await capP.reload(); await capP.waitForSelector('text=My squad'); await capP.click('button:has-text("Strategy")'); await sleep(500);
+  t('now the captain can see the new players', (await capP.content()).includes('Round Two Rookie'));
+
   // ============ unlock dialog + developer page ============
   const price = await dev('/config', 'PUT', { price: 499, upiId: 'qa@okaxis', payeeName: 'QA Dev', note: 'Thank you!', operatorName: 'QA Operator', contact: 'qa@example.com' });
   t('payments switched on for the test', price.status === 200);

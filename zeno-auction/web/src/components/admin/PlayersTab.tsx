@@ -13,7 +13,7 @@ import { MoneyInput } from '../MoneyInput';
 import { Field, Modal, PlayerAvatar, TeamDot, useToast } from '../ui';
 import { ExcelImportModal } from './ExcelImportModal';
 
-type Filter = 'all' | 'available' | 'sold' | 'unsold';
+type Filter = 'all' | 'available' | 'sold' | 'unsold' | 'upcoming';
 
 export function PlayersTab({ snap, room, adminKey }: { snap: Snapshot; room: Room; adminKey: string }) {
   const { settings } = snap;
@@ -34,6 +34,7 @@ export function PlayersTab({ snap, room, adminKey }: { snap: Snapshot; room: Roo
       available: snap.players.filter((p) => p.status === 'available').length,
       sold: snap.players.filter((p) => p.status === 'sold').length,
       unsold: snap.players.filter((p) => p.status === 'unsold').length,
+      upcoming: snap.players.filter((p) => p.status === 'upcoming').length,
     }),
     [snap.players],
   );
@@ -120,13 +121,13 @@ export function PlayersTab({ snap, room, adminKey }: { snap: Snapshot; room: Roo
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {(['all', 'available', 'sold', 'unsold'] as Filter[]).map((f) => (
+        {(['all', 'available', 'sold', 'unsold', ...(counts.upcoming > 0 ? ['upcoming'] : [])] as Filter[]).map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
             className={`chip capitalize ${filter === f ? '!border-gold !bg-gold/15 !text-gold' : 'hover:bg-white/10'}`}
           >
-            {f === 'available' ? 'In pool' : f} · {counts[f]}
+            {f === 'available' ? 'In pool' : f === 'upcoming' ? `For round ${snap.round + 1}` : f} · {counts[f]}
           </button>
         ))}
       </div>
@@ -178,7 +179,7 @@ export function PlayersTab({ snap, room, adminKey }: { snap: Snapshot; room: Roo
                         <select
                           aria-label={`Status of ${p.name}`}
                           className={`input !w-auto !py-1.5 !pr-7 !text-xs font-semibold ${
-                            live ? '!border-gold/60 !text-gold' : p.status === 'sold' ? '!text-emerald-300' : p.status === 'unsold' ? '!text-red-300' : ''
+                            live ? '!border-gold/60 !text-gold' : p.status === 'sold' ? '!text-emerald-300' : p.status === 'unsold' ? '!text-red-300' : p.status === 'upcoming' ? '!text-royal-300' : ''
                           }`}
                           value={live ? 'block' : p.status}
                           onChange={(e) => {
@@ -190,6 +191,7 @@ export function PlayersTab({ snap, room, adminKey }: { snap: Snapshot; room: Roo
                           <option value="available">In pool</option>
                           <option value="block">On the block</option>
                           <option value="unsold">Unsold</option>
+                          <option value="upcoming">{`Waiting for round ${snap.round + 1}`}</option>
                           <option value="sold">{p.status === 'sold' ? 'Sold (change team…)' : 'Sold — pick team…'}</option>
                         </select>
                         {p.status === 'sold' && team && !live && (
@@ -250,12 +252,13 @@ function PlayerModal({ snap, room, adminKey, player, onClose }: { snap: Snapshot
     photo: player?.photo ?? '',
     basePrice: player?.basePrice ?? 0,
   });
+  const [later, setLater] = useState(false); // add for the next round instead of the pool
   const [busy, setBusy] = useState(false);
   const file = useRef<HTMLInputElement>(null);
   const roles = [...new Set(snap.players.map((p) => p.role).filter(Boolean))];
 
   const save = async (another: boolean) => {
-    const ok = player ? await room.act('player.update', { id: player.id, patch: f }) : await room.act('player.add', f);
+    const ok = player ? await room.act('player.update', { id: player.id, patch: f }) : await room.act('player.add', { ...f, later });
     if (!ok) return;
     if (another && !player) setF({ name: '', role: f.role, description: '', photo: '', basePrice: f.basePrice });
     else onClose();
@@ -317,6 +320,15 @@ function PlayerModal({ snap, room, adminKey, player, onClose }: { snap: Snapshot
             <input className="input" placeholder="https://…" value={f.photo} onChange={(e) => setF({ ...f, photo: e.target.value })} />
           </Field>
         </div>
+        {!player && (
+          <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-[var(--hairline)] bg-ink-900/50 p-3 text-sm">
+            <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#f2b84b]" checked={later} onChange={(e) => setLater(e.target.checked)} />
+            <span>
+              <b className="text-white">Add for round {snap.round + 1}</b>
+              <span className="block text-xs text-slate-400">Not in the pool yet and hidden from captains and the big screen. The auctioneer brings them in together with the unsold players when round {snap.round + 1} starts.</span>
+            </span>
+          </label>
+        )}
         <div className="flex justify-end gap-2">
           {!player && (
             <button className="btn-ghost" disabled={!f.name.trim()} onClick={() => save(true)}>
@@ -375,6 +387,7 @@ function AssignModal({ snap, room, player, onClose }: { snap: Snapshot; room: Ro
 
 function ImportModal({ snap, room, onClose }: { snap: Snapshot; room: Room; onClose: () => void }) {
   const [text, setText] = useState('');
+  const [later, setLater] = useState(false);
   const rows = useMemo(() => parseImport(text).filter((r) => r.name), [text]);
   const withTeam = rows.filter((r) => r.team).length;
   const { toast } = useToast();
@@ -388,6 +401,13 @@ function ImportModal({ snap, room, onClose }: { snap: Snapshot; room: Room; onCl
         <div className="rounded-xl border border-gold/20 bg-gold/5 p-3 text-sm text-slate-300">
           <b className="text-gold">Joining midway?</b> Fill the <b>team</b> and <b>price</b> columns for players that are already bought — they'll be put on that team and the price deducted from its purse. Team names must match ({snap.captains.map((c) => c.team).join(', ') || 'add teams first'}).
         </div>
+        <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-[var(--hairline)] bg-ink-900/50 p-3 text-sm">
+          <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#f2b84b]" checked={later} onChange={(e) => setLater(e.target.checked)} />
+          <span>
+            <b className="text-white">These are for round {snap.round + 1}</b>
+            <span className="block text-xs text-slate-400">New names are saved for the next round: not in the pool yet and hidden from captains and the big screen. (Rows with a team and price are still placed on that team straight away.)</span>
+          </span>
+        </label>
         <textarea
           className="input min-h-[200px] font-mono text-xs"
           placeholder={'Aarav Mehta\tBatter\t20L\tOpens the innings\nRohan Iyer\tBowler\t25L\t\t\tThunder Hawks\t1.2cr'}
@@ -433,7 +453,7 @@ function ImportModal({ snap, room, onClose }: { snap: Snapshot; room: Room; onCl
               className="btn-primary"
               disabled={rows.length === 0}
               onClick={async () => {
-                const res = await room.act('players.import', { rows });
+                const res = await room.act('players.import', { rows, later });
                 if (!res) return;
                 const r = res as { added: number; assigned: number; skipped: string[] };
                 toast(`Imported ${r.added} players${r.assigned ? ` (${r.assigned} placed on teams)` : ''}${r.skipped.length ? `. Notes: ${r.skipped.join('; ')}` : ''}`, r.skipped.length ? 'info' : 'success');

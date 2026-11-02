@@ -44,7 +44,7 @@ export function maxBid(data: Omit<EventData, 'log'>, captain: Captain, excludePl
   const slotsAfterThis = Math.max(0, settings.minSquad - count - 1);
   if (slotsAfterThis === 0) return remaining;
   const cheapest = data.players
-    .filter((p) => p.status !== 'sold' && p.id !== excludePlayerId)
+    .filter((p) => p.status !== 'sold' && p.status !== 'upcoming' && p.id !== excludePlayerId) // (names saved for the next round are secret, so they don't count)
     .map((p) => effectiveBase(settings, p))
     .sort((a, b) => a - b)
     .slice(0, slotsAfterThis);

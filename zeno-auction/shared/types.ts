@@ -48,7 +48,8 @@ export interface EventSettings {
 /** 'price' = highest price first; 'added' = in the order they were bought (first bought at the top). */
 export type SquadSort = 'price' | 'added';
 
-export type PlayerStatus = 'available' | 'sold' | 'unsold';
+/** 'upcoming' = added ahead of time for the next round: not in the pool yet, and hidden from captains and the big screen. */
+export type PlayerStatus = 'available' | 'sold' | 'unsold' | 'upcoming';
 
 export interface Player {
   id: string;
@@ -146,6 +147,8 @@ export interface EventData {
   players: Player[];
   captains: Captain[];
   round: number;
+  /** Extra purse every team receives when the next round starts (set ahead of time by the admin; 0 = none). */
+  nextTopup: number;
   live: LiveState;
   log: LogItem[];
   /** A practice run is in progress: nothing in it touches the real auction. */

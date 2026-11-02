@@ -24,6 +24,7 @@ export function HostConsole({ snap, room, tickSound }: { snap: Snapshot; room: R
   const onBlock = live.phase === 'spinning' || live.phase === 'bidding' ? live.playerId : null;
   const pool = snap.players.filter((p) => p.status === 'available' && p.id !== onBlock);
   const unsold = snap.players.filter((p) => p.status === 'unsold');
+  const waiting = snap.players.filter((p) => p.status === 'upcoming'); // names the admin saved for the next round
   const roles = useMemo(() => [...new Set(pool.map((p) => p.role).filter(Boolean))].sort(), [pool.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const top = live.bids[live.bids.length - 1];
   const hasBids = live.bids.length > 0;
@@ -90,7 +91,7 @@ export function HostConsole({ snap, room, tickSound }: { snap: Snapshot; room: R
         <div className="flex items-center justify-between text-xs text-slate-400">
           <span className="font-bold uppercase tracking-widest">Preview of the big screen</span>
           <span>
-            Round {snap.round} · {pool.length} in pool · {unsold.length} unsold · {snap.players.filter((p) => p.status === 'sold').length} sold
+            Round {snap.round} · {pool.length} in pool · {unsold.length} unsold · {snap.players.filter((p) => p.status === 'sold').length} sold{waiting.length > 0 ? ` · ${waiting.length} waiting for round ${snap.round + 1}` : ''}
           </span>
         </div>
         <Stage snap={snap} serverNow={room.serverNow} compact tickSound={tickSound} />
@@ -171,14 +172,35 @@ export function HostConsole({ snap, room, tickSound }: { snap: Snapshot; room: R
             </div>
           )}
 
-          {canDraw && pool.length === 0 && unsold.length > 0 && (
-            <div className="rounded-xl border border-gold/30 bg-gold/10 p-4 text-center">
-              <p className="font-bold">Round {snap.round} is done.</p>
+          {canDraw && unsold.length + waiting.length > 0 && (
+            <div className={`rounded-xl border p-4 text-center ${pool.length === 0 ? 'border-gold/30 bg-gold/10' : 'border-[var(--hairline)] bg-ink-900/50'}`}>
+              <p className="font-bold">{pool.length === 0 ? `Round ${snap.round} is done.` : `Ready for round ${snap.round + 1}?`}</p>
               <p className="mb-3 text-sm text-slate-300">
-                {unsold.length} unsold player{unsold.length === 1 ? '' : 's'} are waiting. Top up purses in the Teams tab first if you like.
+                Round {snap.round + 1} brings in{' '}
+                <b className="text-white">
+                  {unsold.length} unsold player{unsold.length === 1 ? '' : 's'}
+                </b>
+                {waiting.length > 0 && (
+                  <>
+                    {' '}
+                    + <b className="text-white">{waiting.length} new player{waiting.length === 1 ? '' : 's'}</b> the admin added
+                  </>
+                )}
+                {pool.length > 0 && ` (the ${pool.length} still in the pool stay there)`}
+                {snap.nextTopup > 0 && (
+                  <>
+                    , and <b className="text-emerald-300">every team gets +{formatMoney(snap.nextTopup, settings)}</b>
+                  </>
+                )}
+                .{snap.nextTopup === 0 && pool.length === 0 ? ' Top up purses in the Teams tab first if you like.' : ''}
               </p>
-              <button className="btn-primary" disabled={busy} onClick={() => run('round.next')}>
+              <button
+                className={pool.length === 0 ? 'btn-primary' : 'btn-ghost'}
+                disabled={busy}
+                onClick={() => (pool.length === 0 || confirm(`${pool.length} player${pool.length === 1 ? ' hasn’t' : 's haven’t'} come up in round ${snap.round} yet. Start round ${snap.round + 1} anyway?`)) && run('round.next')}
+              >
                 Start round {snap.round + 1}
+                {pool.length > 0 ? ' now' : ''}
               </button>
             </div>
           )}

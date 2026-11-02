@@ -522,3 +522,63 @@ test('team lists can be ordered by price or by the order players were bought', a
   runAction(s, HOST, 'squad.sort', { sort: 'nonsense' });
   assert.equal(s.data.live.squadSort, 'price');
 });
+
+test('names added ahead of time and an extra purse join the auction together when the next round starts', () => {
+  const { s, teams } = setup({ reserveRule: true, minSquad: 3 }, 2);
+  const [a, b] = s.data.players;
+  // two new names for round 2, added ahead of time
+  const x = (runAction(s, ADMIN, 'player.add', { name: 'Newcomer X', later: true }) as { id: string }).id;
+  runAction(s, ADMIN, 'players.import', { later: true, rows: [{ name: 'Newcomer Y' }, { name: 'Already bought', team: 'Red', price: 5 * L }] });
+  const status = (name: string) => s.data.players.find((p) => p.name === name)!.status;
+  assert.equal(status('Newcomer X'), 'upcoming');
+  assert.equal(status('Newcomer Y'), 'upcoming');
+  assert.equal(status('Already bought'), 'sold', 'a row with a team is placed on the team straight away');
+  assert.equal(status('Player 1'), 'available');
+
+  // they are not in the pool, cannot be spun, and do not count for the squad reserve rule
+  runAction(s, HOST, 'draw', { mode: 'sequential' });
+  assert.ok([a.id, b.id].includes(s.data.live.playerId!), 'only pool players come up');
+  runAction(s, HOST, 'unsold', {});
+  runAction(s, HOST, 'next', {});
+  runAction(s, HOST, 'draw', { mode: 'sequential' });
+  runAction(s, HOST, 'unsold', {});
+  runAction(s, HOST, 'next', {});
+  assert.equal(s.data.players.filter((p) => p.status === 'unsold').length, 2);
+  throwsAuction(() => runAction(s, HOST, 'draw', {}), /No players left|pool|empty|no players/i);
+
+  // extra money is saved ahead of time; only the admin can set it
+  throwsAuction(() => runAction(s, HOST, 'round.topup', { amount: 5 * CR }), /not allowed/);
+  runAction(s, ADMIN, 'round.topup', { amount: 2 * CR });
+  assert.equal(s.data.nextTopup, 2 * CR);
+  const before = s.data.captains.map((c) => c.budget);
+
+  const res = runAction(s, HOST, 'round.next', {}) as { unsold: number; added: number; topup: number };
+  assert.deepEqual(res, { unsold: 2, added: 2, topup: 2 * CR });
+  assert.equal(s.data.round, 2);
+  assert.equal(s.data.players.filter((p) => p.status === 'available').length, 4, '2 unsold + 2 new are all in the pool');
+  assert.deepEqual(s.data.captains.map((c) => c.budget), before.map((b) => b + 2 * CR), 'every team got the extra money');
+  assert.equal(s.data.nextTopup, 0, 'it is applied once');
+  assert.equal(s.data.players.find((p) => p.id === x)!.status, 'available');
+  void teams;
+});
+
+test('round.next needs someone to bring in, the admin can move players to and from "waiting for the next round", and a reset keeps them waiting', () => {
+  const { s } = setup({}, 2);
+  throwsAuction(() => runAction(s, HOST, 'round.next', {}), /no unsold or waiting/);
+  const p = s.data.players[0];
+  runAction(s, ADMIN, 'player.setStatus', { id: p.id, status: 'upcoming' });
+  assert.equal(p.status, 'upcoming');
+  runAction(s, ADMIN, 'round.topup', { amount: 3 * CR });
+  runAction(s, ADMIN, 'reset', {});
+  assert.equal(p.status, 'upcoming', 'a reset does not pour round-2 names into the pool');
+  assert.equal(s.data.nextTopup, 0, 'a reset clears the saved extra purse');
+  runAction(s, ADMIN, 'player.setStatus', { id: p.id, status: 'available' });
+  assert.equal(p.status, 'available');
+  // practice runs do not touch them
+  runAction(s, ADMIN, 'player.setStatus', { id: p.id, status: 'upcoming' });
+  runAction(s, ADMIN, 'practice.start', {});
+  assert.equal(p.status, 'upcoming');
+  throwsAuction(() => runAction(s, ADMIN, 'round.topup', { amount: 1 }), /locked/);
+  runAction(s, ADMIN, 'practice.end', {});
+  assert.equal(p.status, 'upcoming');
+});

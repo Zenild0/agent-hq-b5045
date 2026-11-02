@@ -209,6 +209,29 @@ const post = (path, body, headers = {}) => j(path, { method: 'POST', headers: { 
     const missing = await fetch(BASE + '/assets/nope-123.js'); t('a missing asset is a 404, not the app page', missing.status === 404 && !(await missing.text()).includes('<div id="root"'));
   }
 
+  // ---- names and extra money saved for round 2 ----
+  {
+    const rr = (await post('/api/events', { settings: { name: 'Round2', drawMode: 'manual' } })).body;
+    const rcmd = (key, action, params) => post(`/api/events/${rr.code}/cmd`, { action, params }, { 'x-key': key });
+    await rcmd(rr.adminKey, 'demo.load', {});
+    r = await rcmd(rr.adminKey, 'player.add', { name: 'Secret Newcomer', later: true }); t('the admin can add a name for the next round', r.status === 200);
+    r = await rcmd(rr.adminKey, 'round.topup', { amount: 5_000_000 }); t('the admin can save extra money for the next round', r.status === 200);
+    r = await rcmd(rr.hostKey, 'round.topup', { amount: 1 }); t('the auctioneer cannot (admin only)', r.status === 403);
+    const as = (await j(`/api/events/${rr.code}/state?key=${rr.adminKey}`)).body;
+    const tokR = as.secrets.captainTokens[as.captains[0].id];
+    t('the admin sees the saved name and the saved amount', as.players.some(p => p.name === 'Secret Newcomer' && p.status === 'upcoming') && as.nextTopup === 5_000_000);
+    const hs = (await j(`/api/events/${rr.code}/state?key=${rr.hostKey}`)).body; t('the auctioneer sees it too (to start the round)', hs.players.some(p => p.name === 'Secret Newcomer'));
+    const cs = (await j(`/api/events/${rr.code}/state?key=${tokR}`)).body; t('a captain does not receive the saved name', !JSON.stringify(cs).includes('Secret Newcomer'));
+    const vs = (await j(`/api/events/${rr.code}/state`)).body; t('the big screen / viewers do not either', !JSON.stringify(vs).includes('Secret Newcomer'));
+    const wsR = await wsOpen(`/api/events/${rr.code}/ws`); t('…nor over the live connection', !JSON.stringify(wsR.msgs).includes('Secret Newcomer')); wsR.w && wsR.w.close();
+    r = await rcmd(rr.hostKey, 'round.next', {}); t('with nobody unsold, the new name alone starts round 2', r.status === 200 && r.body.result.added === 1, JSON.stringify(r.body));
+    const after = (await j(`/api/events/${rr.code}/state?key=${tokR}`)).body;
+    t('after round 2 starts captains see the new player in the pool', after.players.some(p => p.name === 'Secret Newcomer' && p.status === 'available') && after.round === 2);
+    t('and every team received the extra money', after.captains.every((c, i) => c.budget === as.captains[i].budget + 5_000_000) && after.nextTopup === 0);
+    r = await rcmd(rr.hostKey, 'round.next', {}); t('starting again with nobody to bring in is refused', r.status === 400);
+    await fetch(`${BASE}/api/events/${rr.code}`, { method: 'DELETE', headers: { 'x-key': rr.adminKey } });
+  }
+
   // ---- brute-force protection: wrong keys are throttled, valid keys never are ----
   let limited = 0, firstLimitedAt = -1;
   for (let i = 0; i < 140; i++) { const q = await cmd('GUESS' + String(i).padStart(2, '0'), 'bid', {}); if (q.status === 429) { limited++; if (firstLimitedAt < 0) firstLimitedAt = i; } }

@@ -128,3 +128,12 @@ test('two teams cannot end up sharing a PIN, and missing PINs are filled in', ()
   assert.equal(new Set(pins).size, 3);
   assert.equal(store.secrets.captainTokens.a, 'ABC234');
 });
+
+test('names saved for the next round, and the saved extra purse, survive save and restore', () => {
+  const { s: store } = played();
+  runAction(store, ADMIN, 'player.add', { name: 'Round Two Star', later: true });
+  runAction(store, ADMIN, 'round.topup', { amount: 40 * L });
+  const { store: r } = restoreArchive(JSON.parse(JSON.stringify(buildArchive(store, photos))), 'NEW777');
+  assert.equal(r.data.players.find((p) => p.name === 'Round Two Star')!.status, 'upcoming');
+  assert.equal(r.data.nextTopup, 40 * L);
+});

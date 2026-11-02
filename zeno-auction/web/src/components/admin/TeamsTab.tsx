@@ -32,6 +32,7 @@ export function TeamsTab({ snap, room, adminKey }: { snap: Snapshot; room: Room;
   const { settings } = snap;
   const [newTeam, setNewTeam] = useState({ team: '', name: '', budget: settings.defaultBudget });
   const [topup, setTopup] = useState(0);
+  const [nextTopup, setNextTopup] = useState(snap.nextTopup ?? 0); // the extra purse saved for the next round
 
   return (
     <div className="space-y-5">
@@ -74,6 +75,38 @@ export function TeamsTab({ snap, room, adminKey }: { snap: Snapshot; room: Room;
               − Subtract from all
             </button>
           </div>
+        </section>
+
+        <section className="card space-y-3 p-5 lg:col-span-2">
+          <h3 className="font-bold">Extra money for round {snap.round + 1}</h3>
+          <p className="text-sm text-slate-400">
+            Set it up now to save time: every team receives this amount automatically at the moment the auctioneer starts round {snap.round + 1}. You can change or clear it until then.
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="min-w-[220px] flex-1">
+              <MoneyInput value={nextTopup} fmt={settings} onChange={setNextTopup} />
+            </div>
+            <button className="btn-primary" disabled={nextTopup === snap.nextTopup || snap.captains.length === 0} onClick={() => room.act('round.topup', { amount: nextTopup })}>
+              Save for round {snap.round + 1}
+            </button>
+            {snap.nextTopup > 0 && (
+              <button
+                className="btn-ghost"
+                onClick={async () => {
+                  if (await room.act('round.topup', { amount: 0 })) setNextTopup(0);
+                }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <p className="text-sm">
+            {snap.nextTopup > 0 ? (
+              <span className="text-emerald-300">✓ Every team will get +{formatMoney(snap.nextTopup, settings)} when round {snap.round + 1} starts.</span>
+            ) : (
+              <span className="text-slate-500">Nothing set: purses stay as they are at the start of round {snap.round + 1}.</span>
+            )}
+          </p>
         </section>
       </div>
 

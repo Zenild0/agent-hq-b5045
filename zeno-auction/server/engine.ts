@@ -65,6 +65,7 @@ export function normalizeStore(store: Store): Store {
   store.data.practice ??= false;
   store.data.live.break ??= null;
   store.data.live.squadSort ??= 'price';
+  store.data.nextTopup ??= 0;
   const st = store.data.settings;
   st.theme ??= DEFAULT_SETTINGS.theme;
   st.mode ??= 'dark';
@@ -194,6 +195,7 @@ export function createStore(code: string, settingsPatch: unknown, now = Date.now
       players: [],
       captains: [],
       round: 1,
+      nextTopup: 0,
       live: emptyLive(),
       log: [{ at: now, text: `Auction “${settings.name}” created` }],
       practice: false,
@@ -284,7 +286,7 @@ function allowed(actor: Actor, access: Access): boolean {
 }
 
 /** Changes to who is in the auction can't be part of a practice run (they would be lost or leak into the real one). */
-const ROSTER_LOCKED = new Set(['captain.add', 'captain.budget', 'captains.topup', 'captain.remove', 'player.add', 'players.import', 'player.update', 'player.remove', 'demo.load']);
+const ROSTER_LOCKED = new Set(['captain.add', 'captain.budget', 'captains.topup', 'captain.remove', 'player.add', 'players.import', 'player.update', 'player.remove', 'round.topup', 'demo.load']);
 
 /** Actions that start the real auction. */
 const GO_LIVE = new Set(['draw', 'pick']);
@@ -386,7 +388,7 @@ on('captain.remove', 'admin', (store, p, _a, now) => {
 
 // ---- players ---------------------------------------------------------------------------------
 
-function newPlayer(d: EventData, src: Record<string, any>): Player {
+function newPlayer(d: EventData, src: Record<string, any>, later = false): Player {
   const name = str(src.name, '', 80);
   if (!name) throw new AuctionError('Player name is required');
   return {
@@ -396,7 +398,7 @@ function newPlayer(d: EventData, src: Record<string, any>): Player {
     description: str(src.description, '', 400),
     photo: str(src.photo, '', 400),
     basePrice: num(src.basePrice, 0, 0),
-    status: 'available',
+    status: later ? 'upcoming' : 'available',
     teamId: null,
     price: 0,
     soldRound: 0,
@@ -407,7 +409,7 @@ function newPlayer(d: EventData, src: Record<string, any>): Player {
 
 on('player.add', 'admin', ({ data }, p) => {
   if (data.players.length >= MAX_PLAYERS) throw new AuctionError(`Up to ${MAX_PLAYERS} players per auction`);
-  const pl = newPlayer(data, p);
+  const pl = newPlayer(data, p, p.later === true);
   data.players.push(pl);
   return { id: pl.id };
 });
@@ -449,7 +451,7 @@ on('players.import', 'admin', ({ data }, p, _a, now) => {
       if (num(row.basePrice, 0, 0) > 0) pl.basePrice = num(row.basePrice, 0, 0);
       updated++;
     } else {
-      pl = newPlayer(data, row);
+      pl = newPlayer(data, row, p.later === true && !str(row.team, '', 60));
       data.players.push(pl);
       added++;
     }
@@ -537,6 +539,12 @@ on('player.setStatus', 'admin', ({ data }, p, _a, now) => {
       pl.status = 'unsold';
       note(data, `${pl.name} set to: unsold`, now);
       break;
+    case 'upcoming':
+      dropFromBlock(data, pl.id, now);
+      resetPlayer(pl);
+      pl.status = 'upcoming';
+      note(data, `${pl.name} set to: waiting for the next round`, now);
+      break;
     case 'block':
       assertNoBreak(data);
       if (data.captains.length < 2) throw new AuctionError('Add at least two teams before starting');
@@ -546,7 +554,7 @@ on('player.setStatus', 'admin', ({ data }, p, _a, now) => {
       note(data, `${pl.name} put on the block`, now);
       break;
     default:
-      throw new AuctionError('Choose in the pool, on the block or unsold — use Assign to mark someone sold');
+      throw new AuctionError('Choose in the pool, on the block, unsold or waiting for the next round — use Assign to mark someone sold');
   }
 });
 
@@ -733,12 +741,27 @@ on('round.next', 'host', ({ data }, _p, _a, now) => {
   assertNoBreak(data);
   if (data.live.phase === 'spinning' || data.live.phase === 'bidding') throw new AuctionError('Finish the current player first');
   const unsold = data.players.filter((p) => p.status === 'unsold');
-  if (unsold.length === 0) throw new AuctionError('There are no unsold players to carry over');
-  for (const p of unsold) p.status = 'available';
+  const waiting = data.players.filter((p) => p.status === 'upcoming');
+  if (unsold.length + waiting.length === 0) throw new AuctionError('There are no unsold or waiting players to bring into the next round');
+  // everyone who was left over, plus the names the admin added ahead of time, joins the pool together
+  for (const p of [...unsold, ...waiting]) p.status = 'available';
+  const topup = data.nextTopup;
+  if (topup > 0) for (const c of data.captains) c.budget += topup;
+  data.nextTopup = 0;
   data.round += 1;
   clearBlock(data);
   emit(data, 'round', now);
-  note(data, `Round ${data.round} started with ${unsold.length} unsold players`, now);
+  note(
+    data,
+    `Round ${data.round} started: ${unsold.length} unsold + ${waiting.length} new players${topup > 0 ? `, every team received ${money(data, topup)} more` : ''}`,
+    now,
+  );
+  return { unsold: unsold.length, added: waiting.length, topup };
+});
+
+/** The admin sets, ahead of time, an extra purse that every team receives when the next round starts. */
+on('round.topup', 'admin', ({ data }, p) => {
+  data.nextTopup = num(p.amount, 0, 0);
 });
 
 on('screen.set', 'host', ({ data }, p) => {
@@ -751,8 +774,9 @@ on('squad.sort', 'host', ({ data }, p) => {
 });
 
 on('reset', 'admin', ({ data }, _p, _a, now) => {
-  for (const p of data.players) Object.assign(p, { status: 'available', teamId: null, price: 0, soldRound: 0 });
+  for (const p of data.players) Object.assign(p, { status: p.status === 'upcoming' ? 'upcoming' : 'available', teamId: null, price: 0, soldRound: 0 });
   data.round = 1;
+  data.nextTopup = 0;
   const { screen, seq, squadSort } = data.live;
   data.live = { ...emptyLive(), screen, seq, squadSort };
   emit(data, 'idle', now);
@@ -807,7 +831,7 @@ on('practice.start', 'admin', (store, _p, _a, now) => {
     live: data.live,
     log: data.log,
   });
-  for (const pl of data.players) resetPlayer(pl);
+  for (const pl of data.players) if (pl.status !== 'upcoming') resetPlayer(pl); // names saved for round 2 stay hidden
   data.round = 1;
   const { screen, seq, squadSort } = data.live;
   data.live = { ...emptyLive(), screen, seq, squadSort };
