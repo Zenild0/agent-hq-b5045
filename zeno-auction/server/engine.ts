@@ -426,12 +426,21 @@ on('players.import', 'admin', ({ data }, p, _a, now) => {
   let added = 0;
   let updated = 0;
   let assigned = 0;
+  let queued = 0; // saved for the next round
+  const nextRound = data.round + 1;
   for (const row of rows) {
     const name = str(row?.name, '', 80);
     if (!name) {
       skipped.push('(a row without a name)');
       continue;
     }
+    // A "round" column: the NEXT round saves the player ahead of time; the current (or an earlier) round means now.
+    const askedRound = num(row?.round, 0, 0);
+    if (askedRound > nextRound) {
+      skipped.push(`${name} (round ${askedRound} is too far ahead: only the next round, ${nextRound}, can be prepared)`);
+      continue;
+    }
+    const toNextRound = askedRound ? askedRound === nextRound : p.later === true;
     const existing = data.players.find((x) => x.name.toLowerCase() === name.toLowerCase());
     if (existing && data.live.playerId === existing.id && data.live.phase !== 'idle') {
       skipped.push(`${name} (on the block right now)`);
@@ -450,10 +459,18 @@ on('players.import', 'admin', ({ data }, p, _a, now) => {
       if (str(row.photo, '', 400)) pl.photo = str(row.photo, '', 400);
       if (num(row.basePrice, 0, 0) > 0) pl.basePrice = num(row.basePrice, 0, 0);
       updated++;
+      // a Round given in the file moves an existing player between "in the pool" and "saved for the next round"
+      if (askedRound && !str(row.team, '', 60) && pl.status !== 'sold') {
+        if (toNextRound && pl.status !== 'upcoming') {
+          pl.status = 'upcoming';
+          queued++;
+        } else if (!toNextRound && pl.status === 'upcoming') pl.status = 'available';
+      }
     } else {
-      pl = newPlayer(data, row, p.later === true && !str(row.team, '', 60));
+      pl = newPlayer(data, row, toNextRound && !str(row.team, '', 60));
       data.players.push(pl);
       added++;
+      if (pl.status === 'upcoming') queued++;
     }
 
     const teamName = str(row.team, '', 60).toLowerCase();
@@ -471,8 +488,8 @@ on('players.import', 'admin', ({ data }, p, _a, now) => {
       }
     }
   }
-  note(data, `Imported players: ${added} added, ${updated} updated${assigned ? `, ${assigned} placed on teams` : ''}`, now);
-  return { added, updated, assigned, skipped };
+  note(data, `Imported players: ${added} added, ${updated} updated${assigned ? `, ${assigned} placed on teams` : ''}${queued ? `, ${queued} saved for round ${nextRound}` : ''}`, now);
+  return { added, updated, assigned, queued, skipped };
 });
 
 on('player.update', 'admin', ({ data }, p) => {

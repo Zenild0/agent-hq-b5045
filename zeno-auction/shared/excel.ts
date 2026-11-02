@@ -25,6 +25,8 @@ export interface SheetPlayer {
   photo: string;
   team: string;
   price: number;
+  /** The auction round this player is for (0 = not given: use the current round). The NEXT round saves them ahead of time. */
+  round?: number;
   status?: string;
 }
 
@@ -45,6 +47,7 @@ const PLAYER_HEADERS: Record<string, keyof SheetPlayer> = {
   'photo url': 'photo', photo: 'photo', image: 'photo', url: 'photo', picture: 'photo',
   team: 'team', 'team name': 'team', 'sold to': 'team', owner: 'team',
   'price paid': 'price', price: 'price', 'sold price': 'price', 'sold for': 'price', 'sold amount': 'price',
+  round: 'round', 'for round': 'round', 'round no': 'round', 'round number': 'round', 'auction round': 'round',
 };
 
 const TEAM_HEADERS: Record<string, keyof SheetTeam> = {
@@ -70,6 +73,11 @@ function cellText(v: unknown): string {
 }
 
 const money = (text: string): number => (text ? (parseMoney(text) ?? 0) : 0);
+/** "2", "Round 2", "R2" → 2; anything else → 0 (not given). */
+const wholeNumber = (text: string): number => {
+  const m = /(\d{1,2})/.exec(text);
+  return m ? Number(m[1]) : 0;
+};
 
 // ---------------------------------------------------------------------------------------------
 // Reading
@@ -115,6 +123,7 @@ export async function readWorkbook(ExcelJS: ExcelNS, data: ArrayBuffer | Uint8Ar
           photo: r.photo ?? '',
           team: r.team ?? '',
           price: money(r.price ?? ''),
+          round: wholeNumber(r.round ?? ''),
         }))
     : [];
 
@@ -166,6 +175,7 @@ export function buildWorkbook(ExcelJS: ExcelNS, input: WorkbookInput) {
     { header: 'Photo URL', key: 'photo', width: 30 },
     { header: 'Team', key: 'team', width: 22 },
     { header: 'Price Paid', key: 'price', width: 15 },
+    { header: 'Round', key: 'round', width: 9 },
     ...(forExport ? [{ header: 'Status', key: 'status', width: 12 }] : []),
   ];
   for (const p of players) {
@@ -177,6 +187,7 @@ export function buildWorkbook(ExcelJS: ExcelNS, input: WorkbookInput) {
       photo: p.photo,
       team: p.team || null,
       price: p.team ? p.price || null : null,
+      round: p.round || null,
       status: p.status,
     });
   }
@@ -184,7 +195,7 @@ export function buildWorkbook(ExcelJS: ExcelNS, input: WorkbookInput) {
   ps.getColumn('basePrice').numFmt = numFmt;
   ps.getColumn('price').numFmt = numFmt;
   const lastRow = Math.max(players.length + 1, 300);
-  ps.autoFilter = { from: 'A1', to: { row: 1, column: forExport ? 8 : 7 } };
+  ps.autoFilter = { from: 'A1', to: { row: 1, column: forExport ? 9 : 8 } };
   // Team column gets a drop-down of the teams in the Teams sheet.
   for (let r = 2; r <= lastRow; r++) {
     ps.getCell(`F${r}`).dataValidation = {
@@ -231,6 +242,8 @@ export function buildWorkbook(ExcelJS: ExcelNS, input: WorkbookInput) {
       '5. Amounts: type full numbers (2000000) or short forms as text (20L, 1.2cr, 250k, 2m).',
       '6. Base Price empty = the event\'s default base price. Photo URL is optional (you can also upload photos in the app).',
       '7. Re-importing a player with the same Name updates them instead of adding a duplicate.',
+      '8. Round: leave it empty for players who are up for auction now. Write the NEXT round number (for example 2 while round 1 is on) to save a player for the next round:',
+      '   they stay hidden from captains and the big screen, and join the pool when the auctioneer starts that round. Only the very next round can be prepared ahead.',
       '',
       'In ZenoBid: Players tab → Import Excel → choose this file → check the preview → Import.',
       'You can delete the sample rows and this sheet.',
@@ -262,6 +275,7 @@ export function exportRows(data: Omit<EventData, 'log'>): { teams: SheetTeam[]; 
     photo: p.photo,
     team: p.status === 'sold' ? teamName(p.teamId) : '',
     price: p.status === 'sold' ? p.price : 0,
+    round: p.status === 'upcoming' ? data.round + 1 : p.status === 'sold' ? p.soldRound || data.round : data.round,
     status: p.status === 'sold' ? 'Sold' : p.status === 'unsold' ? 'Unsold' : p.status === 'upcoming' ? 'Next round' : 'In pool',
   }));
   return { teams, players };
@@ -280,6 +294,7 @@ export function templateRows(fmt: MoneyFmt): { teams: SheetTeam[]; players: Shee
       { name: 'Aarav Mehta', role: 'Batter', basePrice: 20 * u, description: 'Opens the innings and never leaves the crease.', photo: '', team: '', price: 0 },
       { name: 'Rohan Iyer', role: 'Bowler', basePrice: 25 * u, description: 'Yorker specialist.', photo: '', team: '', price: 0 },
       { name: 'Meera Kapoor', role: 'All-rounder', basePrice: 30 * u, description: 'Already bought before the app was used →', photo: '', team: 'Thunder Hawks', price: 120 * u },
+      { name: 'Dev Patel', role: 'Bowler', basePrice: 20 * u, description: 'Round 2 example: saved for the next round, hidden until it starts.', photo: '', team: '', price: 0, round: 2 },
     ],
   };
 }

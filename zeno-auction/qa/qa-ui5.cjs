@@ -159,6 +159,48 @@ const dev = (path, method = 'GET', body) => fetch(BASE + '/api/dev' + path, { me
   await capP.reload(); await capP.waitForSelector('text=My squad'); await capP.click('button:has-text("Strategy")'); await sleep(500);
   t('now the captain can see the new players', (await capP.content()).includes('Round Two Rookie'));
 
+  // ============ Excel import with a Round column ============
+  const ExcelJS = require('exceljs');
+  const xr = await api.create({ name: 'Excel Round Cup', drawMode: 'manual' });
+  await api.cmd(xr.code, xr.adminKey, 'captain.add', { team: 'Red Team' }); await api.cmd(xr.code, xr.adminKey, 'captain.add', { team: 'Blue Team' });
+  const wbx = new ExcelJS.Workbook(); const wsx = wbx.addWorksheet('Players');
+  wsx.addRow(['Name', 'Role', 'Base Price', 'Team', 'Price Paid', 'Round']);
+  wsx.addRow(['Now Player One', 'Batter', '20L', '', '', 1]); wsx.addRow(['Now Player Two', 'Bowler', '20L', '', '', '']);
+  wsx.addRow(['Later Player One', 'Batter', '20L', '', '', 2]); wsx.addRow(['Later Player Two', 'Bowler', '25L', '', '', 2]);
+  wsx.addRow(['Far Away Player', 'Bowler', '25L', '', '', 4]); wsx.addRow(['Bought Early', 'Batter', '20L', 'Red Team', '1.2cr', 2]);
+  const xfile = path.join(dir, 'with-round.xlsx'); await wbx.xlsx.writeFile(xfile);
+  const xp = await ctx.newPage(); xp.on('pageerror', e => errors.push('excel pageerror: ' + e.message)); xp.on('dialog', d => d.accept());
+  await xp.goto(`${BASE}/e/${xr.code}/admin?k=${xr.adminKey}`); await xp.waitForSelector('text=Excel Round Cup');
+  await xp.click('button:has-text("Players")');
+  await xp.setInputFiles('input[type=file][accept=".xlsx,.csv"]', xfile);
+  await xp.waitForSelector('text=Nothing is changed until you press Import');
+  t('the Excel preview shows a Round column', await xp.locator('th:has-text("Round")').count() === 1);
+  t('the preview says how many are saved for round 2', await xp.locator('text=2 saved for round 2').count() >= 1, await xp.locator('h4:has-text("Players")').innerText());
+  t('a row too far ahead is flagged', await xp.locator('text=too far ahead').count() >= 1 && await xp.locator('text=will be skipped').count() === 1);
+  await xp.click('button:text-is("Import")'); await sleep(1200);
+  const xs = await api.state(xr.code, xr.adminKey); const xst = (n) => xs.players.find(p => p.name === n)?.status;
+  t('players with round 1 or no round go into the pool', xst('Now Player One') === 'available' && xst('Now Player Two') === 'available');
+  t('players with round 2 are saved for the next round', xst('Later Player One') === 'upcoming' && xst('Later Player Two') === 'upcoming');
+  t('a row for round 4 is skipped', xst('Far Away Player') === undefined);
+  t('a row with a team is placed on the team even if it has a round', xst('Bought Early') === 'sold');
+  t('a toast reports what was saved ahead', await xp.locator('text=saved for round 2').count() >= 1);
+  const xview = (await api.state(xr.code)).players.map(p => p.name).join();
+  t('captains and the big screen do not get the saved names', !xview.includes('Later Player'));
+  // the template has the Round column and an example
+  const [dlt] = await Promise.all([xp.waitForEvent('download'), xp.click('button:has-text("Template")')]);
+  const tpath = path.join(dir, 'template.xlsx'); await dlt.saveAs(tpath);
+  const twb = new ExcelJS.Workbook(); await twb.xlsx.readFile(tpath); const tws = twb.getWorksheet('Players');
+  const headers = tws.getRow(1).values.filter(Boolean);
+  t('the downloaded template has a Round column', headers.includes('Round'), JSON.stringify(headers));
+  t('and a "How to use" line about it', twb.getWorksheet('How to use').getColumn(1).values.filter(Boolean).some(v => /Round: leave it empty/.test(String(v))));
+  // export → the saved players show as "Next round"
+  const [dle] = await Promise.all([xp.waitForEvent('download'), xp.click('button:has-text("Export Excel")')]);
+  const epath = path.join(dir, 'export.xlsx'); await dle.saveAs(epath);
+  const ewb = new ExcelJS.Workbook(); await ewb.xlsx.readFile(epath); const ews = ewb.getWorksheet('Players');
+  const eh = ews.getRow(1).values; const nameCol = eh.indexOf('Name'), statusCol = eh.indexOf('Status'), roundCol = eh.indexOf('Round');
+  let found = null; ews.eachRow((row) => { if (row.getCell(nameCol).value === 'Later Player One') found = [row.getCell(roundCol).value, row.getCell(statusCol).value]; });
+  t('the export lists saved players with round 2 and status "Next round"', found && found[0] === 2 && found[1] === 'Next round', JSON.stringify(found));
+
   // ============ unlock dialog + developer page ============
   const price = await dev('/config', 'PUT', { price: 499, upiId: 'qa@okaxis', payeeName: 'QA Dev', note: 'Thank you!', operatorName: 'QA Operator', contact: 'qa@example.com' });
   t('payments switched on for the test', price.status === 200);

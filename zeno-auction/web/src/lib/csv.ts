@@ -8,6 +8,8 @@ export interface ImportRow {
   photo: string;
   team: string;
   price: number;
+  /** 0 = not given. Writing the next round's number saves the player for that round. */
+  round?: number;
 }
 
 function splitLine(line: string, delim: string): string[] {
@@ -36,6 +38,7 @@ const HEADERS: Record<string, keyof ImportRow> = {
   photo: 'photo', image: 'photo', url: 'photo', picture: 'photo',
   team: 'team', 'sold to': 'team', owner: 'team',
   price: 'price', 'sold price': 'price', 'sold for': 'price',
+  round: 'round', 'for round': 'round', 'round no': 'round', 'round number': 'round',
 };
 const DEFAULT_ORDER: (keyof ImportRow)[] = ['name', 'role', 'basePrice', 'description', 'photo', 'team', 'price'];
 
@@ -61,6 +64,7 @@ export function parseImport(text: string): ImportRow[] {
       const v = cells[i] ?? '';
       if (!key || !v) return;
       if (key === 'basePrice' || key === 'price') row[key] = parseMoney(v) ?? 0;
+      else if (key === 'round') row.round = Number(/(\d{1,2})/.exec(v)?.[1] ?? 0);
       else row[key] = v;
     });
     return row;

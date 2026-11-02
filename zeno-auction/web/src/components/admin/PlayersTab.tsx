@@ -396,7 +396,7 @@ function ImportModal({ snap, room, onClose }: { snap: Snapshot; room: Room; onCl
       <div className="space-y-4">
         <p className="text-sm text-slate-300">
           Copy rows from Excel or Google Sheets (or a CSV) and paste them here. Columns, in order:{' '}
-          <b>name, role, base price, description, photo URL, team, price</b>. Only the name is required. A first row with those headings is fine too.
+          <b>name, role, base price, description, photo URL, team, price</b>. Only the name is required. A first row with those headings is fine too, and you can add a <b>round</b> column (write {snap.round + 1} to save a player for round {snap.round + 1}) when you use headings.
         </p>
         <div className="rounded-xl border border-gold/20 bg-gold/5 p-3 text-sm text-slate-300">
           <b className="text-gold">Joining midway?</b> Fill the <b>team</b> and <b>price</b> columns for players that are already bought — they'll be put on that team and the price deducted from its purse. Team names must match ({snap.captains.map((c) => c.team).join(', ') || 'add teams first'}).
@@ -455,8 +455,8 @@ function ImportModal({ snap, room, onClose }: { snap: Snapshot; room: Room; onCl
               onClick={async () => {
                 const res = await room.act('players.import', { rows, later });
                 if (!res) return;
-                const r = res as { added: number; assigned: number; skipped: string[] };
-                toast(`Imported ${r.added} players${r.assigned ? ` (${r.assigned} placed on teams)` : ''}${r.skipped.length ? `. Notes: ${r.skipped.join('; ')}` : ''}`, r.skipped.length ? 'info' : 'success');
+                const r = res as { added: number; assigned: number; queued: number; skipped: string[] };
+                toast(`Imported ${r.added} players${r.queued ? ` (${r.queued} saved for round ${snap.round + 1})` : ''}${r.assigned ? ` (${r.assigned} placed on teams)` : ''}${r.skipped.length ? `. Notes: ${r.skipped.join('; ')}` : ''}`, r.skipped.length ? 'info' : 'success');
                 onClose();
               }}
             >
