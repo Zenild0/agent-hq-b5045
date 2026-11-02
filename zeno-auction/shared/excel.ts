@@ -324,6 +324,8 @@ export interface ImportSummary {
   sold: number;
   unsold: number;
   saved: number; // saved for the next round
+  /** Players that are in the system now but not in the file: removed when replacing everything. */
+  removed: string[];
   /** Things worth checking before pressing Import, in plain words. */
   warnings: string[];
 }
@@ -336,11 +338,12 @@ const lc = (s: string) => s.trim().toLowerCase();
  */
 export function summarizeImport(
   rows: SheetPlayer[],
-  ctx: { currentRound: number; existing: ImportExisting[]; knownTeams: string[]; blankRows?: number[] },
+  ctx: { currentRound: number; existing: ImportExisting[]; knownTeams: string[]; blankRows?: number[]; replace?: boolean },
 ): ImportSummary {
   const next = ctx.currentRound + 1;
   const known = new Set(ctx.knownTeams.map(lc));
-  const state = new Map<string, ImportExisting['status']>(ctx.existing.map((p) => [lc(p.name), p.status]));
+  // Replacing everything: the file is the whole truth, so each player starts from "in the pool" and nobody else survives.
+  const state = new Map<string, ImportExisting['status']>(ctx.replace ? [] : ctx.existing.map((p) => [lc(p.name), p.status]));
   const warnings: string[] = [];
   const firstSeen = new Map<string, number>();
   const dupes = new Map<string, number[]>();
@@ -385,5 +388,7 @@ export function summarizeImport(
 
   let pool = 0, sold = 0, unsold = 0, saved = 0;
   for (const st of state.values()) st === 'available' ? pool++ : st === 'sold' ? sold++ : st === 'unsold' ? unsold++ : saved++;
-  return { total: state.size, pool, sold, unsold, saved, warnings };
+  const inFile = new Set(rows.map((r) => lc(r.name)).filter(Boolean));
+  const removed = ctx.replace ? ctx.existing.filter((p) => !inFile.has(lc(p.name))).map((p) => p.name) : [];
+  return { total: state.size, pool, sold, unsold, saved, removed, warnings };
 }

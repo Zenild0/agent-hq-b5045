@@ -9,7 +9,7 @@ import { AuctionError, createStore, nextDue, randomCode, runAction, tick, type A
 import { buildArchive, restoreArchive } from './archive';
 import { clientIp } from './net';
 import { currentGate, devEnabled, getPlatform, isDevKey, refreshAccess, savePlatform } from './platform';
-import { DATA_DIR, deleteEventFiles, flushAll, loadAll, readUpload, saveSoon, UPLOADS_DIR, writeUploads } from './persist';
+import { DATA_DIR, deleteEventFiles, flushAll, loadAll, readUpload, saveSafetyCopy, saveSoon, UPLOADS_DIR, writeUploads } from './persist';
 
 const PORT = Number(process.env.PORT ?? 8787);
 // Which build is running: set by the packaging step as a VERSION file next to the app (or by APP_VERSION).
@@ -318,6 +318,15 @@ app.post(
     const key = req.header('x-key') ?? req.body?.key;
     const actor = authorize(req.ip ?? '', store, key);
     const action = String(req.body?.action ?? '');
+    // before anything that overwrites the player list, keep a full copy to go back to
+    if (action === 'players.import' && req.body?.params?.replace === true && actor.role === 'admin') {
+      try {
+        saveSafetyCopy(store);
+      } catch (err) {
+        console.error('Could not save the safety copy:', err);
+        throw new AuctionError('Could not save a safety copy first, so nothing was changed. Try again.', 500);
+      }
+    }
     const result = runAction(store, actor, action, req.body?.params);
     saveSoon(store);
     scheduleTimers(store);

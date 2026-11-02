@@ -232,6 +232,19 @@ const post = (path, body, headers = {}) => j(path, { method: 'POST', headers: { 
     await fetch(`${BASE}/api/events/${rr.code}`, { method: 'DELETE', headers: { 'x-key': rr.adminKey } });
   }
 
+  // ---- replace everything: refused while a player is on the block ----
+  {
+    const rp = (await post('/api/events', { settings: { name: 'ReplaceGuard', drawMode: 'manual' } })).body;
+    const rcmd = (key, action, params) => post(`/api/events/${rp.code}/cmd`, { action, params }, { 'x-key': key });
+    await rcmd(rp.adminKey, 'demo.load', {});
+    const ss = (await j(`/api/events/${rp.code}/state?key=${rp.adminKey}`)).body; const tk = ss.secrets.captainTokens[ss.captains[0].id];
+    await rcmd(rp.hostKey, 'pick', { playerId: ss.players[0].id }); await rcmd(tk, 'bid', {});
+    r = await rcmd(rp.adminKey, 'players.import', { replace: true, rows: [{ name: 'Z' }] }); t('replacing the list while a player is being bid on is refused', r.status === 400 && /Finish the current player/.test(r.body.error), JSON.stringify(r.body));
+    r = await rcmd(rp.hostKey, 'players.import', { replace: true, rows: [{ name: 'Z' }] }); t('only the admin can replace the list', r.status === 403);
+    t('nothing was changed by the refused attempts', (await j(`/api/events/${rp.code}/state?key=${rp.adminKey}`)).body.players.length === ss.players.length);
+    await fetch(`${BASE}/api/events/${rp.code}`, { method: 'DELETE', headers: { 'x-key': rp.adminKey } });
+  }
+
   // ---- brute-force protection: wrong keys are throttled, valid keys never are ----
   let limited = 0, firstLimitedAt = -1;
   for (let i = 0; i < 140; i++) { const q = await cmd('GUESS' + String(i).padStart(2, '0'), 'bid', {}); if (q.status === 429) { limited++; if (firstLimitedAt < 0) firstLimitedAt = i; } }

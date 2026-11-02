@@ -66,6 +66,21 @@ export function flushAll(stores: Iterable<Store>): void {
 
 export const hasUploads = () => existsSync(UPLOADS_DIR);
 
+const SAFETY_DIR = path.join(DATA_DIR, 'safety');
+/**
+ * A full copy of one auction taken just before something that overwrites a lot (replacing the player list from a file).
+ * Kept in DATA_DIR/safety (so the nightly backup includes it); the newest few per auction are kept.
+ */
+export function saveSafetyCopy(store: Store, keep = 5): string {
+  mkdirSync(SAFETY_DIR, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[-:.]/g, ''); // to the millisecond, so two copies never share a name
+  const file = path.join(SAFETY_DIR, `${store.data.code}-${stamp}.json`);
+  writeFileSync(file, JSON.stringify(store));
+  const mine = readdirSync(SAFETY_DIR).filter((f) => f.startsWith(`${store.data.code}-`)).sort();
+  for (const old of mine.slice(0, Math.max(0, mine.length - keep))) rmSync(path.join(SAFETY_DIR, old), { force: true });
+  return file;
+}
+
 /** Permanently removes one auction from disk: its file, any half-written copy, and its photos. */
 export function deleteEventFiles(code: string): void {
   clearTimeout(timers.get(code)); // a save that was about to happen must not bring the file back
@@ -74,6 +89,7 @@ export function deleteEventFiles(code: string): void {
   rmSync(file, { force: true });
   rmSync(`${file}.tmp`, { force: true });
   rmSync(path.join(UPLOADS_DIR, code), { recursive: true, force: true });
+  if (existsSync(SAFETY_DIR)) for (const f of readdirSync(SAFETY_DIR)) if (f.startsWith(`${code}-`)) rmSync(path.join(SAFETY_DIR, f), { force: true });
 }
 
 /** One uploaded photo, or null if it is not there. `fileName` must already be validated (letters/digits + extension). */

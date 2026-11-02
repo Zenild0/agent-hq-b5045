@@ -582,3 +582,71 @@ test('round.next needs someone to bring in, the admin can move players to and fr
   runAction(s, ADMIN, 'practice.end', {});
   assert.equal(p.status, 'upcoming');
 });
+
+test('"Replace everything" makes a file the whole truth: sales, rounds, order and who is in the auction', () => {
+  const { s, teams } = setup({ defaultBudget: 100 * CR }, 0);
+  const [red, blue] = teams;
+  // what the system has now: A sold to Red, B sold to Blue, C in the pool, D waiting for round 2 and an extra X not in the file
+  runAction(s, ADMIN, 'players.import', {
+    rows: [
+      { name: 'A', role: 'Male', description: 'keep me', team: 'Red', price: 5 * CR },
+      { name: 'B', role: 'Female', team: 'Blue', price: 3 * CR },
+      { name: 'C', role: 'Male' },
+      { name: 'D', role: 'Female', round: 2 },
+      { name: 'X', role: 'Male' },
+    ],
+  });
+  const pid = (n: string) => s.data.players.find((p) => p.name === n)!;
+  runAction(s, ADMIN, 'captain.budget', { id: red, mode: 'set', amount: 100 * CR });
+  runAction(s, { role: 'captain', captainId: red }, 'strategy.add', { playerId: pid('X').id, budget: CR, note: 'plan' });
+  const spentBefore = s.data.players.filter((p) => p.status === 'sold').reduce((a, p) => a + p.price, 0);
+  assert.equal(spentBefore, 8 * CR);
+
+  // the file: A is now Blue's (cheaper), B is back in the pool, C sold to Red, D is round 1 now, E is new, X is gone. Roles blank for A and D.
+  const res = runAction(s, ADMIN, 'players.import', {
+    replace: true,
+    rows: [
+      { name: 'E', role: 'Female' },
+      { name: 'C', role: 'Male', team: 'Red', price: 2 * CR },
+      { name: 'A', team: 'Blue', price: 1 * CR },
+      { name: 'B' },
+      { name: 'D', round: 1 },
+    ],
+  }) as { added: number; updated: number; removed: number; assigned: number };
+  assert.deepEqual([res.added, res.updated, res.removed, res.assigned], [1, 4, 1, 2]);
+  assert.deepEqual(s.data.players.map((p) => p.name), ['E', 'C', 'A', 'B', 'D'], 'the order of the file');
+  assert.deepEqual(s.data.players.map((p) => p.order), [1, 2, 3, 4, 5]);
+  const st = (n: string) => [pid(n).status, pid(n).teamId, pid(n).price];
+  assert.deepEqual(st('A'), ['sold', blue, 1 * CR], 'a sale is overwritten by what the file says');
+  assert.deepEqual(st('B'), ['available', null, 0], 'a sale that is not in the file is undone');
+  assert.deepEqual(st('C'), ['sold', red, 2 * CR]);
+  assert.deepEqual(st('D'), ['available', null, 0], 'round 1 means now');
+  assert.equal(pid('E').status, 'available');
+  assert.equal(s.data.players.some((p) => p.name === 'X'), false, 'a player that is not in the file is removed');
+  assert.equal(pid('A').role, 'Male', 'a blank role keeps the role the system had');
+  assert.equal(pid('A').description, 'keep me');
+  assert.equal(pid('D').role, 'Female');
+  assert.deepEqual(s.strategies[red], [], 'plans that pointed at a removed player are cleaned up');
+  // purses follow: spent is derived from the sales now
+  const spent = (id: string) => s.data.players.filter((p) => p.teamId === id).reduce((a, p) => a + p.price, 0);
+  assert.deepEqual([spent(red), spent(blue)], [2 * CR, 1 * CR]);
+
+  // an ordinary import after a replace does not remove anything
+  runAction(s, ADMIN, 'players.import', { rows: [{ name: 'New One' }] });
+  assert.equal(s.data.players.length, 6);
+});
+
+test('"Replace everything" is refused while a player is on the block, and needs the admin', () => {
+  const { s } = setup({}, 2);
+  runAction(s, HOST, 'pick', { playerId: s.data.players[0].id });
+  runAction(s, captain(s, s.data.captains[0].id), 'bid', { amount: 20 * L });
+  throwsAuction(() => runAction(s, ADMIN, 'players.import', { replace: true, rows: [{ name: 'Z' }] }), /Finish the current player/);
+  assert.equal(s.data.players.length, 2, 'nothing changed');
+  throwsAuction(() => runAction(s, HOST, 'players.import', { replace: true, rows: [{ name: 'Z' }] }), /not allowed/);
+  // between players (a result is showing) it clears the screen and goes ahead
+  runAction(s, HOST, 'sold', {});
+  runAction(s, ADMIN, 'players.import', { replace: true, rows: [{ name: 'Z' }] });
+  assert.deepEqual(s.data.players.map((p) => p.name), ['Z']);
+  assert.equal(s.data.live.phase, 'idle');
+  assert.equal(s.data.live.playerId, null);
+});

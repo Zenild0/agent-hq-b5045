@@ -419,9 +419,25 @@ on('player.add', 'admin', ({ data }, p) => {
  * bought before the app was used. A row whose name matches an existing player updates that player
  * instead of adding a duplicate, so export → edit → re-import is safe.
  */
-on('players.import', 'admin', ({ data }, p, _a, now) => {
+on('players.import', 'admin', ({ data, strategies }, p, _a, now) => {
   const rows: Record<string, any>[] = Array.isArray(p.rows) ? p.rows : [];
   if (rows.length === 0) throw new AuctionError('Nothing to import');
+  /**
+   * "Replace everything": the file becomes the whole truth. Players in it are set exactly as written (sale, round, order);
+   * players NOT in it are removed. Fields left blank in the file (role, description, photo) keep their current value.
+   */
+  const replace = p.replace === true;
+  if (replace) {
+    assertNoBreak(data);
+    if (data.live.phase === 'spinning' || data.live.phase === 'bidding') throw new AuctionError('Finish the current player first, then replace the list');
+    if (data.live.phase !== 'idle') {
+      clearBlock(data);
+      emit(data, 'idle', now);
+    }
+  }
+  const seen = new Set<string>();
+  let position = 0;
+  let removed = 0;
   const skipped: string[] = [];
   let added = 0;
   let updated = 0;
@@ -441,6 +457,7 @@ on('players.import', 'admin', ({ data }, p, _a, now) => {
       continue;
     }
     const toNextRound = askedRound ? askedRound === nextRound : p.later === true;
+    seen.add(name.toLowerCase());
     const existing = data.players.find((x) => x.name.toLowerCase() === name.toLowerCase());
     if (existing && data.live.playerId === existing.id && data.live.phase !== 'idle') {
       skipped.push(`${name} (on the block right now)`);
@@ -452,6 +469,7 @@ on('players.import', 'admin', ({ data }, p, _a, now) => {
     }
 
     let pl: Player;
+    if (existing && replace) resetPlayer(existing); // start from "in the pool", then apply what the file says
     if (existing) {
       pl = existing;
       if (str(row.role, '', 40)) pl.role = str(row.role, '', 40);
@@ -473,6 +491,7 @@ on('players.import', 'admin', ({ data }, p, _a, now) => {
       if (pl.status === 'upcoming') queued++;
     }
 
+    if (replace) pl.order = ++position;
     const teamName = str(row.team, '', 60).toLowerCase();
     if (teamName) {
       const c = data.captains.find((x) => x.team.toLowerCase() === teamName || x.name.toLowerCase() === teamName);
@@ -480,7 +499,7 @@ on('players.import', 'admin', ({ data }, p, _a, now) => {
         pl.status = 'sold';
         pl.teamId = c.id;
         pl.price = num(row.price, effectiveBase(data.settings, pl), 0);
-        pl.soldRound = data.round;
+        pl.soldRound = replace && askedRound && askedRound <= data.round ? askedRound : data.round;
         pl.soldAt = now;
         assigned++;
       } else {
@@ -488,8 +507,16 @@ on('players.import', 'admin', ({ data }, p, _a, now) => {
       }
     }
   }
-  note(data, `Imported players: ${added} added, ${updated} updated${assigned ? `, ${assigned} placed on teams` : ''}${queued ? `, ${queued} saved for round ${nextRound}` : ''}`, now);
-  return { added, updated, assigned, queued, skipped };
+  if (replace) {
+    const keep = data.players.filter((x) => seen.has(x.name.toLowerCase()));
+    removed = data.players.length - keep.length;
+    const gone = new Set(data.players.filter((x) => !seen.has(x.name.toLowerCase())).map((x) => x.id));
+    data.players = keep.sort((a, b) => a.order - b.order); // the order of the file
+    for (const id of Object.keys(strategies)) strategies[id] = strategies[id].filter((i) => !gone.has(i.playerId));
+    dropStale(data, now);
+  }
+  note(data, `${replace ? 'REPLACED the player list from a file' : 'Imported players'}: ${added} added, ${updated} updated${removed ? `, ${removed} removed` : ''}${assigned ? `, ${assigned} placed on teams` : ''}${queued ? `, ${queued} saved for round ${nextRound}` : ''}`, now);
+  return { added, updated, assigned, queued, removed, skipped };
 });
 
 on('player.update', 'admin', ({ data }, p) => {
@@ -501,6 +528,14 @@ on('player.update', 'admin', ({ data }, p) => {
   if (patch.photo !== undefined) pl.photo = str(patch.photo, pl.photo, 400);
   if (patch.basePrice !== undefined) pl.basePrice = num(patch.basePrice, pl.basePrice, 0);
 });
+
+/** After players were removed: if the player on screen no longer exists, clear the screen. */
+function dropStale(d: EventData, now: number) {
+  if (d.live.playerId && !d.players.some((p) => p.id === d.live.playerId)) {
+    clearBlock(d);
+    emit(d, 'idle', now);
+  }
+}
 
 const resetPlayer = (pl: Player) => Object.assign(pl, { status: 'available', teamId: null, price: 0, soldRound: 0, soldAt: 0 });
 

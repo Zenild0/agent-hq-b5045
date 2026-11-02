@@ -152,3 +152,24 @@ test('the import preview works out the same numbers as the real import, and says
   const clean = summarizeImport([{ name: 'X', role: '', basePrice: 0, description: '', photo: '', team: '', price: 0, row: 2 }], { currentRound: 1, existing: [], knownTeams: [] });
   assert.deepEqual([clean.pool, clean.warnings.length], [1, 0]);
 });
+
+test('the preview of "Replace everything" matches what replacing really does', async () => {
+  const { summarizeImport } = await import('./excel');
+  const s = createStore('RPL001', { defaultBudget: 100_000_000 });
+  runAction(s, ADMIN, 'captain.add', { team: 'Red' });
+  runAction(s, ADMIN, 'players.import', { rows: [{ name: 'Keep Sold', team: 'Red', price: 1 }, { name: 'Gone One' }, { name: 'Gone Two', team: 'Red', price: 2 }, { name: 'Wait', round: 2 }] });
+  const rows = [
+    { name: 'Keep Sold', role: '', basePrice: 0, description: '', photo: '', team: '', price: 0, round: 1, row: 2 },
+    { name: 'Wait', role: '', basePrice: 0, description: '', photo: '', team: '', price: 0, round: 1, row: 3 },
+    { name: 'Fresh', role: '', basePrice: 0, description: '', photo: '', team: 'Red', price: 5, round: 1, row: 4 },
+    { name: 'Later', role: '', basePrice: 0, description: '', photo: '', team: '', price: 0, round: 2, row: 5 },
+  ];
+  const sum = summarizeImport(rows, { currentRound: 1, existing: s.data.players.map((p) => ({ name: p.name, status: p.status })), knownTeams: ['Red'], replace: true });
+  runAction(s, ADMIN, 'players.import', { rows, replace: true });
+  const n = (st: string) => s.data.players.filter((p) => p.status === st).length;
+  assert.deepEqual([sum.total, sum.pool, sum.sold, sum.saved], [s.data.players.length, n('available'), n('sold'), n('upcoming')]);
+  assert.deepEqual(sum.removed.sort(), ['Gone One', 'Gone Two']);
+  // without replace the same file would have kept the sale of Keep Sold and the two others
+  const plain = summarizeImport(rows, { currentRound: 1, existing: [{ name: 'Keep Sold', status: 'sold' }, { name: 'Gone One', status: 'available' }], knownTeams: ['Red'] });
+  assert.deepEqual([plain.removed.length, plain.total], [0, 5], 'an ordinary import keeps everyone who is already there');
+});

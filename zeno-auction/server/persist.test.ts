@@ -85,3 +85,18 @@ test('an auction saved by the first version of ZenoBid opens in the current one 
   runAction(loaded, { role: 'admin' }, 'practice.start', {});
   runAction(loaded, { role: 'admin' }, 'practice.end', {});
 });
+
+test('a safety copy keeps the newest few per auction and goes when the auction is deleted', async () => {
+  const { existsSync, readdirSync } = await import('node:fs');
+  process.env.DATA_DIR ??= mkdtempSync(path.join(tmpdir(), 'zeno-safe-'));
+  const persist = await import('./persist');
+  const { createStore } = await import('./engine');
+  const s = createStore('SAFE01', { name: 'Safe' });
+  const dir = path.join(persist.DATA_DIR, 'safety');
+  for (let i = 0; i < 7; i++) persist.saveSafetyCopy(s, 3);
+  const mine = readdirSync(dir).filter((f) => f.startsWith('SAFE01-'));
+  assert.equal(mine.length, 3, 'only the newest three are kept');
+  assert.equal(JSON.parse(readFileSync(path.join(dir, mine[0]), 'utf8')).data.settings.name, 'Safe', 'it is a full copy');
+  persist.deleteEventFiles('SAFE01');
+  assert.equal(existsSync(dir) ? readdirSync(dir).filter((f) => f.startsWith('SAFE01-')).length : 0, 0, 'deleting the auction deletes its safety copies');
+});

@@ -209,6 +209,38 @@ const dev = (path, method = 'GET', body) => fetch(BASE + '/api/dev' + path, { me
   let found = null; ews.eachRow((row) => { if (row.getCell(nameCol).value === 'Later Player One') found = [row.getCell(roundCol).value, row.getCell(statusCol).value]; });
   t('the export lists saved players with round 2 and status "Next round"', found && found[0] === 2 && found[1] === 'Next round', JSON.stringify(found));
 
+  // ============ Replace everything with an Excel file ============
+  const rc = await api.create({ name: 'Replace Cup', drawMode: 'manual' });
+  await api.cmd(rc.code, rc.adminKey, 'captain.add', { team: 'Red Team' }); await api.cmd(rc.code, rc.adminKey, 'captain.add', { team: 'Blue Team' });
+  await api.cmd(rc.code, rc.adminKey, 'players.import', { rows: [{ name: 'Keep One', role: 'Male', description: 'keep this text', team: 'Red Team', price: 2000000 }, { name: 'Gone Player', role: 'Female' }, { name: 'Gone Too', team: 'Blue Team', price: 1000000 }, { name: 'Wait Player' }] });
+  const wbr = new ExcelJS.Workbook(); const wsr = wbr.addWorksheet('Players');
+  wsr.addRow(['Name', 'Role', 'Team', 'Price Paid', 'Round', 'Status']);
+  wsr.addRow(['Fresh One', 'Female', 'Blue Team', '30L', 1, 'Sold']); wsr.addRow(['Keep One', '', '', '', 1, 'In Pool']); wsr.addRow(['Wait Player', '', '', '', 2, 'In Pool']);
+  const rfile = path.join(dir, 'replace.xlsx'); await wbr.xlsx.writeFile(rfile);
+  const rp = await ctx.newPage(); rp.on('pageerror', e => errors.push('replace pageerror: ' + e.message)); rp.on('dialog', d => d.accept());
+  await rp.goto(`${BASE}/e/${rc.code}/admin?k=${rc.adminKey}`); await rp.waitForSelector('text=Replace Cup'); await rp.click('button:has-text("Players")');
+  await rp.setInputFiles('input[type=file][accept=".xlsx,.csv"]', rfile); await rp.waitForSelector('text=After this import the auction will have');
+  const plainBtn = rp.locator('button:text-is("Import")'); t('an ordinary import button is offered by default', await plainBtn.count() === 1);
+  await rp.check('label:has-text("Replace everything with this file") input');
+  t('replace mode lists who will be removed', await rp.locator('text=will be removed').count() === 1 && await rp.locator('text=Gone Player').count() >= 1 && await rp.locator('text=Gone Too').count() >= 1);
+  t('the summary says what will be left', await rp.locator('.chip:has-text("3 players")').count() === 1 && await rp.locator('.chip:has-text("1 saved for round 2")').count() === 1 && await rp.locator('.chip:has-text("2 removed")').count() === 1);
+  const repBtn = rp.locator('button:has-text("Replace everything")').last();
+  t('the replace button waits for the typed confirmation', await repBtn.isDisabled());
+  await rp.fill('input[aria-label="Type REPLACE to confirm"]', 'replac'); t('a partial word is not enough', await repBtn.isDisabled());
+  await rp.fill('input[aria-label="Type REPLACE to confirm"]', 'replace'); t('typing it (any capitals) enables the button', await repBtn.isEnabled());
+  await repBtn.click(); await sleep(1500);
+  const rs = await api.state(rc.code, rc.adminKey); const rst = (n) => rs.players.find(p => p.name === n);
+  t('players not in the file were removed', !rst('Gone Player') && !rst('Gone Too') && rs.players.length === 3, rs.players.map(p => p.name).join());
+  t('a sale in the system that is not in the file was undone', rst('Keep One').status === 'available' && !rst('Keep One').teamId);
+  t('the new sale from the file was recorded', rst('Fresh One').status === 'sold' && rst('Fresh One').price === 3000000);
+  t('round 2 players were saved for the next round', rst('Wait Player').status === 'upcoming');
+  t('blank cells keep what the system had (role, description)', rst('Keep One').role === 'Male' && rst('Keep One').description === 'keep this text');
+  t('the list follows the order of the file', rs.players.map(p => p.name).join() === 'Fresh One,Keep One,Wait Player', rs.players.map(p => p.name).join());
+  const fsx = require('node:fs'); const safety = fsx.existsSync(path.join(__dirname, '..', 'qa', '.data', 'safety')) ? fsx.readdirSync(path.join(__dirname, '..', 'qa', '.data', 'safety')).filter(f => f.startsWith(rc.code + '-')) : fsx.existsSync(path.join(process.cwd(), 'qa', '.data', 'safety')) ? fsx.readdirSync(path.join(process.cwd(), 'qa', '.data', 'safety')).filter(f => f.startsWith(rc.code + '-')) : [];
+  t('a full safety copy of the auction was saved first', safety.length === 1, JSON.stringify(safety));
+  if (safety.length) { const copy = JSON.parse(fsx.readFileSync(path.join(process.cwd(), 'qa', '.data', 'safety', safety[0]), 'utf8')); t('…and it holds the old players', copy.data.players.some(p => p.name === 'Gone Player') && copy.secrets.adminKey === rc.adminKey); }
+  t('a message reports what happened', await rp.locator('text=removed').count() >= 1);
+
   // ============ unlock dialog + developer page ============
   const price = await dev('/config', 'PUT', { price: 499, upiId: 'qa@okaxis', payeeName: 'QA Dev', note: 'Thank you!', operatorName: 'QA Operator', contact: 'qa@example.com' });
   t('payments switched on for the test', price.status === 200);
