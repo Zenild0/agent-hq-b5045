@@ -1,22 +1,26 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { EventSettings, Snapshot } from '../../../../shared/types';
 import type { Room } from '../../lib/useRoom';
 import { uploadImage } from '../../lib/api';
 import { useEventAppearance } from '../../lib/appearance';
 import { SettingsForm } from '../SettingsForm';
+import { useToast } from '../ui';
 import { DeleteAuction, SaveFileCard } from './AuctionFile';
 
 export function SettingsTab({ snap, room }: { snap: Snapshot; room: Room }) {
+  const { toast } = useToast();
   const [draft, setDraft] = useState<EventSettings>(snap.settings);
-  const saved = useRef(JSON.stringify(snap.settings));
-  const dirty = JSON.stringify(draft) !== saved.current;
+  // What the form was last in step with. It is state (not a ref) so that finishing a save re-draws the page and the
+  // "unsaved changes" bar goes away even if the server's confirmation arrived before the browser knew the save was done.
+  const [saved, setSaved] = useState(JSON.stringify(snap.settings));
+  const dirty = JSON.stringify(draft) !== saved;
   useEventAppearance(draft); // unsaved theme changes preview straight away
 
   // Pick up changes made elsewhere only while the form is untouched.
   useEffect(() => {
     if (!dirty) {
       setDraft(snap.settings);
-      saved.current = JSON.stringify(snap.settings);
+      setSaved(JSON.stringify(snap.settings));
     }
   }, [snap.settings]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -49,13 +53,16 @@ export function SettingsTab({ snap, room }: { snap: Snapshot; room: Room }) {
           <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
             <span className="text-sm text-slate-300">You have unsaved changes.</span>
             <div className="flex gap-2">
-              <button className="btn-ghost" onClick={() => setDraft(JSON.parse(saved.current))}>
+              <button className="btn-ghost" onClick={() => setDraft(JSON.parse(saved))}>
                 Discard
               </button>
               <button
                 className="btn-primary"
                 onClick={async () => {
-                  if (await room.act('settings.update', { patch: draft })) saved.current = JSON.stringify(draft);
+                  if (await room.act('settings.update', { patch: draft })) {
+                    setSaved(JSON.stringify(draft));
+                    toast('Settings saved.', 'success');
+                  }
                 }}
               >
                 Save changes

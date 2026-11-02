@@ -27,7 +27,13 @@ const dev = (path, method = 'GET', body) => fetch(BASE + '/api/dev' + path, { me
   for (const name of ['Halloween', 'Christmas', 'Black Friday', 'Parchment', 'Terminal Green', 'Stadium Night']) t(`theme "${name}" is offered`, await p.locator(`button[role=radio]:has-text("${name}")`).count() === 1);
   await p.click('button[role=radio]:has-text("Christmas")');
   t('picking a theme previews it at once', (await p.evaluate(() => document.documentElement.dataset.pattern)) === 'dots' && (await cssVar(p, '--gold')) !== '242 184 75');
-  const saveBtn = p.locator('button:has-text("Save changes")'); await saveBtn.click(); await sleep(600);
+  const saveBtn = p.locator('button:has-text("Save changes")'); await saveBtn.click(); await sleep(900);
+  t('after saving, the "unsaved changes" bar goes away and a message confirms it', await p.locator('button:has-text("Save changes")').count() === 0 && await p.locator('text=Settings saved').count() >= 1);
+  // changing several things at once, then saving, also settles
+  await p.fill('input[type=number] >> nth=1', String(5 + Math.floor(Math.random() * 20))); await sleep(200);
+  t('editing again brings the bar back', await p.locator('button:has-text("Save changes")').count() === 1);
+  await p.click('button:has-text("Save changes")'); await sleep(900);
+  t('and saving again clears it again', await p.locator('button:has-text("Save changes")').count() === 0);
   t('the choice is saved for the whole auction', (await api.state(c.code)).settings.theme === 'christmas');
   const cap = st0.secrets.captainTokens[st0.captains[0].id];
   const live = await ctx.newPage(); live.on('pageerror', e => errors.push('live pageerror: ' + e.message));
