@@ -81,7 +81,7 @@ export default function Terms() {
           <li>Admin links and team PINs are secrets. Anyone who has them can act for that team or auction. Don’t share them publicly.</li>
           {info?.voice && (
             <li>
-              Studio announcer voices: when a screen has the WWE, KBC or Mortal Kombat announcer on, the sentence being announced (team name, player name, amount) is sent to
+              Studio announcer voices: when a screen has one of the studio hosts on (any style except Classic), the sentence being announced (team and player names, amounts, purse left) is sent to
               Google Cloud Text-to-Speech to be turned into speech, and the recording is kept on this server so it can be replayed. Nothing else is sent. The voices are
               original styles, not imitations of any real person.
             </li>

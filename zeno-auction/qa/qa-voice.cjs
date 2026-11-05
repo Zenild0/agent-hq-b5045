@@ -84,6 +84,70 @@ async function screen(browser, style, code, { failVoice = false } = {}) {
   // this device has only a female Hindi voice: a male Indian-English voice reads the Hindi words in Latin letters
   t('…a male host is never read by a female voice pushed deep', said[0] && said[0].voice === 'Microsoft Ravi' && !/[ऀ-ॿ]/.test(said[0].text), JSON.stringify(said));
   await f.ctx.close();
+
+  // the host runs every part of the auction: take-backs, breaks, new rounds
+  for (const style of ['show', 'velvet', 'trailer', 'cricket', 'assistant']) t(`sample ${style}: a recording comes back`, (await fetch(`${BASE}/api/voice-sample/${style}`)).status === 200);
+  await host('sold'); await host('next'); await host('pick', { playerId: st.players[2].id }); await bid(); await host('undoBid');
+  const undoSeq = (await api.state(c.code)).live.lastEvent;
+  t('a take-back can be heard', undoSeq.type === 'undo' && (await v(undoSeq.seq, 'show')).status === 200, JSON.stringify(undoSeq));
+  await host('unsold').catch(() => {}); await host('next').catch(() => {});
+  const brk = await host('break.start', { seconds: 120 });
+  const brkEv = (await api.state(c.code)).live.lastEvent;
+  t('a strategy break can be heard', brkEv && brkEv.type === 'break' && (await v(brkEv.seq, 'cricket')).status === 200, JSON.stringify([brk, brkEv]));
+  await host('break.end').catch(() => {});
+
+  // one browser, two pages (the big screen and the admin page): only ONE voice, from the big screen
+  {
+    const ctx = await b.newContext({ viewport: { width: 1100, height: 700 } });
+    await ctx.addInitScript(() => {
+      localStorage.setItem('zeno:sound', JSON.stringify({ sfx: true, voice: true, style: 'wwe' }));
+      window.__played = 0;
+      const start = AudioBufferSourceNode.prototype.start;
+      AudioBufferSourceNode.prototype.start = function (...a) { if (this.buffer && this.buffer.duration > 0.2) window.__played++; return start.apply(this, a); };
+      Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: { getVoices: () => [], cancel() {}, addEventListener() {}, speak() { window.__played += 100; } } });
+    });
+    const live = await ctx.newPage(); const admin = await ctx.newPage();
+    const asks = { live: 0, admin: 0 };
+    live.on('request', (r) => { if (/\/voice\//.test(r.url())) asks.live++; });
+    admin.on('request', (r) => { if (/\/voice\//.test(r.url())) asks.admin++; });
+    await live.goto(`${BASE}/e/${c.code}/live`); await live.waitForSelector('text=Join code');
+    await admin.goto(`${BASE}/e/${c.code}/admin?k=${c.adminKey}`); await admin.waitForLoadState('networkidle');
+    await sleep(800);
+    const s2 = await api.state(c.code, c.adminKey);
+    const free = s2.players.find((p) => p.status === 'available');
+    await host('pick', { playerId: free.id }); await sleep(1500);
+    await bid(); await sleep(1500);
+    await host('call'); await sleep(1500);
+    const pl = await live.evaluate(() => window.__played), pa = await admin.evaluate(() => window.__played);
+    t('two pages in one browser: the big screen speaks every moment', pl >= 3 && asks.live === 3, JSON.stringify({ pl, pa, asks }));
+    t('…and the admin page stays quiet (no voices on top of each other)', pa === 0 && asks.admin === 0, JSON.stringify({ pl, pa, asks }));
+    await ctx.close();
+  }
+
+  // a fast bidding war on one screen: only the newest line is heard, never two at once
+  {
+    const ctx = await b.newContext();
+    await ctx.addInitScript(() => {
+      localStorage.setItem('zeno:sound', JSON.stringify({ sfx: false, voice: true, style: 'kbc' }));
+      window.__live = 0; window.__maxLive = 0;
+      const start = AudioBufferSourceNode.prototype.start, stop = AudioBufferSourceNode.prototype.stop;
+      AudioBufferSourceNode.prototype.start = function (...a) {
+        if (this.buffer && this.buffer.duration > 0.2) { window.__live++; window.__maxLive = Math.max(window.__maxLive, window.__live); this.__counted = true; this.addEventListener('ended', () => { if (this.__counted) { this.__counted = false; window.__live--; } }); }
+        return start.apply(this, a);
+      };
+      AudioBufferSourceNode.prototype.stop = function (...a) { if (this.__counted) { this.__counted = false; window.__live--; } return stop.apply(this, a); };
+      Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: { getVoices: () => [], cancel() {}, addEventListener() {}, speak() {} } });
+    });
+    const p = await ctx.newPage();
+    await p.goto(`${BASE}/e/${c.code}/live`); await p.waitForSelector('text=Join code'); await sleep(500);
+    const s3 = await api.state(c.code, c.adminKey);
+    const tokB = s3.secrets.captainTokens[s3.captains[1].id];
+    const bidAs = (tk, amount) => fetch(`${BASE}/api/events/${c.code}/cmd`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-key': tk }, body: JSON.stringify({ action: 'bid', params: amount ? { amount } : {} }) });
+    for (let i = 0; i < 4; i++) { await bidAs(i % 2 ? tok : tokB); await sleep(120); }
+    await sleep(2000);
+    t('rapid bids never play two voices at the same time', (await p.evaluate(() => window.__maxLive)) === 1, String(await p.evaluate(() => window.__maxLive)));
+    await ctx.close();
+  }
   await b.close();
   done('Studio voices', errors);
 })().catch((e) => { console.error('CRASH', e); process.exit(2); });

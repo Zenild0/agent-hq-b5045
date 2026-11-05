@@ -26,8 +26,13 @@ export interface TtsConfig {
 /** Voices to try, best first. If Google does not offer one (names change), the next is used. */
 export const DEFAULT_VOICES: TtsConfig['voices'] = {
   kbc: ['hi-IN-Chirp3-HD-Charon', 'hi-IN-Chirp3-HD-Fenrir', 'hi-IN-Neural2-B', 'hi-IN-Wavenet-C', 'hi-IN-Standard-B'],
+  cricket: ['hi-IN-Chirp3-HD-Puck', 'hi-IN-Chirp3-HD-Orus', 'hi-IN-Neural2-C', 'hi-IN-Wavenet-B', 'hi-IN-Standard-C'],
   wwe: ['en-US-Chirp3-HD-Fenrir', 'en-US-Chirp3-HD-Puck', 'en-US-Neural2-J', 'en-US-Wavenet-D', 'en-US-Standard-D'],
   mk: ['en-US-Chirp3-HD-Charon', 'en-US-Chirp3-HD-Algenib', 'en-US-Neural2-D', 'en-US-Wavenet-B', 'en-US-Standard-B'],
+  trailer: ['en-US-Chirp3-HD-Iapetus', 'en-US-Chirp3-HD-Orus', 'en-US-Neural2-D', 'en-US-Wavenet-D', 'en-US-Standard-B'],
+  show: ['en-US-Chirp3-HD-Zephyr', 'en-US-Chirp3-HD-Aoede', 'en-US-Neural2-F', 'en-US-Wavenet-F', 'en-US-Standard-C'],
+  velvet: ['en-US-Chirp3-HD-Sulafat', 'en-US-Chirp3-HD-Kore', 'en-US-Neural2-H', 'en-US-Wavenet-H', 'en-US-Standard-E'],
+  assistant: ['en-IN-Chirp3-HD-Kore', 'en-IN-Chirp3-HD-Aoede', 'en-IN-Neural2-A', 'en-IN-Wavenet-A', 'en-IN-Standard-A'],
 };
 
 const lang = (voice: string) => voice.split('-').slice(0, 2).join('-');
@@ -42,7 +47,8 @@ export function ttsConfigFromEnv(env: NodeJS.ProcessEnv, dataDir: string): TtsCo
     provider,
     dir: path.join(dataDir, 'tts-cache'),
     monthlyChars: Math.max(0, Number(env.TTS_MONTHLY_CHARS ?? 300_000) || 0),
-    voices: { kbc: list(env.TTS_VOICE_KBC, DEFAULT_VOICES.kbc), wwe: list(env.TTS_VOICE_WWE, DEFAULT_VOICES.wwe), mk: list(env.TTS_VOICE_MK, DEFAULT_VOICES.mk) },
+    // TTS_VOICE_KBC, TTS_VOICE_SHOW, …: a voice of the owner's choice goes first for that host
+    voices: Object.fromEntries(Object.entries(DEFAULT_VOICES).map(([style, d]) => [style, list(env[`TTS_VOICE_${style.toUpperCase()}`], d)])) as TtsConfig['voices'],
   };
 }
 

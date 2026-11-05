@@ -225,9 +225,11 @@ By default everything is free. These features switch on only when **you** add a 
 
 If the key ever leaks: edit the `DEV_KEY=` line with `sudo nano /etc/zenobid.env` and restart the service.
 
-## Part 10 — Studio announcer voices (WWE / KBC / Mortal Kombat)
+## Part 10 — Studio announcer voices (the hosts)
 
-Without this, the announcer uses whatever voices the watching computer has installed, and those can sound robotic. With it, **your server** makes each line with Google's natural "neural" voices (a deep male Hindi host for KBC, an arena announcer for WWE, a dark narrator for Mortal Kombat) and the big screen plays it with an echo that suits the style. These are original voices, not copies of any real person.
+Without this, the announcer uses whatever voices the watching computer has installed, and those can sound robotic. With it, **your server** makes each line with Google's natural "neural" voices (a deep male Hindi host for KBC, an arena announcer for WWE, a dark narrator for Mortal Kombat) and the big screen plays it with an echo that suits the style. There are eight hosts to pick from on the big screen: WWE hype, KBC host (Hindi), Mortal Kombat, Game show host, Velvet, Movie trailer, Cricket commentary (Hindi) and Smart assistant. These are original voices, not copies of any real person.
+
+**Change a host's voice:** Google has many voices. To try another one for a host, add a line like `TTS_VOICE_KBC=hi-IN-Chirp3-HD-Orus` (or `TTS_VOICE_SHOW=…`, `TTS_VOICE_CRICKET=…`) to `/etc/zenobid.env` and restart. On your own computer, use `set TTS_VOICE_KBC=hi-IN-Chirp3-HD-Orus` before `npm run dev`.
 
 **New words:** an **API** is a door one program uses to ask another for something (here: "please say this sentence"). An **API key** is the password for that door. **Text-to-Speech (TTS)** turns written words into a voice recording.
 

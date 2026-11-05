@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { STYLES, announce, hindiMoney, isStyle, type AnnouncerStyle, type SpeechKind } from './announcer';
+import { SAMPLE_CTX, SPEECH_KINDS, STYLES, announce, heatOf, hindiMoney, isStyle, momentCtx, type AnnouncerStyle, type SpeechKind } from './announcer';
 import { pickStyleVoice } from './voice';
 import { spokenMoney } from './money';
 
@@ -62,7 +62,7 @@ test('the styles sound different: pace, depth, wording and who is speaking', () 
   assert.match(announce('kbc', 'call', { ...ctx, call: 3 })!.text, /तीसरी बार/);
   assert.equal(announce('classic', 'call', { ...ctx, call: 1 })!.text, 'Going once!');
   // the lines vary from one bid to the next, but a given bid always reads the same
-  const texts = new Set([0, 1, 2, 3].map((v) => announce('wwe', 'bid', { ...ctx, variant: v })!.text));
+  const texts = new Set([0, 1, 2, 3, 4, 5].map((v) => announce('wwe', 'bid', { ...ctx, bids: 8, variant: v })!.text));
   assert.ok(texts.size >= 3);
   assert.equal(announce('wwe', 'bid', ctx)!.text, announce('wwe', 'bid', ctx)!.text);
 });
@@ -87,4 +87,87 @@ test('picking a voice for a style: a deep male English voice, or a Hindi voice, 
   assert.equal(pickStyleVoice([v('Samantha', 'en-US')], 'hi', 'male'), undefined);
   assert.equal(pickStyleVoice([], 'en', 'male'), undefined);
   assert.equal(isStyle('kbc') && !isStyle('nope') && !isStyle(undefined), true);
+});
+
+test('the host gets more excited as a bidding war heats up', () => {
+  assert.equal(heatOf({ bids: 1 }), 0);
+  assert.equal(heatOf({ bids: 3 }), 1);
+  assert.equal(heatOf({ bids: 5 }), 2);
+  assert.equal(heatOf({ bids: 9 }), 3);
+  assert.equal(heatOf({ bids: 1, amount: 50 * L, base: 10 * L }), 1, 'a price far above the base adds excitement');
+  for (const s of STYLES.filter((x) => x.id !== 'classic')) {
+    const at = (bids: number) => new Set([0, 1, 2, 3, 4, 5].map((variant) => announce(s.id, 'bid', { team: 'Red', player: 'Asha', amount: 40 * L, bids, fmt: inr, variant })!.text));
+    const calm = at(1), war = at(9);
+    for (const t of war) assert.ok(!calm.has(t), `${s.id}: a bidding war does not sound like the first bid: ${t}`);
+  }
+  // an outbid team is named
+  const rivalLines = [0, 1, 2, 3, 4, 5].map((variant) => announce('wwe', 'bid', { team: 'Red', rival: 'Blue', amount: 40 * L, bids: 3, fmt: inr, variant })!.text);
+  assert.ok(rivalLines.some((t) => t.includes('Blue')), rivalLines.join(' | '));
+  // a hot sale sounds different from a quiet one
+  const sold = (bids: number) => announce('kbc', 'sold', { team: 'Red', player: 'Asha', amount: 40 * L, bids, fmt: inr, variant: 0 })!.text;
+  assert.notEqual(sold(1), sold(8));
+  assert.match(sold(8), /ज़बरदस्त मुक़ाबला/);
+});
+
+test('the host reacts: record price, a bargain, all in, and what a team has left', () => {
+  const base = { team: 'Red', player: 'Asha', fmt: inr, variant: 0 };
+  const rec = announce('wwe', 'sold', { ...base, amount: 90 * L, bids: 4, record: true, left: 2 * CR + 10 * L })!.text;
+  assert.match(rec, /BIGGEST buy of the night/);
+  assert.match(rec, /Red has 2 crore 10 lakh rupees left/);
+  const steal = announce('kbc', 'sold', { ...base, amount: 10 * L, base: 10 * L, bids: 1, left: 5 * CR })!;
+  assert.match(steal.text, /सस्ता सौदा/);
+  assert.match(steal.text, /पाँच करोड़ रुपये/);
+  assert.match(steal.alt!, /sasta sauda.*paanch crore rupaye/);
+  assert.match(announce('cricket', 'bid', { ...base, amount: 3 * CR, bids: 4, allIn: true })!.text, /पूरा पर्स/);
+  assert.match(announce('assistant', 'sold', { ...base, amount: 30 * L, bids: 2, squad: 5, left: CR })!.text, /player number 5 for Red\. Red now has 1 crore rupees left/);
+});
+
+test('the chosen host runs every part of the auction, in its own language', () => {
+  for (const s of STYLES.filter((x) => x.id !== 'classic')) {
+    for (const kind of SPEECH_KINDS) {
+      const l = announce(s.id, kind, { team: 'Red', player: 'Asha', amount: 40 * L, call: 2, seconds: 300, round: 2, fmt: inr, variant: 1 });
+      assert.ok(l && l.text.length > 5, `${s.id}/${kind}`);
+      assert.equal(l.lang, s.lang);
+      if (s.lang === 'hi') assert.ok(l.alt && !/[ऀ-ॿ]/.test(l.alt), `${s.id}/${kind} has a Latin-letter version`);
+      assert.ok(!/undefined|NaN|\$\{/.test(l.text + (l.alt ?? '')), `${s.id}/${kind}: ${l.text}`);
+    }
+    assert.match(announce(s.id, 'break', { seconds: 300, fmt: inr, variant: 0 })!.text, s.lang === 'hi' ? /पाँच मिनट/ : /5 minutes/, s.id);
+    assert.match(announce(s.id, 'round', { round: 2, fmt: inr, variant: 0 })!.text, /2/, s.id);
+  }
+  // classic keeps its own plain break announcements (said by the screen, not the host)
+  assert.equal(announce('classic', 'break', { seconds: 300, fmt: inr, variant: 0 }), null);
+  assert.ok(isStyle('show') && isStyle('velvet') && isStyle('trailer') && isStyle('cricket') && isStyle('assistant'));
+  // the "Hear it" sample is a bidding war, so the excitement is heard
+  assert.equal(heatOf(SAMPLE_CTX), 3);
+});
+
+test('a moment of the auction is read the same way by the server and the screens', () => {
+  const src = {
+    players: [
+      { id: 'p1', name: 'Asha', basePrice: 10 * L, status: 'sold', teamId: 'a', price: 50 * L },
+      { id: 'p2', name: 'Ben', basePrice: 10 * L, status: 'sold', teamId: 'b', price: 30 * L },
+      { id: 'p3', name: 'Cal', basePrice: 0, status: 'sold', teamId: 'a', price: 80 * L },
+    ],
+    captains: [{ id: 'a', team: 'Red', budget: 2 * CR }, { id: 'b', team: 'Blue', budget: 2 * CR }],
+    settings: { ...inr, defaultBasePrice: 5 * L },
+    live: { bids: [{ captainId: 'b', amount: 70 * L }, { captainId: 'a', amount: 80 * L }] },
+    round: 1,
+  };
+  const bid = momentCtx(src, { seq: 9, type: 'bid', playerId: 'p3', captainId: 'a', amount: 80 * L });
+  assert.equal(bid.team, 'Red');
+  assert.equal(bid.rival, 'Blue');
+  assert.equal(bid.bids, 2);
+  assert.equal(bid.base, 5 * L, 'no base price of its own: the default is used');
+  const call = momentCtx(src, { seq: 10, type: 'call', call: 1 });
+  assert.equal(call.team, 'Red');
+  assert.equal(call.amount, 80 * L, 'a call repeats the top bid');
+  const sold = momentCtx(src, { seq: 11, type: 'sold', playerId: 'p3', captainId: 'a', amount: 80 * L });
+  assert.equal(sold.left, 2 * CR - 130 * L);
+  assert.equal(sold.squad, 2);
+  assert.equal(sold.record, true);
+  const reveal = momentCtx(src, { seq: 12, type: 'reveal', playerId: 'p1' });
+  assert.equal(reveal.amount, 10 * L);
+  const allIn = momentCtx({ ...src, live: { bids: [{ captainId: 'b', amount: 60 * L }, { captainId: 'a', amount: 65 * L }] } }, { seq: 13, type: 'bid', playerId: 'p3', captainId: 'a', amount: 65 * L });
+  assert.equal(allIn.allIn, true, 'Red has 70 lakh free; 65 lakh is nearly all of it');
+  assert.equal(momentCtx(src, { seq: 14, type: 'break', amount: 300 }).seconds, 300);
 });

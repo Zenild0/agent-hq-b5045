@@ -18,7 +18,7 @@ export default function Live({ forceBoard = false }: { forceBoard?: boolean }) {
   const code = useParams().code!.toUpperCase();
   const room = useRoom(code, null);
   const [prefs, updatePrefs] = useSoundPrefs();
-  useAuctionSound(room.snap, prefs);
+  useAuctionSound(room.snap, prefs, { primary: true }); // the big screen is the announcer when several pages are open
   const tempo = useTempo(room.snap, room.serverNow);
   useEventAppearance(room.snap?.settings);
 

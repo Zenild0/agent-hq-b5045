@@ -10,7 +10,7 @@ import { buildArchive, restoreArchive } from './archive';
 import { clientIp } from './net';
 import { currentGate, devEnabled, getPlatform, isDevKey, refreshAccess, savePlatform } from './platform';
 import { Tts, ttsConfigFromEnv } from './tts';
-import { announce, isStyle, type AnnouncerStyle, type SpeechKind } from '../shared/announcer';
+import { SAMPLE_CTX, announce, isSpeechKind, isStyle, momentCtx, type AnnouncerStyle } from '../shared/announcer';
 import { DATA_DIR, deleteEventFiles, flushAll, loadAll, readUpload, saveSafetyCopy, saveSoon, UPLOADS_DIR, writeUploads } from './persist';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -448,7 +448,6 @@ if (tts) {
 // New sentences made per auction per hour (anything already made is free and not counted).
 const VOICE_PER_HOUR = Number(process.env.TTS_PER_AUCTION_HOUR ?? 400);
 const voiceMade = new Map<string, { n: number; reset: number }>();
-const SAY_KINDS = new Set<SpeechKind>(['reveal', 'bid', 'call', 'sold', 'unsold']);
 
 async function sendVoice(res: Response, style: Exclude<AnnouncerStyle, 'classic'>, text: string, rate: number | undefined, budgetKey: string) {
   if (!tts) throw new AuctionError('Studio voices are not switched on', 404);
@@ -470,7 +469,7 @@ async function sendVoice(res: Response, style: Exclude<AnnouncerStyle, 'classic'
 }
 
 const styleOf = (v: unknown) => {
-  if (!isStyle(v) || v === 'classic') throw new AuctionError('Choose WWE, KBC or Mortal Kombat', 400);
+  if (!isStyle(v) || v === 'classic') throw new AuctionError('Choose one of the studio hosts (not Classic)', 400);
   return v;
 };
 
@@ -481,11 +480,8 @@ app.get('/api/events/:code/voice/:seq', (req, res, next) => {
     const store = findEvent(req);
     const d = store.data;
     const ev = d.live.lastEvent;
-    if (!ev || ev.seq !== Number(req.params.seq) || !SAY_KINDS.has(ev.type as SpeechKind)) throw new AuctionError('That moment has passed', 404);
-    const player = d.players.find((p) => p.id === ev.playerId);
-    const team = d.captains.find((c) => c.id === ev.captainId);
-    const amount = ev.type === 'reveal' ? (player ? player.basePrice || d.settings.defaultBasePrice : 0) : ev.amount;
-    const line = announce(style, ev.type as SpeechKind, { team: team?.team, player: player?.name, amount, call: ev.call, fmt: d.settings, variant: ev.seq });
+    if (!ev || ev.seq !== Number(req.params.seq) || !isSpeechKind(ev.type)) throw new AuctionError('That moment has passed', 404);
+    const line = announce(style, ev.type, momentCtx(d, ev));
     if (!line) throw new AuctionError('Nothing to say', 404);
     await sendVoice(res, style, line.text, line.rate, d.code);
   })().catch(next);
@@ -495,7 +491,7 @@ app.get('/api/events/:code/voice/:seq', (req, res, next) => {
 app.get('/api/voice-sample/:style', (req, res, next) => {
   (async () => {
     const style = styleOf(req.params.style);
-    const line = announce(style, 'bid', { team: 'Thunder Hawks', amount: 12_000_000, fmt: { symbol: '₹', moneyStyle: 'indian' }, variant: 0 })!;
+    const line = announce(style, 'bid', SAMPLE_CTX)!;
     await sendVoice(res, style, line.text, line.rate, 'sample');
   })().catch(next);
 });

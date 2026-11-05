@@ -86,7 +86,7 @@ async function session(browser, style, voices, code) {
   t('the style picker is hidden until the announcer is on', await p.locator('select[aria-label="Announcer style"]').count() === 0);
   await p.click('button[title="Announcer voice"]'); await sleep(300);
   const sel = p.locator('select[aria-label="Announcer style"]');
-  t('the picker offers all four styles', await sel.count() === 1 && (await sel.locator('option').allInnerTexts()).join('|').match(/Classic.*WWE hype.*KBC host.*Mortal Kombat/) !== null);
+  t('the picker offers the styles', await sel.count() === 1 && (await sel.locator('option').allInnerTexts()).join('|').match(/Classic.*WWE hype.*KBC host.*Mortal Kombat/) !== null);
   await p.evaluate(() => { window.__said = []; });
   await sel.selectOption('kbc'); await sleep(900);
   const heard = await p.evaluate(() => window.__said);
