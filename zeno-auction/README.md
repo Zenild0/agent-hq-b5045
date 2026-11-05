@@ -30,7 +30,7 @@ auction is its own isolated room, so the same deployment can serve any number of
 | **Rounds** | Unsold players go back into the pool when you start the next round. Top up purses in between. |
 | **Joining midway** | Bring in an auction that is already half done: paste a list with `team` + `price` columns (or use **Assign** on a player) and the price is deducted from that team's purse. Set a team's purse to whatever it has left. |
 | **Squad rules** | Optional min/max squad size, plus a "keep money back for the minimum squad" rule so nobody can overspend into an impossible squad. |
-| **Sound** | Bid pings, wood-block knocks for each call, a gavel on SOLD, and an optional spoken announcer ("Thunder Hawks, one crore twenty lakh"). Each browser opts in for itself. |
+| **Sound & announcer styles** | Bid pings, wood-block knocks for each call, a gavel on SOLD, and an optional spoken announcer ("Thunder Hawks, one crore twenty lakh"). Pick a style on each device: **Classic**, **WWE hype** (punchy ring announcer), **KBC host** (slow, dramatic, in Hindi words — "एक करोड़ बीस लाख रुपये") or **Mortal Kombat** (deep narrator with gongs and war drums). Styles use the voices installed on the device (a Hindi voice if there is one, otherwise the same words in Latin letters); they are styles, not recordings of anyone. Each browser opts in for itself. |
 | **Currencies** | ₹ (lakh / crore), $ € £ (K / M) or plain points. Type amounts as `12cr`, `5L`, `250k`, `1.5m`. |
 
 ## Running an auction (5 minutes)

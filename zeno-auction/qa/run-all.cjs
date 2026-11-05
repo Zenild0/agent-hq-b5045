@@ -13,6 +13,7 @@ const suites = [
   ['Save a copy / restore from file / delete an auction', 'qa-ui4.cjs'],
   ['Payments: price, UPI request, approval, signed unlock (needs DEV_KEY on the server)', 'qa-pay.cjs'],
   ['Look & feel, sorting, brand, unlock dialog, developer page (needs DEV_KEY)', 'qa-ui5.cjs'],
+  ['Announcer styles: WWE / KBC (Hindi) / Mortal Kombat, spoken bids, voice fallbacks', 'qa-ui6.cjs'],
 ];
 let failed = 0;
 for (const [title, file] of suites) {

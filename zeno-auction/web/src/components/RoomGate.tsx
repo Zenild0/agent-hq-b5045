@@ -2,7 +2,8 @@ import { Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { Room } from '../lib/useRoom';
-import { sfx, speak, useVoices, type SoundPrefs } from '../lib/sound';
+import { STYLES, isStyle } from '../../../shared/announcer';
+import { previewAnnouncer, sfx, speak, useVoices, type SoundPrefs } from '../lib/sound';
 import { ModeToggle } from './Brand';
 import { FullScreenMessage, Logo } from './ui';
 
@@ -91,7 +92,32 @@ export function SoundControls({ prefs, update }: { prefs: SoundPrefs; update: (p
         {prefs.voice ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
         <span className="hidden sm:inline">Announcer</span>
       </button>
-      {prefs.voice && voices.length > 1 && (
+      {prefs.voice && (
+        <select
+          aria-label="Announcer style"
+          title={STYLES.find((x) => x.id === (prefs.style ?? 'classic'))?.hint ?? 'How the announcer talks'}
+          className="input !w-auto max-w-[200px] !py-2 !text-xs"
+          value={prefs.style ?? 'classic'}
+          onChange={(e) => {
+            const style = isStyle(e.target.value) ? e.target.value : 'classic';
+            update({ style });
+            setTimeout(() => previewAnnouncer(style, prefs.voiceName), 80);
+          }}
+        >
+          {STYLES.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.label}
+              {s.lang === 'hi' ? ' (Hindi)' : s.id === 'classic' ? '' : ' (English)'}
+            </option>
+          ))}
+        </select>
+      )}
+      {prefs.voice && (prefs.style ?? 'classic') !== 'classic' && (
+        <button className="btn-ghost !px-3 !py-2 !text-xs" title="Play a sample bid in this style" onClick={() => previewAnnouncer(prefs.style ?? 'classic', prefs.voiceName)}>
+          ▶ Hear it
+        </button>
+      )}
+      {prefs.voice && (prefs.style ?? 'classic') === 'classic' && voices.length > 1 && (
         <select
           aria-label="Announcer voice"
           title="Choose the announcer's voice"

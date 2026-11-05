@@ -25,6 +25,7 @@ Run one script on its own with `node qa/qa-api.cjs`.
 | `qa-ui4.cjs` | Download the whole auction file, restore it from the create screen (and clear messages for wrong files), delete with typed confirmation, big screen told "deleted" |
 | `qa-pay.cjs` | Going live: locked until paid or granted, practice always free, UPI reference request, developer approve / reject / grant / take back, live unlock on the admin screen, signed unlock surviving "Restore from file" (forgeries ignored), price 0 = free, developer-key throttle. Needs `DEV_KEY` on the server |
 | `qa-ui5.cjs` | Theme picker (29 themes), light/dark switch (per device, organiser default), brand logo / banner / "Powered by ZenoBid", team-list sorting (captain's own, auctioneer's for the big screen), unlock dialog with QR, developer page, Terms page. Needs `DEV_KEY` |
+| `qa-ui6.cjs` | The announcer styles: every bid, call and sale is spoken with team and amount in each style (WWE, KBC in Hindi words, Mortal Kombat); pace, depth and voice per style; fallback to Latin-letter Hindi when a device has no Hindi voice; the style picker and "Hear it". Speech is replaced by a recorder, so no audio device is needed |
 | `qa-multitab.cjs N` | N tabs in one browser, then a bid (the regression test for the "6 tabs" bug) |
 
 The engine rules are also covered by `npm test`, including a randomised stress test

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatMoney, spokenMoney } from '../../../shared/money';
-import { englishVoices, isFemaleVoice, pickVoice } from '../../../shared/voice';
+import { announce, isStyle, type AnnouncerStyle, type SpeechLine } from '../../../shared/announcer';
+import { englishVoices, isFemaleVoice, pickStyleVoice, pickVoice } from '../../../shared/voice';
 import type { Snapshot } from '../../../shared/types';
 import { fmtDuration } from './useCountdown';
 
@@ -78,6 +79,44 @@ export const sfx = {
   },
 };
 
+// ---- sound effects for the announcer styles --------------------------------------------------------
+
+const bell = (delay = 0, f = 1760) => {
+  tone(f, 0.9, 'triangle', 0.25, delay);
+  tone(f * 1.5, 0.6, 'sine', 0.12, delay);
+};
+const gong = (delay = 0) => {
+  tone(65, 1.6, 'sine', 0.55, delay, 38);
+  tone(130, 1.1, 'triangle', 0.18, delay + 0.02, 70);
+  noise(0.5, 0.35, delay);
+};
+type FxSet = { bid: () => void; call: (n: number) => void; reveal: () => void; sold: () => void; unsold: () => void };
+/** Arena bells and horns / a quiz-show heartbeat / gongs and war drums. All made in the browser: no recordings. */
+const styleSfx: Record<Exclude<AnnouncerStyle, 'classic'>, FxSet> = {
+  wwe: {
+    bid: () => (bell(), noise(0.25, 0.18)),
+    call: (n) => Array.from({ length: n }, (_, i) => bell(i * 0.28, 1400)),
+    reveal: () => ([220, 277, 330].forEach((f) => tone(f, 0.6, 'sawtooth', 0.12)), noise(0.6, 0.15)),
+    sold: () => (bell(0), bell(0.25), bell(0.5), noise(0.7, 0.3, 0.1)),
+    unsold: () => tone(300, 0.7, 'sawtooth', 0.14, 0, 100),
+  },
+  kbc: {
+    bid: () => (tone(98, 0.5, 'sine', 0.35, 0, 70), tone(196, 0.35, 'triangle', 0.12, 0.02)),
+    call: (n) => Array.from({ length: n }, (_, i) => (tone(60, 0.18, 'sine', 0.5, i * 0.5, 45), tone(60, 0.18, 'sine', 0.35, i * 0.5 + 0.22, 45))),
+    reveal: () => [262, 330, 392, 523].forEach((f, i) => tone(f, 0.4, 'triangle', 0.16, i * 0.1)),
+    sold: () => ([262, 330, 392, 523].forEach((f, i) => tone(f, 0.5, 'triangle', 0.18, i * 0.09)), tone(131, 0.9, 'sine', 0.3)),
+    unsold: () => tone(147, 0.8, 'sine', 0.25, 0, 98),
+  },
+  mk: {
+    bid: () => gong(),
+    call: (n) => Array.from({ length: n }, (_, i) => (tone(75, 0.2, 'sine', 0.7, i * 0.26, 35), noise(0.08, 0.3, i * 0.26))),
+    reveal: () => (gong(), tone(98, 0.8, 'sawtooth', 0.15, 0.1, 49)),
+    sold: () => (gong(), [196, 147, 98, 65].forEach((f, i) => tone(f, 0.45, 'sawtooth', 0.18, 0.4 + i * 0.18)), noise(0.9, 0.4)),
+    unsold: () => (tone(80, 1.0, 'sawtooth', 0.2, 0, 40), noise(0.4, 0.2)),
+  },
+};
+const effects = (style: AnnouncerStyle): FxSet => (style === 'classic' ? sfx : styleSfx[style]);
+
 // ---- the announcer's voice: a clear female English voice by default, changeable ----------------
 
 type Voice = SpeechSynthesisVoice;
@@ -115,6 +154,41 @@ export function speak(text: string, preferredVoice?: string) {
   synth.speak(u);
 }
 
+/**
+ * Speaks one line of a style. Each style has its own pace and depth, and a male voice if the device has one.
+ * A Hindi line needs a Hindi voice; if there is none, the same words in Latin letters are read by an Indian-English voice.
+ */
+export function speakLine(line: SpeechLine) {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+  const synth = window.speechSynthesis;
+  synth.cancel();
+  const voices = synth.getVoices();
+  let text = line.text;
+  let lang: 'en' | 'hi' = line.lang;
+  let voice = pickStyleVoice(voices, lang, line.gender ?? 'male');
+  if (line.lang === 'hi' && !voice) {
+    text = line.alt ?? line.text;
+    lang = 'en';
+    voice = pickStyleVoice(voices.filter((v) => /en[-_]in/i.test(v.lang)).length ? voices.filter((v) => /en[-_]in/i.test(v.lang)) : voices, 'en', line.gender ?? 'male');
+  }
+  const u = new SpeechSynthesisUtterance(text);
+  if (voice) u.voice = voice;
+  u.lang = voice?.lang ?? (lang === 'hi' ? 'hi-IN' : 'en-IN');
+  u.rate = line.rate ?? 1;
+  u.pitch = line.pitch ?? 1;
+  synth.speak(u);
+}
+
+/** What the "Hear it" button plays: a bid in the chosen style. */
+export function previewAnnouncer(style: AnnouncerStyle, voiceName?: string) {
+  const fmt = { symbol: '₹', moneyStyle: 'indian' as const };
+  const line = announce(style, 'bid', { team: 'Thunder Hawks', amount: 12_000_000, fmt, variant: 0 });
+  effects(style).bid();
+  if (!line) return;
+  if (style === 'classic') speak(line.text, voiceName);
+  else setTimeout(() => speakLine(line), 350);
+}
+
 // ---------------------------------------------------------------------------------------------
 
 export interface SoundPrefs {
@@ -122,6 +196,8 @@ export interface SoundPrefs {
   voice: boolean;
   /** the announcer voice the person picked (empty = best female voice) */
   voiceName?: string;
+  /** how the announcer talks: classic, WWE hype, KBC host (Hindi) or Mortal Kombat */
+  style?: AnnouncerStyle;
 }
 
 const PREF_KEY = 'zeno:sound';
@@ -129,7 +205,8 @@ const PREF_KEY = 'zeno:sound';
 export function useSoundPrefs(defaults: SoundPrefs = { sfx: false, voice: false }) {
   const [prefs, setPrefs] = useState<SoundPrefs>(() => {
     try {
-      return { ...defaults, ...JSON.parse(localStorage.getItem(PREF_KEY) ?? '{}') };
+      const saved = JSON.parse(localStorage.getItem(PREF_KEY) ?? '{}');
+      return { ...defaults, ...saved, style: isStyle(saved.style) ? saved.style : 'classic' };
     } catch {
       return defaults;
     }
@@ -165,31 +242,42 @@ export function useAuctionSound(snap: Snapshot | null, prefs: SoundPrefs) {
     const fmt = snap.settings;
     const player = snap.players.find((p) => p.id === ev.playerId);
     const team = snap.captains.find((c) => c.id === ev.captainId);
+    const style = prefs.style ?? 'classic';
     const say = (text: string) => prefs.voice && speak(text, prefs.voiceName);
+    const ctx = { team: team?.team, player: player?.name, amount: ev.amount, call: ev.call, fmt, variant: ev.seq };
+    /** speaks the style's line for this kind of moment (classic keeps the original voice) */
+    const sayStyled = (kind: Parameters<typeof announce>[1], amount = ev.amount) => {
+      if (!prefs.voice) return;
+      const line = announce(style, kind, { ...ctx, amount });
+      if (!line) return;
+      if (style === 'classic') speak(line.text, prefs.voiceName);
+      else speakLine(line);
+    };
+    const fx = prefs.sfx ? effects(style) : null;
 
     switch (ev.type) {
       case 'spin':
-        if (prefs.sfx) sfx.reveal();
+        fx?.reveal();
         break;
       case 'reveal':
-        if (prefs.sfx) sfx.reveal();
-        if (player) say(`Up next, ${player.name}. Base price ${spokenMoney(player.basePrice || snap.settings.defaultBasePrice, fmt)}.`);
+        fx?.reveal();
+        if (player) sayStyled('reveal', player.basePrice || snap.settings.defaultBasePrice);
         break;
       case 'bid':
-        if (prefs.sfx) sfx.bid();
-        if (team && ev.amount) say(`${team.team}, ${spokenMoney(ev.amount, fmt)}`);
+        fx?.bid();
+        sayStyled('bid'); // "who bid how much"
         break;
       case 'call':
-        if (prefs.sfx) sfx.call(ev.call ?? 1);
-        say(['', 'Going once!', 'Going twice!', 'Going thrice! Last call!'][ev.call ?? 1]);
+        fx?.call(ev.call ?? 1);
+        sayStyled('call');
         break;
       case 'sold':
-        if (prefs.sfx) sfx.sold();
-        if (player && team && ev.amount) say(`Sold! ${player.name} goes to ${team.team} for ${spokenMoney(ev.amount, fmt)}`);
+        fx?.sold();
+        sayStyled('sold');
         break;
       case 'unsold':
-        if (prefs.sfx) sfx.unsold();
-        if (player) say(`${player.name} goes unsold`);
+        fx?.unsold();
+        sayStyled('unsold');
         break;
       case 'break':
         if (prefs.sfx) sfx.reveal();

@@ -71,10 +71,11 @@ const SAFETY_DIR = path.join(DATA_DIR, 'safety');
  * A full copy of one auction taken just before something that overwrites a lot (replacing the player list from a file).
  * Kept in DATA_DIR/safety (so the nightly backup includes it); the newest few per auction are kept.
  */
+let safetySeq = 0;
 export function saveSafetyCopy(store: Store, keep = 5): string {
   mkdirSync(SAFETY_DIR, { recursive: true });
   const stamp = new Date().toISOString().replace(/[-:.]/g, ''); // to the millisecond, so two copies never share a name
-  const file = path.join(SAFETY_DIR, `${store.data.code}-${stamp}.json`);
+  const file = path.join(SAFETY_DIR, `${store.data.code}-${stamp}-${String(safetySeq++ % 10000).padStart(4, '0')}.json`);
   writeFileSync(file, JSON.stringify(store));
   const mine = readdirSync(SAFETY_DIR).filter((f) => f.startsWith(`${store.data.code}-`)).sort();
   for (const old of mine.slice(0, Math.max(0, mine.length - keep))) rmSync(path.join(SAFETY_DIR, old), { force: true });
