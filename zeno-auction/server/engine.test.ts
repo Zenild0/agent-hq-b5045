@@ -650,3 +650,11 @@ test('"Replace everything" is refused while a player is on the block, and needs 
   assert.equal(s.data.live.phase, 'idle');
   assert.equal(s.data.live.playerId, null);
 });
+
+test('the custom last call is kept short and plain', async () => {
+  const { mergeSettings, DEFAULT_SETTINGS } = await import('./engine');
+  assert.equal(mergeSettings(DEFAULT_SETTINGS, { lastCall: '  Finish him!  ' }).lastCall, 'Finish him!');
+  assert.equal(mergeSettings(DEFAULT_SETTINGS, { lastCall: '<b>x</b>{y}\u0007' }).lastCall, 'bx/by');
+  assert.equal(mergeSettings(DEFAULT_SETTINGS, { lastCall: 'a'.repeat(200) }).lastCall.length, 80);
+  assert.equal(mergeSettings(DEFAULT_SETTINGS, {}).lastCall, '');
+});

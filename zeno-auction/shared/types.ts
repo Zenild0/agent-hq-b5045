@@ -43,6 +43,8 @@ export interface EventSettings {
   maxSquad: number; // 0 = unlimited
   reserveRule: boolean; // keep enough purse to still reach minSquad
   totalRounds: number;
+  /** The announcer's own words for the last call ("going thrice"), e.g. "Finish him!". Empty = each host's own line. */
+  lastCall: string;
 }
 
 /** 'price' = highest price first; 'added' = in the order they were bought (first bought at the top). */

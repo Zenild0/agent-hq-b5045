@@ -158,12 +158,12 @@ const styleSfx: Record<Exclude<AnnouncerStyle, 'classic'>, FxSet> = {
     unsold: () => tone(65, 1.6, 'sine', 0.3, 0, 40),
   },
   cricket: {
-    // the crack of the bat, and a crowd that roars louder with each bid
-    bid: (h = 0) => (noise(0.04, 0.6), tone(1800, 0.05, 'square', 0.12), noise(0.6 + h * 0.4, 0.08 + h * 0.06, 0.08)),
-    call: (n) => Array.from({ length: n }, (_, i) => (tone(2600, 0.25, 'sine', 0.08, i * 0.35), tone(2900, 0.25, 'sine', 0.06, i * 0.35))),
-    reveal: () => (noise(1.0, 0.12), tone(2800, 0.5, 'sine', 0.06, 0.3)),
-    sold: () => (noise(0.04, 0.6), noise(1.6, 0.3, 0.05), [523, 659, 784].forEach((f, i) => tone(f, 0.3, 'triangle', 0.12, 0.2 + i * 0.1))),
-    unsold: () => (noise(0.9, 0.1), tone(200, 0.7, 'sine', 0.12, 0, 120)),
+    // a stadium: the bat, air horns, the dhol and a crowd that roars louder with each bid
+    bid: (h = 0) => (bat(), horn(0.05, 0.3), crowd(0.08, 0.5 + h * 0.4, 0.08 + h * 0.05), h >= 2 && [0.4, 0.55, 0.7, 0.85].forEach((d, i) => dhol(d, i % 2 === 0))),
+    call: (n) => Array.from({ length: n }, (_, i) => (dhol(i * 0.3), dhol(i * 0.3 + 0.12, false))),
+    reveal: () => (horn(0, 0.18), horn(0.25, 0.18), horn(0.5, 0.45, 262), crowd(0, 1.0, 0.1)),
+    sold: () => (bat(), crowd(0.05, 1.6, 0.28), horn(0.1, 0.25), horn(0.4, 0.25, 262), horn(0.7, 0.6, 311), [0.2, 0.32, 0.44, 0.56, 0.68, 0.8].forEach((d, i) => dhol(d, i % 2 === 0))),
+    unsold: () => (crowd(0, 0.8, 0.08), horn(0, 0.7, 196, 98)),
   },
   assistant: {
     // gentle chimes
@@ -175,6 +175,70 @@ const styleSfx: Record<Exclude<AnnouncerStyle, 'classic'>, FxSet> = {
   },
 };
 const effects = (style: AnnouncerStyle): FxSet => (style === 'classic' ? sfx : styleSfx[style]);
+
+/**
+ * While a host is talking, the music steps aside for one short signature sound (under half a second), so the voice
+ * comes in straight away: a ring bell, a quiz buzzer, a gong hit, a game-show ding, a cinema hit, the crack of a bat…
+ */
+const ringBell = (delay = 0) => (tone(2093, 0.35, 'triangle', 0.22, delay), tone(3136, 0.25, 'sine', 0.1, delay), tone(1046, 0.2, 'square', 0.05, delay));
+const buzzer = (delay = 0, f = 140, dur = 0.28) => (tone(f, dur, 'sawtooth', 0.14, delay), tone(f * 1.5, dur, 'square', 0.06, delay));
+const gongHit = (delay = 0) => (tone(90, 0.45, 'sine', 0.45, delay, 60), noise(0.15, 0.25, delay));
+const ding = (delay = 0, f = 1568) => (tone(f, 0.3, 'sine', 0.2, delay), tone(f * 2, 0.2, 'sine', 0.06, delay));
+/** A stadium air horn ("paaap!"): two brassy notes with a wobble. */
+function horn(delay = 0, dur = 0.35, f = 233, slideTo?: number) {
+  const c = audio();
+  if (!c) return;
+  const t0 = c.currentTime + delay;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(0.16, t0 + 0.02);
+  g.gain.setValueAtTime(0.16, t0 + dur * 0.8);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  const lp = c.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 2400;
+  g.connect(lp).connect(fxOut(c));
+  const lfo = c.createOscillator();
+  const depth = c.createGain();
+  lfo.frequency.value = 7;
+  depth.gain.value = f * 0.012;
+  lfo.connect(depth);
+  for (const mult of [1, 1.26, 1.5]) {
+    const o = c.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(f * mult, t0);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo * mult, t0 + dur);
+    depth.connect(o.frequency);
+    o.connect(g);
+    o.start(t0);
+    o.stop(t0 + dur + 0.05);
+  }
+  lfo.start(t0);
+  lfo.stop(t0 + dur + 0.05);
+}
+/** A dhol beat: a deep "dhum" and a sharp "ta". */
+const dhol = (delay = 0, deep = true) => (deep ? tone(95, 0.22, 'sine', 0.5, delay, 60) : (tone(320, 0.08, 'triangle', 0.18, delay, 220), noise(0.04, 0.22, delay)));
+const crowd = (delay = 0, dur = 0.6, gain = 0.12) => noise(dur, gain, delay);
+const bat = (delay = 0) => (noise(0.03, 0.7, delay), tone(1900, 0.04, 'square', 0.14, delay));
+const cueSfx: Record<Exclude<AnnouncerStyle, 'classic'>, FxSet> = {
+  wwe: { bid: () => ringBell(), call: (n) => Array.from({ length: n }, (_, i) => ringBell(i * 0.13)), reveal: () => (ringBell(), ringBell(0.13)), sold: () => [0, 0.11, 0.22].forEach((d) => ringBell(d)), unsold: () => buzzer(0, 110, 0.4) },
+  kbc: { bid: () => buzzer(0, 220, 0.18), call: (n) => Array.from({ length: n }, (_, i) => tone(60, 0.14, 'sine', 0.5, i * 0.16, 45)), reveal: () => (ding(0, 880), ding(0.12, 1175)), sold: () => [880, 1175, 1568].forEach((f, i) => ding(i * 0.08, f)), unsold: () => buzzer(0, 120, 0.35) },
+  mk: { bid: () => gongHit(), call: (n) => Array.from({ length: n }, (_, i) => (tone(75, 0.14, 'sine', 0.6, i * 0.14, 40), noise(0.05, 0.25, i * 0.14))), reveal: () => gongHit(), sold: () => (gongHit(), gongHit(0.18)), unsold: () => tone(70, 0.4, 'sawtooth', 0.15, 0, 40) },
+  show: { bid: (h = 0) => Array.from({ length: 1 + Math.min(h, 2) }, (_, i) => ding(i * 0.1, 1568 + i * 523)), call: (n) => Array.from({ length: n }, (_, i) => tone(1200, 0.05, 'square', 0.06, i * 0.12)), reveal: () => [784, 1047, 1319].forEach((f, i) => ding(i * 0.07, f)), sold: () => [1047, 1319, 1568, 2093].forEach((f, i) => ding(i * 0.06, f)), unsold: () => buzzer(0, 100, 0.4) },
+  velvet: { bid: () => tone(988, 0.4, 'sine', 0.12), call: (n) => Array.from({ length: n }, (_, i) => tone(659, 0.3, 'sine', 0.1, i * 0.15)), reveal: () => (tone(659, 0.4, 'sine', 0.1), tone(988, 0.4, 'sine', 0.08, 0.08)), sold: () => [659, 831, 988].forEach((f, i) => tone(f, 0.45, 'sine', 0.09, i * 0.07)), unsold: () => tone(392, 0.4, 'sine', 0.1, 0, 330) },
+  trailer: { bid: () => (tone(55, 0.45, 'sawtooth', 0.22, 0, 41), noise(0.12, 0.2)), call: (n) => Array.from({ length: n }, (_, i) => tone(60, 0.14, 'sine', 0.5, i * 0.15, 40)), reveal: () => (tone(49, 0.45, 'sawtooth', 0.22, 0, 37), noise(0.15, 0.2)), sold: () => (tone(49, 0.48, 'sawtooth', 0.25, 0, 33), noise(0.2, 0.3)), unsold: () => tone(65, 0.45, 'sine', 0.3, 0, 40) },
+  cricket: {
+    // crack of the bat + a horn blast; a bidding war brings more horns and the dhol
+    bid: (h = 0) => (bat(), horn(0.04, 0.22 + Math.min(h, 1) * 0.08), h >= 2 && horn(0.3, 0.18, 262), h >= 3 && [0.5, 0.6, 0.7].forEach((d, i) => dhol(d, i % 2 === 0))),
+    call: (n) => Array.from({ length: n }, (_, i) => dhol(i * 0.14, i % 2 === 0)),
+    reveal: () => (horn(0, 0.15), horn(0.2, 0.25)),
+    sold: () => (bat(), horn(0.03, 0.4, 262), crowd(0.03, 0.5, 0.2), dhol(0.1), dhol(0.22, false)),
+    unsold: () => horn(0, 0.45, 196, 110),
+  },
+  assistant: { bid: () => (tone(988, 0.15, 'sine', 0.12), tone(1319, 0.18, 'sine', 0.1, 0.08)), call: (n) => Array.from({ length: n }, (_, i) => tone(784, 0.12, 'sine', 0.1, i * 0.14)), reveal: () => ding(0, 988), sold: () => [659, 988, 1319].forEach((f, i) => tone(f, 0.25, 'sine', 0.1, i * 0.07)), unsold: () => tone(523, 0.3, 'sine', 0.1, 0, 392) },
+};
+/** The full music when nobody is talking; just the signature sound while a host speaks. */
+const fxFor = (style: AnnouncerStyle, voiceOn: boolean): FxSet => (style !== 'classic' && voiceOn ? cueSfx[style] : effects(style));
 
 // ---- the announcer's voice: a clear female English voice by default, changeable ----------------
 
@@ -278,10 +342,10 @@ function impulse(c: AudioContext, seconds: number, decay: number) {
 const STAGE = {
   wwe: { rate: 1.0, verb: 2.2, wet: 0.26, bass: 3, drive: 0, gain: 1.1 },
   kbc: { rate: 1.0, verb: 1.2, wet: 0.16, bass: 4, drive: 0, gain: 1.05 },
-  mk: { rate: 0.9, verb: 3.2, wet: 0.4, bass: 6, drive: 0.3, gain: 1.15 },
+  mk: { rate: 1.0, verb: 3.0, wet: 0.4, bass: 6, drive: 0.3, gain: 1.15 },
   show: { rate: 1.0, verb: 1.0, wet: 0.14, bass: 1, drive: 0, gain: 1.05 },
-  velvet: { rate: 0.97, verb: 1.6, wet: 0.2, bass: 3, drive: 0, gain: 1.0 },
-  trailer: { rate: 0.93, verb: 3.0, wet: 0.34, bass: 7, drive: 0.12, gain: 1.15 },
+  velvet: { rate: 1.0, verb: 1.6, wet: 0.2, bass: 3, drive: 0, gain: 1.0 },
+  trailer: { rate: 1.0, verb: 3.0, wet: 0.34, bass: 7, drive: 0.12, gain: 1.15 },
   cricket: { rate: 1.0, verb: 2.6, wet: 0.24, bass: 2, drive: 0, gain: 1.1 },
   assistant: { rate: 1.0, verb: 0.6, wet: 0.06, bass: 0, drive: 0, gain: 1.0 },
 } as const;
@@ -312,7 +376,7 @@ function playStaged(buf: AudioBuffer, style: Exclude<AnnouncerStyle, 'classic'>,
   const P = STAGE[style];
   const src = c.createBufferSource();
   src.buffer = buf;
-  src.playbackRate.value = P.rate + heat * 0.02; // slower = deeper; the host speeds up as the excitement builds
+  src.playbackRate.value = P.rate; // the server already sets the pace (faster as the excitement builds); no pitch change here
   const bass = c.createBiquadFilter();
   bass.type = 'lowshelf';
   bass.frequency.value = 180;
@@ -382,7 +446,7 @@ function sayLine(line: SpeechLine, url: string, style: Exclude<AnnouncerStyle, '
 export function previewAnnouncer(style: AnnouncerStyle, voiceName?: string) {
   const line = announce(style, 'bid', SAMPLE_CTX);
   const heat = heatOf(SAMPLE_CTX);
-  effects(style).bid(heat);
+  fxFor(style, true).bid(heat);
   if (!line) return;
   if (style === 'classic') return speak(line.text, voiceName);
   sayLine(line, `/api/voice-sample/${style}`, style, heat);
@@ -478,7 +542,7 @@ export function useAuctionSound(snap: Snapshot | null, prefs: SoundPrefs, opts: 
       if (style === 'classic') return speak(line.text, prefs.voiceName);
       sayLine(line, `/api/events/${encodeURIComponent(snap.code)}/voice/${ev.seq}?style=${style}`, style, heat);
     };
-    const fx = prefs.sfx ? effects(style) : null;
+    const fx = prefs.sfx ? fxFor(style, prefs.voice) : null;
     /** the chosen host runs every part of the auction; classic keeps its original plain announcements */
     const hosted = hostsEverything(style);
 

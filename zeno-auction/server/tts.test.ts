@@ -79,9 +79,8 @@ test('a voice Google does not have is skipped (and remembered); a key problem st
   const a = await t.speak('kbc', 'pachaas lakh');
   assert.match(a.audio.toString(), /hi-IN-Neural2-B/);
   assert.deepEqual(g.calls.map((c) => c.voice), ['hi-IN-Chirp3-HD-Charon', 'hi-IN-Chirp3-HD-Fenrir', 'hi-IN-Neural2-B']);
-  // older voices take a speaking pace; Chirp voices choose their own
+  // normal pace: nothing extra is asked
   assert.equal(g.calls[0].body.audioConfig.speakingRate, undefined);
-  assert.equal(g.calls[2].body.audioConfig.speakingRate, 1);
   assert.equal(g.calls[2].body.voice.languageCode, 'hi-IN');
   await t.speak('kbc', 'saath lakh');
   assert.equal(g.calls.length, 4); // went straight to the voice that works
@@ -139,4 +138,31 @@ test('the cache is kept small by removing the oldest recordings', () => {
   const left = readdirSync(c.dir).sort();
   assert.deepEqual(left, ['old3.mp3', 'old4.mp3', 'usage.json']);
   assert.ok(existsSync(path.join(c.dir, 'usage.json')));
+});
+
+test('a faster pace is asked for (and kept apart in the cache); a voice that refuses a pace is asked without one', async () => {
+  const g = fakeGoogle();
+  const t = new Tts(cfg(), g.fetcher);
+  await t.speak('cricket', 'Chhakka!', 1.23);
+  assert.equal(g.calls[0].body.audioConfig.speakingRate, 1.23);
+  assert.equal(t.has('cricket', 'Chhakka!', 1.23), true);
+  assert.equal(t.has('cricket', 'Chhakka!'), false, 'the same words at another pace are another recording');
+  await t.speak('cricket', 'Chhakka!', 1.23);
+  assert.equal(g.calls.length, 1);
+
+  // a voice that answers 400 to a pace, but works without one
+  const calls: any[] = [];
+  const picky = (async (_url: string, init: RequestInit) => {
+    const body = JSON.parse(String(init.body));
+    calls.push(body);
+    if (body.audioConfig.speakingRate) return new Response('{"error":"no pace"}', { status: 400 });
+    return new Response(JSON.stringify({ audioContent: Buffer.from('ok').toString('base64') }), { status: 200 });
+  }) as unknown as typeof fetch;
+  const t2 = new Tts(cfg(), picky);
+  await t2.speak('kbc', 'ek baar', 1.1);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].voice.name, calls[0].voice.name, 'the same (best) voice, not a worse one');
+  await t2.speak('kbc', 'do baar', 1.1);
+  assert.equal(calls.length, 3, 'next time it goes straight to "no pace" for that voice');
+  assert.equal(calls[2].audioConfig.speakingRate, undefined);
 });

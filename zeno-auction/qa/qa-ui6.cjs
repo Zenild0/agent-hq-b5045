@@ -34,8 +34,8 @@ async function session(browser, style, voices, code) {
   const expect = {
     classic: { bid: new RegExp(`^${team.team}, 20 lakh`), pitch: undefined },
     wwe: { bid: new RegExp(`${team.team}.*20 lakh`), pitch: 0.8, rate: 1.12, voice: 'Microsoft Ravi', lang: 'en-IN' },
-    mk: { bid: new RegExp(`${team.team}.*20 lakh`), pitch: 0.25, rate: 0.78, voice: 'Microsoft Ravi', lang: 'en-IN' },
-    kbc: { bid: /बीस लाख रुपये/, pitch: 0.6, rate: 0.82, voice: 'Microsoft Hemant', lang: 'hi-IN' },
+    mk: { bid: new RegExp(`${team.team}.*20 lakh`), pitch: 0.25, rate: 0.92, voice: 'Microsoft Ravi', lang: 'en-IN' },
+    kbc: { bid: /बीस लाख रुपये/, pitch: 0.6, rate: 0.95, voice: 'Microsoft Hemant', lang: 'hi-IN' },
   };
   for (const style of ['classic', 'wwe', 'mk', 'kbc']) {
     const s = await session(b, style, VOICES_ALL, c.code);
@@ -55,7 +55,7 @@ async function session(browser, style, voices, code) {
     for (let i = 1; i <= 3; i++) { await host('call'); await sleep(300); }
     const calls = await s.said();
     t(`${style}: all three calls are spoken`, calls.length === 3, JSON.stringify(calls.map(x => x.text)));
-    if (style === 'mk') t('mk: the last call is "Finish him!"', calls[2].text === 'Finish him!');
+    if (style === 'mk') t('mk: the last call is "FINISH HIM!"', /Going three times, FINISH HIM!$/.test(calls[2].text), calls[2].text);
     if (style === 'kbc') t('kbc: the calls are in Hindi', /एक बार/.test(calls[0].text) && /तीसरी बार/.test(calls[2].text));
     if (style === 'wwe') t('wwe: the calls are hyped', /Going once/.test(calls[0].text) && /three times/.test(calls[2].text));
     await s.clear(); await host('sold'); await sleep(500);

@@ -65,6 +65,8 @@ export interface AnnounceCtx {
   seconds?: number;
   /** the round that is starting */
   round?: number;
+  /** the organiser's own words for the last call ("going thrice") */
+  lastCall?: string;
 }
 
 /** How excited the host is: 0 = the first bid, 3 = a bidding war or a price far above the base. */
@@ -79,7 +81,7 @@ export function heatOf(c: Pick<AnnounceCtx, 'bids' | 'amount' | 'base'>): 0 | 1 
 export interface MomentSource {
   players: { id: string; name: string; basePrice: number; status?: string; teamId?: string | null; price?: number }[];
   captains: { id: string; team: string; budget?: number }[];
-  settings: MoneyFmt & { defaultBasePrice: number };
+  settings: MoneyFmt & { defaultBasePrice: number; lastCall?: string };
   live: { bids: { captainId: string; amount: number }[] };
   round?: number;
 }
@@ -111,6 +113,7 @@ export function momentCtx(src: MomentSource, ev: MomentEvent): AnnounceCtx {
       ctx.allIn = free > 0 && ev.amount >= free * 0.8 && (bids.length > 1 || ev.amount > (base ?? 0));
     }
   }
+  if (ev.type === 'call' && ev.call === 3 && src.settings.lastCall) ctx.lastCall = src.settings.lastCall;
   if (ev.type === 'call' && top) {
     ctx.amount = top.amount;
     ctx.team = teamName(top.captainId);
@@ -176,7 +179,7 @@ function classic(kind: SpeechKind, c: AnnounceCtx): SpeechLine | null {
     default: return null; // classic speaks the bidding; breaks keep their own plain announcements
     case 'reveal': return c.player ? { text: `Up next, ${c.player}. Base price ${m(c.amount ?? 0)}.`, lang: 'en' } : null;
     case 'bid': return c.team && c.amount ? { text: `${c.team}, ${m(c.amount)}`, lang: 'en' } : null;
-    case 'call': return { text: ['', 'Going once!', 'Going twice!', 'Going thrice! Last call!'][c.call ?? 1] ?? '', lang: 'en' };
+    case 'call': return { text: c.call === 3 && c.lastCall ? `Going thrice! ${c.lastCall}` : ['', 'Going once!', 'Going twice!', 'Going thrice! Last call!'][c.call ?? 1] ?? '', lang: 'en' };
     case 'sold': return c.player && c.team && c.amount ? { text: `Sold! ${c.player} goes to ${c.team} for ${m(c.amount)}`, lang: 'en' } : null;
     case 'unsold': return c.player ? { text: `${c.player} goes unsold`, lang: 'en' } : null;
   }
@@ -253,7 +256,7 @@ const HOSTS: Record<Exclude<AnnouncerStyle, 'classic'>, Host> = {
   },
   // ------------------------------------------------------------------ quiz-show host (Hindi)
   kbc: {
-    lang: 'hi', voice: { pitch: 0.6, rate: 0.82, gender: 'male' },
+    lang: 'hi', voice: { pitch: 0.6, rate: 0.95, gender: 'male' },
     spin: [hi(() => `तो देवियों और सज्जनों... घूम रहा है पहिया... देखते हैं, किसकी क़िस्मत चमकती है!`, () => `To deviyon aur sajjano... ghoom raha hai pahiya... dekhte hain, kiski kismat chamakti hai!`)],
     reveal: [
       hi((v) => `देवियों और सज्जनों... अब मंच पर आ रहे हैं... ${v.p}! शुरुआती बोली... ${v.a}. तो चलिए... शुरू करते हैं!`, (v) => `Deviyon aur sajjano... ab manch par aa rahe hain... ${v.p}! Shuruaati boli... ${v.a}. To chaliye... shuru karte hain!`),
@@ -286,7 +289,7 @@ const HOSTS: Record<Exclude<AnnouncerStyle, 'classic'>, Host> = {
   },
   // ------------------------------------------------------------------ arena narrator
   mk: {
-    lang: 'en', voice: { pitch: 0.25, rate: 0.78, gender: 'male' },
+    lang: 'en', voice: { pitch: 0.25, rate: 0.92, gender: 'male' },
     spin: [en(() => `Choose your destiny...`), en(() => `The wheel turns... fate decides.`)],
     reveal: [en((v) => `${v.p}... enters the arena. Opening bid... ${v.a}.`), en((v) => `A new challenger approaches... ${v.p}! The bidding begins at ${v.a}.`)],
     bid: [
@@ -296,7 +299,7 @@ const HOSTS: Record<Exclude<AnnouncerStyle, 'classic'>, Host> = {
       [en((v) => `${v.t} unleashes ${v.a}! The arena trembles!`), en((v) => `Outstanding! ${v.t}... ${v.a}! Who dares to fight back?!`), en((v) => `Fight! ${v.t}! ${v.a}! This battle is legendary!`)],
     ],
     rivalBid: [[], [en((v) => `${v.t} counters ${v.r}! ${v.a}!`)], [en((v) => `${v.r} is wounded! ${v.t}... ${v.a}!`)], [en((v) => `${v.t} versus ${v.r}! ${v.a}! Only one will survive!`)]],
-    call: [en(() => `Prepare yourselves...`), en(() => `Last warning!`), en(() => `Finish him!`)],
+    call: [en((v) => `${v.ap}Going once! Prepare yourselves!`), en((v) => `${v.ap}Going twice! Last warning!`), en(() => `Going three times... FINISH HIM!`)],
     sold: en((v) => `${v.t} wins! ${v.p} is theirs... for ${v.a}! Flawless victory!`),
     soldHot: en((v) => `Fatality! ${v.t} claims ${v.p}... for ${v.a}! Flawless victory!`),
     unsold: [en((v) => `Nobody dares. ${v.p} remains unclaimed.`)],
@@ -339,7 +342,7 @@ const HOSTS: Record<Exclude<AnnouncerStyle, 'classic'>, Host> = {
   },
   // ------------------------------------------------------------------ smooth late-night voice
   velvet: {
-    lang: 'en', voice: { pitch: 0.95, rate: 0.88, gender: 'female' },
+    lang: 'en', voice: { pitch: 0.95, rate: 0.95, gender: 'female' },
     spin: [en(() => `Mmm... let's see who the wheel picks for us tonight.`), en(() => `Round and round... who's next?`)],
     reveal: [en((v) => `Mmm... up next... ${v.p}. Starting at ${v.a}. Take your time... or don't.`), en((v) => `Well, hello... ${v.p}. The bidding opens at... ${v.a}.`)],
     bid: [
@@ -365,7 +368,7 @@ const HOSTS: Record<Exclude<AnnouncerStyle, 'classic'>, Host> = {
   },
   // ------------------------------------------------------------------ movie-trailer narrator
   trailer: {
-    lang: 'en', voice: { pitch: 0.4, rate: 0.8, gender: 'male' },
+    lang: 'en', voice: { pitch: 0.4, rate: 0.92, gender: 'male' },
     spin: [en(() => `In a world... where fate spins the wheel...`), en(() => `One wheel... one spin... one destiny.`)],
     reveal: [en((v) => `In a world... where every team needs a hero... one player... ${v.p}. Opening bid... ${v.a}.`), en((v) => `This season... one name... ${v.p}. The bidding begins... at ${v.a}.`)],
     bid: [
@@ -389,37 +392,37 @@ const HOSTS: Record<Exclude<AnnouncerStyle, 'classic'>, Host> = {
     left: en((v) => `${v.t}... ${v.left} remains.`),
     allIn: en((v) => `${v.t}... risks... everything.`),
   },
-  // ------------------------------------------------------------------ cricket commentary (Hindi)
+  // ------------------------------------------------------------------ cricket commentary (Hindi): fast, loud, joyful
   cricket: {
-    lang: 'hi', voice: { pitch: 0.9, rate: 1.08, gender: 'male' },
-    spin: [hi(() => `टॉस हो रहा है... देखते हैं अगला खिलाड़ी कौन होगा!`, () => `Toss ho raha hai... dekhte hain agla khiladi kaun hoga!`)],
+    lang: 'hi', voice: { pitch: 1, rate: 1.15, gender: 'male' },
+    spin: [hi(() => `टॉस हो चुका है! देखते हैं अगला बल्लेबाज़ कौन!`, () => `Toss ho chuka hai! Dekhte hain agla ballebaaz kaun!`)],
     reveal: [
-      hi((v) => `और अब क्रीज़ पर आ रहे हैं... ${v.p}! बेस प्राइस... ${v.a}!`, (v) => `Aur ab crease par aa rahe hain... ${v.p}! Base price... ${v.a}!`),
-      hi((v) => `नया खिलाड़ी, नई उम्मीदें... ${v.p}! बोली शुरू... ${v.a} से!`, (v) => `Naya khiladi, nayi ummeedein... ${v.p}! Boli shuru... ${v.a} se!`),
+      hi((v) => `और मैदान पर उतर रहे हैं... ${v.p}! बेस प्राइस ${v.a}! ज़ोरदार तालियाँ!`, (v) => `Aur maidaan par utar rahe hain... ${v.p}! Base price ${v.a}! Zordaar taaliyaan!`),
+      hi((v) => `नया बल्लेबाज़, नया जोश! ${v.p}! बोली शुरू ${v.a} से!`, (v) => `Naya ballebaaz, naya josh! ${v.p}! Boli shuru ${v.a} se!`),
     ],
     bid: [
-      [hi((v) => `${v.t} ने खाता खोला... ${v.a}! अच्छी शुरुआत!`, (v) => `${v.t} ne khaata khola... ${v.a}! Achhi shuruaat!`), hi((v) => `पहली गेंद, पहला रन! ${v.t}... ${v.a}!`, (v) => `Pehli gend, pehla run! ${v.t}... ${v.a}!`)],
-      [hi((v) => `${v.t} ने मारा चौका! ${v.a}!`, (v) => `${v.t} ne maara chauka! ${v.a}!`), hi((v) => `बढ़िया शॉट! ${v.t}... ${v.a}!`, (v) => `Badhiya shot! ${v.t}... ${v.a}!`)],
-      [hi((v) => `यह गया... छक्का! ${v.t}... ${v.a}!`, (v) => `Yeh gaya... chhakka! ${v.t}... ${v.a}!`), hi((v) => `क्या शॉट है! स्टेडियम में शोर! ${v.t}... ${v.a}!`, (v) => `Kya shot hai! Stadium mein shor! ${v.t}... ${v.a}!`)],
+      [hi((v) => `${v.t} ने खाता खोला! ${v.a}! शानदार शुरुआत!`, (v) => `${v.t} ne khaata khola! ${v.a}! Shaandaar shuruaat!`), hi((v) => `पहली ही गेंद पर रन! ${v.t}, ${v.a}!`, (v) => `Pehli hi gend par run! ${v.t}, ${v.a}!`)],
+      [hi((v) => `चौका! ${v.t}, ${v.a}!`, (v) => `Chauka! ${v.t}, ${v.a}!`), hi((v) => `क्या टाइमिंग है! ${v.t}, ${v.a}!`, (v) => `Kya timing hai! ${v.t}, ${v.a}!`), hi((v) => `${v.t} ने गैप ढूँढ लिया! ${v.a}!`, (v) => `${v.t} ne gap dhoondh liya! ${v.a}!`)],
+      [hi((v) => `छक्का! छक्का! ${v.t}, ${v.a}!`, (v) => `Chhakka! Chhakka! ${v.t}, ${v.a}!`), hi((v) => `ओहो हो! क्या शॉट है! ${v.t}, ${v.a}!`, (v) => `Oho ho! Kya shot hai! ${v.t}, ${v.a}!`), hi((v) => `ज़बरदस्त! ${v.t} रुकने का नाम नहीं ले रहे! ${v.a}!`, (v) => `Zabardast! ${v.t} rukne ka naam nahin le rahe! ${v.a}!`)],
       [
-        hi((v) => `अविश्वसनीय! लगातार छक्के! ${v.t}... ${v.a}! यह मैच नहीं, जंग है!`, (v) => `Avishvasneeya! Lagaataar chhakke! ${v.t}... ${v.a}! Yeh match nahin, jung hai!`),
-        hi((v) => `गेंद स्टेडियम के बाहर! ${v.t}... ${v.a}!`, (v) => `Gend stadium ke bahar! ${v.t}... ${v.a}!`),
-        hi((v) => `सुपर ओवर जैसा रोमांच! ${v.t}... ${v.a}!`, (v) => `Super over jaisa romaanch! ${v.t}... ${v.a}!`),
+        hi((v) => `अविश्वसनीय! एक और छक्का! ${v.t}, ${v.a}! पूरा स्टेडियम खड़ा हो गया!`, (v) => `Avishvasneeya! Ek aur chhakka! ${v.t}, ${v.a}! Poora stadium khada ho gaya!`),
+        hi((v) => `गेंद स्टेडियम के बाहर! ${v.t}, ${v.a}! क्या मुक़ाबला है भाई!`, (v) => `Gend stadium ke bahar! ${v.t}, ${v.a}! Kya muqaabla hai bhai!`),
+        hi((v) => `धमाकेदार! ${v.t}, ${v.a}! सुपर ओवर जैसा रोमांच!`, (v) => `Dhamaakedaar! ${v.t}, ${v.a}! Super over jaisa romaanch!`),
       ],
     ],
-    rivalBid: [[], [hi((v) => `${v.t} ने ${v.r} की गेंद सीधे बाउंड्री के पार भेजी! ${v.a}!`, (v) => `${v.t} ne ${v.r} ki gend seedhe boundary ke paar bheji! ${v.a}!`)], [hi((v) => `${v.r} दबाव में! ${v.t}... ${v.a}!`, (v) => `${v.r} dabaav mein! ${v.t}... ${v.a}!`)], [hi((v) => `${v.t} बनाम ${v.r}... आख़िरी ओवर का रोमांच! ${v.a}!`, (v) => `${v.t} banaam ${v.r}... aakhiri over ka romaanch! ${v.a}!`)]],
-    call: [hi((v) => `${v.ap}एक बार!`, (v) => `${v.ap}ek baar!`), hi((v) => `${v.ap}दो बार! आख़िरी ओवर चल रहा है!`, (v) => `${v.ap}do baar! Aakhiri over chal raha hai!`), hi((v) => `${v.ap}तीसरी बार... आख़िरी गेंद!`, (v) => `${v.ap}teesri baar... aakhiri gend!`)],
-    sold: hi((v) => `सौदा पक्का! ${v.p}... ${v.t} की टीम में... ${v.a} में!`, (v) => `Sauda pakka! ${v.p}... ${v.t} ki team mein... ${v.a} mein!`),
-    soldHot: hi((v) => `और यह... मैच ख़त्म! ${v.t} ने जीत लिया मुक़ाबला! ${v.p}... ${v.a} में! क्या मैच था!`, (v) => `Aur yeh... match khatam! ${v.t} ne jeet liya muqaabla! ${v.p}... ${v.a} mein! Kya match tha!`),
-    unsold: [hi((v) => `ओह! ${v.p} के लिए कोई बोली नहीं... वापस पवेलियन.`, (v) => `Oh! ${v.p} ke liye koi boli nahin... wapas pavilion.`)],
-    undo: [hi(() => `थर्ड अंपायर का फ़ैसला... यह बोली वापस!`, () => `Third umpire ka faisla... yeh boli wapas!`)],
-    brk: [hi((v) => `ड्रिंक्स ब्रेक! ${v.dur}. कप्तान, अपनी फ़ील्डिंग सेट कीजिए!`, (v) => `Drinks break! ${v.dur}. Captain, apni fielding set kijiye!`)],
-    brkext: [hi((v) => `ब्रेक बढ़ा... ${v.dur} और!`, (v) => `Break badha... ${v.dur} aur!`)],
-    brkend: [hi(() => `खेल फिर शुरू! खिलाड़ी मैदान पर लौट आए हैं!`, () => `Khel phir shuru! Khiladi maidaan par laut aaye hain!`)],
-    round: [hi((v) => `दूसरी पारी... माफ़ कीजिए, राउंड ${v.round} शुरू!`, (v) => `Doosri paari... maaf kijiye, round ${v.round} shuru!`)],
-    record: hi(() => `आज की सबसे महँगी ख़रीद!`, () => `Aaj ki sabse mehngi khareed!`),
+    rivalBid: [[], [hi((v) => `${v.t} ने ${v.r} की गेंद सीधी बाउंड्री के पार भेजी! ${v.a}!`, (v) => `${v.t} ne ${v.r} ki gend seedhi boundary ke paar bheji! ${v.a}!`)], [hi((v) => `${v.r} दबाव में! ${v.t}, ${v.a}!`, (v) => `${v.r} dabaav mein! ${v.t}, ${v.a}!`)], [hi((v) => `${v.t} बनाम ${v.r}! आर-पार की लड़ाई! ${v.a}!`, (v) => `${v.t} banaam ${v.r}! Aar-paar ki ladaai! ${v.a}!`)]],
+    call: [hi((v) => `${v.ap}एक बार!`, (v) => `${v.ap}ek baar!`), hi((v) => `${v.ap}दो बार! आख़िरी ओवर!`, (v) => `${v.ap}do baar! Aakhiri over!`), hi((v) => `${v.ap}तीसरी बार! आख़िरी गेंद!`, (v) => `${v.ap}teesri baar! Aakhiri gend!`)],
+    sold: hi((v) => `सौदा पक्का! ${v.p}, ${v.t} की टीम में, ${v.a} में! क्या बात है!`, (v) => `Sauda pakka! ${v.p}, ${v.t} ki team mein, ${v.a} mein! Kya baat hai!`),
+    soldHot: hi((v) => `और ये... मैच ख़त्म! ${v.t} ने बाज़ी मार ली! ${v.p}, ${v.a} में! क्या मैच था, क्या मैच था!`, (v) => `Aur ye... match khatam! ${v.t} ne baazi maar li! ${v.p}, ${v.a} mein! Kya match tha, kya match tha!`),
+    unsold: [hi((v) => `अरे! ${v.p} के लिए कोई बोली नहीं! वापस पवेलियन!`, (v) => `Arre! ${v.p} ke liye koi boli nahin! Wapas pavilion!`)],
+    undo: [hi(() => `रिव्यू! और फ़ैसला बदल गया! बोली वापस!`, () => `Review! Aur faisla badal gaya! Boli wapas!`)],
+    brk: [hi((v) => `ड्रिंक्स ब्रेक! ${v.dur}! कप्तान, अपनी रणनीति बनाइए!`, (v) => `Drinks break! ${v.dur}! Captain, apni ranneeti banaiye!`)],
+    brkext: [hi((v) => `ब्रेक बढ़ा! ${v.dur} और!`, (v) => `Break badha! ${v.dur} aur!`)],
+    brkend: [hi(() => `खेल फिर शुरू! चलिए, धमाका करते हैं!`, () => `Khel phir shuru! Chaliye, dhamaaka karte hain!`)],
+    round: [hi((v) => `राउंड ${v.round}! नई पारी, नया जोश!`, (v) => `Round ${v.round}! Nayi paari, naya josh!`)],
+    record: hi(() => `आज की सबसे महँगी ख़रीद! रिकॉर्ड टूट गया!`, () => `Aaj ki sabse mehngi khareed! Record toot gaya!`),
     steal: hi(() => `बिल्कुल सस्ते में! क्या चोरी है!`, () => `Bilkul saste mein! Kya chori hai!`),
-    left: hi((v) => `${v.t} के पर्स में बचे... ${v.left}.`, (v) => `${v.t} ke purse mein bache... ${v.left}.`),
+    left: hi((v) => `${v.t} के पर्स में बचे ${v.left}!`, (v) => `${v.t} ke purse mein bache ${v.left}!`),
     allIn: hi((v) => `${v.t} ने पूरा पर्स झोंक दिया!`, (v) => `${v.t} ne poora purse jhonk diya!`),
   },
   // ------------------------------------------------------------------ friendly smart assistant
@@ -480,6 +483,19 @@ function reactions(h: Host, kind: SpeechKind, c: AnnounceCtx): Pair[] {
   return out;
 }
 
+/** Hosts who never slow down for drama. */
+const FAST = new Set<AnnouncerStyle>(['cricket', 'wwe', 'show']);
+
+/**
+ * The studio voice's speaking pace (1 = normal talking speed): a touch quicker for the energetic hosts, and quicker
+ * still as a bidding war heats up. Nobody drags.
+ */
+export function studioPace(style: AnnouncerStyle, kind: SpeechKind, c: AnnounceCtx): number {
+  const base: Record<AnnouncerStyle, number> = { classic: 1, wwe: 1.08, kbc: 1.02, mk: 1.0, show: 1.1, velvet: 1.0, trailer: 1.0, cricket: 1.15, assistant: 1.05 };
+  const busy = kind === 'bid' || kind === 'call';
+  return Math.min(1.3, Math.round((base[style] + (busy ? heatOf(c) * 0.04 : 0)) * 100) / 100);
+}
+
 function hosted(style: Exclude<AnnouncerStyle, 'classic'>, kind: SpeechKind, c: AnnounceCtx): SpeechLine | null {
   const h = HOSTS[style];
   const heat = heatOf(c);
@@ -506,7 +522,13 @@ function hosted(style: Exclude<AnnouncerStyle, 'classic'>, kind: SpeechKind, c: 
         line = pick([...h.bid[level], ...(c.rival ? h.rivalBid[level] ?? [] : [])], c.variant);
       }
       break;
-    case 'call': line = h.call[Math.min(2, Math.max(0, (c.call ?? 1) - 1))]; break;
+    case 'call': {
+      const n = Math.min(2, Math.max(0, (c.call ?? 1) - 1));
+      const own = n === 2 ? c.lastCall?.trim() : '';
+      // the organiser's own last call ("Finish him!", "Ab ya kabhi nahin!") replaces the host's
+      line = own ? [(v) => `${v.ap}${own}`, (v) => `${v.ap}${own}`] : h.call[n];
+      break;
+    }
     case 'sold': if (c.player && c.team && c.amount) line = heat >= 2 ? h.soldHot : h.sold; break;
     case 'unsold': if (c.player) line = pick(h.unsold, c.variant); break;
     case 'undo': line = pick(h.undo, c.variant); break;
@@ -518,8 +540,11 @@ function hosted(style: Exclude<AnnouncerStyle, 'classic'>, kind: SpeechKind, c: 
   if (!line) return null;
   const parts = [line, ...reactions(h, kind, c)];
   const vd = vars('deva'), vl = vars('latin');
-  const text = parts.map((p) => p[0](vd)).join(' ');
-  const alt = h.lang === 'hi' ? parts.map((p) => p[1](vl)).join(' ') : undefined;
+  // In the bidding (and always for the fast hosts) "..." pauses become short commas: a bidding war is spoken at talking speed.
+  const brisk = kind === 'bid' || kind === 'call' || kind === 'undo' || FAST.has(style);
+  const tidy = (x: string) => (brisk ? x.replace(/\.\.\.\s*(?=[!?.,]|$)/g, '').replace(/\.\.\.\s*/g, ', ') : x);
+  const text = tidy(parts.map((p) => p[0](vd)).join(' '));
+  const alt = h.lang === 'hi' ? tidy(parts.map((p) => p[1](vl)).join(' ')) : undefined;
   return { text, ...(alt ? { alt } : {}), lang: h.lang, ...h.voice };
 }
 

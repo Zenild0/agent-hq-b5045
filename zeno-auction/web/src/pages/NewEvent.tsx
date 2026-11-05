@@ -33,6 +33,7 @@ const DEFAULTS: EventSettings = {
   maxSquad: 0,
   reserveRule: false,
   totalRounds: 2,
+  lastCall: '',
 };
 
 export default function NewEvent() {

@@ -70,6 +70,7 @@ export function normalizeStore(store: Store): Store {
   st.theme ??= DEFAULT_SETTINGS.theme;
   st.mode ??= 'dark';
   st.brand ??= { ...DEFAULT_SETTINGS.brand };
+  st.lastCall ??= '';
   return store;
 }
 
@@ -116,6 +117,7 @@ export const DEFAULT_SETTINGS: EventSettings = {
   maxSquad: 0,
   reserveRule: false,
   totalRounds: 2,
+  lastCall: '',
 };
 
 const str = (v: unknown, fallback: string, max = 120): string =>
@@ -144,6 +146,8 @@ export function mergeSettings(base: EventSettings, patch: unknown): EventSetting
   next.maxSquad = num(p.maxSquad, base.maxSquad, 0);
   next.reserveRule = bool(p.reserveRule, base.reserveRule);
   next.totalRounds = Math.max(1, num(p.totalRounds, base.totalRounds, 1));
+  // spoken by the announcer: plain words only (no control characters), short
+  if (typeof p.lastCall === 'string') next.lastCall = p.lastCall.replace(/[\u0000-\u001f\u007f<>{}]/g, '').trim().slice(0, 80);
   if (typeof p.theme === 'string' && themeIds.includes(p.theme)) next.theme = p.theme;
   if (p.mode === 'dark' || p.mode === 'light') next.mode = p.mode;
   if (p.brand && typeof p.brand === 'object') {

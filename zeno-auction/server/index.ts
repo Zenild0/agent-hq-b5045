@@ -10,7 +10,7 @@ import { buildArchive, restoreArchive } from './archive';
 import { clientIp } from './net';
 import { currentGate, devEnabled, getPlatform, isDevKey, refreshAccess, savePlatform } from './platform';
 import { Tts, ttsConfigFromEnv } from './tts';
-import { SAMPLE_CTX, announce, isSpeechKind, isStyle, momentCtx, type AnnouncerStyle } from '../shared/announcer';
+import { SAMPLE_CTX, announce, isSpeechKind, isStyle, momentCtx, studioPace, type AnnouncerStyle } from '../shared/announcer';
 import { DATA_DIR, deleteEventFiles, flushAll, loadAll, readUpload, saveSafetyCopy, saveSoon, UPLOADS_DIR, writeUploads } from './persist';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -451,7 +451,7 @@ const voiceMade = new Map<string, { n: number; reset: number }>();
 
 async function sendVoice(res: Response, style: Exclude<AnnouncerStyle, 'classic'>, text: string, rate: number | undefined, budgetKey: string) {
   if (!tts) throw new AuctionError('Studio voices are not switched on', 404);
-  if (!tts.has(style, text)) {
+  if (!tts.has(style, text, rate ?? 1)) {
     const now = Date.now();
     let e = voiceMade.get(budgetKey);
     if (!e || now > e.reset) voiceMade.set(budgetKey, (e = { n: 0, reset: now + 3_600_000 }));
@@ -481,9 +481,10 @@ app.get('/api/events/:code/voice/:seq', (req, res, next) => {
     const d = store.data;
     const ev = d.live.lastEvent;
     if (!ev || ev.seq !== Number(req.params.seq) || !isSpeechKind(ev.type)) throw new AuctionError('That moment has passed', 404);
-    const line = announce(style, ev.type, momentCtx(d, ev));
+    const ctx = momentCtx(d, ev);
+    const line = announce(style, ev.type, ctx);
     if (!line) throw new AuctionError('Nothing to say', 404);
-    await sendVoice(res, style, line.text, line.rate, d.code);
+    await sendVoice(res, style, line.text, studioPace(style, ev.type, ctx), d.code);
   })().catch(next);
 });
 
@@ -492,7 +493,7 @@ app.get('/api/voice-sample/:style', (req, res, next) => {
   (async () => {
     const style = styleOf(req.params.style);
     const line = announce(style, 'bid', SAMPLE_CTX)!;
-    await sendVoice(res, style, line.text, line.rate, 'sample');
+    await sendVoice(res, style, line.text, studioPace(style, 'bid', SAMPLE_CTX), 'sample');
   })().catch(next);
 });
 

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SAMPLE_CTX, SPEECH_KINDS, STYLES, announce, heatOf, hindiMoney, isStyle, momentCtx, type AnnouncerStyle, type SpeechKind } from './announcer';
+import { SAMPLE_CTX, SPEECH_KINDS, STYLES, announce, heatOf, studioPace, hindiMoney, isStyle, momentCtx, type AnnouncerStyle, type SpeechKind } from './announcer';
 import { pickStyleVoice } from './voice';
 import { spokenMoney } from './money';
 
@@ -58,7 +58,7 @@ test('the styles sound different: pace, depth, wording and who is speaking', () 
   assert.ok(m.pitch! < k.pitch! && k.pitch! < w.pitch! && w.pitch! < 1, 'Mortal Kombat is the deepest');
   assert.equal(c.pitch, undefined, 'classic keeps the app\'s own voice settings');
   assert.deepEqual([w.gender, k.gender, m.gender], ['male', 'male', 'male']);
-  assert.equal(announce('mk', 'call', { ...ctx, call: 3 })!.text, 'Finish him!');
+  assert.equal(announce('mk', 'call', { ...ctx, call: 3 })!.text, 'Going three times, FINISH HIM!');
   assert.match(announce('kbc', 'call', { ...ctx, call: 3 })!.text, /तीसरी बार/);
   assert.equal(announce('classic', 'call', { ...ctx, call: 1 })!.text, 'Going once!');
   // the lines vary from one bid to the next, but a given bid always reads the same
@@ -170,4 +170,36 @@ test('a moment of the auction is read the same way by the server and the screens
   const allIn = momentCtx({ ...src, live: { bids: [{ captainId: 'b', amount: 60 * L }, { captainId: 'a', amount: 65 * L }] } }, { seq: 13, type: 'bid', playerId: 'p3', captainId: 'a', amount: 65 * L });
   assert.equal(allIn.allIn, true, 'Red has 70 lakh free; 65 lakh is nearly all of it');
   assert.equal(momentCtx(src, { seq: 14, type: 'break', amount: 300 }).seconds, 300);
+});
+
+test('a bidding war is spoken at talking speed: no slow hosts, no long pauses', () => {
+  for (const s of STYLES) {
+    const calm = studioPace(s.id, 'bid', { bids: 1, fmt: inr, variant: 0 });
+    const war = studioPace(s.id, 'bid', { bids: 9, fmt: inr, variant: 0 });
+    assert.ok(calm >= 1 && calm <= 1.3, `${s.id} is never slowed down: ${calm}`);
+    if (s.id !== 'classic') assert.ok(war > calm, `${s.id} speeds up in a bidding war`);
+  }
+  assert.ok(studioPace('cricket', 'bid', { bids: 1, fmt: inr, variant: 0 }) >= 1.15, 'the commentator is quick');
+  for (const s of STYLES.filter((x) => x.id !== 'classic')) {
+    for (const bids of [1, 4, 9]) for (let variant = 0; variant < 4; variant++) {
+      const b = announce(s.id, 'bid', { team: 'Red', rival: 'Blue', player: 'Asha', amount: 40 * L, bids, fmt: inr, variant })!;
+      assert.ok(!b.text.includes('...') && !(b.alt ?? '').includes('...'), `${s.id}: no long pauses in a bid: ${b.text}`);
+    }
+    const c = announce(s.id, 'call', { amount: 40 * L, call: 2, fmt: inr, variant: 0 })!;
+    assert.ok(!c.text.includes('...'), `${s.id}: ${c.text}`);
+  }
+  // the cricket commentator is excited from the first ball
+  const first = announce('cricket', 'bid', { team: 'Red', amount: 40 * L, bids: 1, fmt: inr, variant: 0 })!;
+  assert.ok((first.text.match(/!/g) ?? []).length >= 2, first.text);
+});
+
+test('the organiser can write their own last call ("going thrice"), for every host', () => {
+  const ctx = { team: 'Red', amount: 40 * L, call: 3, fmt: inr, variant: 0, lastCall: 'Ab ya kabhi nahin!' };
+  for (const s of STYLES) assert.match(announce(s.id, 'call', ctx)!.text, /Ab ya kabhi nahin!$/, s.id);
+  // only the last call changes
+  assert.doesNotMatch(announce('wwe', 'call', { ...ctx, call: 2 })!.text, /kabhi/);
+  // and it reaches the announcer from the auction's settings
+  const src = { players: [], captains: [{ id: 'a', team: 'Red' }], settings: { ...inr, defaultBasePrice: L, lastCall: 'Finish them!' }, live: { bids: [{ captainId: 'a', amount: 5 * L }] } };
+  assert.equal(momentCtx(src, { seq: 1, type: 'call', call: 3 }).lastCall, 'Finish them!');
+  assert.equal(momentCtx(src, { seq: 1, type: 'call', call: 2 }).lastCall, undefined);
 });

@@ -101,19 +101,19 @@ export class Tts {
     renameSync(tmp, this.usageFile());
   }
 
-  private fileFor(style: string, text: string) {
-    const id = createHash('sha256').update(`${style}\n${text}`).digest('hex').slice(0, 32);
+  private fileFor(style: string, text: string, rate = 1) {
+    const id = createHash('sha256').update(`${style}\n${rate === 1 ? '' : `${rate}\n`}${text}`).digest('hex').slice(0, 32);
     return path.join(this.cfg.dir, `${id}.${this.cfg.provider === 'mock' ? 'wav' : 'mp3'}`);
   }
 
   /** Already made (costs nothing to serve again)? */
-  has(style: string, text: string) {
-    return existsSync(this.fileFor(style, text));
+  has(style: string, text: string, rate = 1) {
+    return existsSync(this.fileFor(style, text, rate));
   }
 
   /** The sentence as audio, from the cache or freshly made. Throws when it cannot (the screen then uses its own voice). */
   async speak(style: Exclude<AnnouncerStyle, 'classic'>, text: string, rate = 1): Promise<{ audio: Buffer; type: string }> {
-    const file = this.fileFor(style, text);
+    const file = this.fileFor(style, text, rate);
     const type = this.cfg.provider === 'mock' ? 'audio/wav' : 'audio/mpeg';
     if (existsSync(file)) return { audio: readFileSync(file), type };
     const running = this.inflight.get(file);
@@ -129,18 +129,28 @@ export class Tts {
     return job;
   }
 
+  /** voices that refused a speaking pace (they are then asked at their own pace) */
+  private noPace = new Set<string>();
+
   private async google(style: Exclude<AnnouncerStyle, 'classic'>, text: string, rate: number): Promise<Buffer> {
     let lastError = 'no voice available';
     for (const name of this.cfg.voices[style]) {
       if (this.badVoices.has(name)) continue;
-      // Chirp voices choose their own pace; the older voices take a speaking rate
-      const audioConfig: Record<string, unknown> = { audioEncoding: 'MP3', ...(name.includes('Chirp') ? {} : { speakingRate: rate }) };
-      const res = await this.fetcher(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(this.cfg.key)}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ input: { text }, voice: { languageCode: lang(name), name }, audioConfig }),
-        signal: AbortSignal.timeout(8000),
-      });
+      const ask = (paced: boolean) =>
+        this.fetcher(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(this.cfg.key)}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ input: { text }, voice: { languageCode: lang(name), name }, audioConfig: { audioEncoding: 'MP3', ...(paced ? { speakingRate: rate } : {}) } }),
+          signal: AbortSignal.timeout(8000),
+        });
+      const paced = rate !== 1 && !this.noPace.has(name);
+      let res = await ask(paced);
+      if (paced && res.status === 400) {
+        // some voices choose their own pace: ask again without one before giving up on the voice
+        const again = await ask(false);
+        if (again.ok) this.noPace.add(name);
+        res = again;
+      }
       if (res.ok) {
         const body = (await res.json()) as { audioContent?: string };
         if (body.audioContent) return Buffer.from(body.audioContent, 'base64');

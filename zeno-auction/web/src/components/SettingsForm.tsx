@@ -132,6 +132,9 @@ export function SettingsForm({ value, onChange, upload }: { value: EventSettings
             </div>
           </Field>
         </div>
+        <Field label="Last call (“going thrice”)" hint="Your own words for the announcer's last call, e.g. “Finish him!” or “Ab ya kabhi nahin!”. Leave empty and each host uses its own line.">
+          <input className="input" value={value.lastCall ?? ''} maxLength={80} placeholder="e.g. Finish him!" onChange={(e) => set('lastCall', e.target.value)} />
+        </Field>
       </Section>
 
       <Section id="money" title="Money" hint="Every team gets the same starting purse; you can top up or cut any team's purse during the auction.">
