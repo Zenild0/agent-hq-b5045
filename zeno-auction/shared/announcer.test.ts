@@ -54,11 +54,11 @@ test('every style announces who bid how much, every time', () => {
 test('the styles sound different: pace, depth, wording and who is speaking', () => {
   const ctx = { team: 'Red', player: 'P', amount: 5 * L, fmt: inr, variant: 1 };
   const w = announce('wwe', 'bid', ctx)!, k = announce('kbc', 'bid', ctx)!, m = announce('mk', 'bid', ctx)!, c = announce('classic', 'bid', ctx)!;
-  assert.ok(k.rate! < 1 && m.rate! < k.rate! + 0.1 && w.rate! > 1, 'KBC and Mortal Kombat are slow, WWE is quick');
+  assert.ok(w.rate === 1 && k.rate === 1 && m.rate === 1, 'every host speaks at normal pace');
   assert.ok(m.pitch! < k.pitch! && k.pitch! < w.pitch! && w.pitch! < 1, 'Mortal Kombat is the deepest');
   assert.equal(c.pitch, undefined, 'classic keeps the app\'s own voice settings');
   assert.deepEqual([w.gender, k.gender, m.gender], ['male', 'male', 'male']);
-  assert.equal(announce('mk', 'call', { ...ctx, call: 3 })!.text, 'Going three times, FINISH HIM!');
+  for (let variant = 0; variant < 6; variant++) assert.match(announce('mk', 'call', { ...ctx, call: 3, variant })!.text, /Going three times, FINISH HIM!$/);
   assert.match(announce('kbc', 'call', { ...ctx, call: 3 })!.text, /तीसरी बार/);
   assert.equal(announce('classic', 'call', { ...ctx, call: 1 })!.text, 'Going once!');
   // the lines vary from one bid to the next, but a given bid always reads the same
@@ -101,7 +101,7 @@ test('the host gets more excited as a bidding war heats up', () => {
     for (const t of war) assert.ok(!calm.has(t), `${s.id}: a bidding war does not sound like the first bid: ${t}`);
   }
   // an outbid team is named
-  const rivalLines = [0, 1, 2, 3, 4, 5].map((variant) => announce('wwe', 'bid', { team: 'Red', rival: 'Blue', amount: 40 * L, bids: 3, fmt: inr, variant })!.text);
+  const rivalLines = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((variant) => announce('wwe', 'bid', { team: 'Red', rival: 'Blue', amount: 40 * L, bids: 3, fmt: inr, variant })!.text);
   assert.ok(rivalLines.some((t) => t.includes('Blue')), rivalLines.join(' | '));
   // a hot sale sounds different from a quiet one
   const sold = (bids: number) => announce('kbc', 'sold', { team: 'Red', player: 'Asha', amount: 40 * L, bids, fmt: inr, variant: 0 })!.text;
@@ -172,14 +172,8 @@ test('a moment of the auction is read the same way by the server and the screens
   assert.equal(momentCtx(src, { seq: 14, type: 'break', amount: 300 }).seconds, 300);
 });
 
-test('a bidding war is spoken at talking speed: no slow hosts, no long pauses', () => {
-  for (const s of STYLES) {
-    const calm = studioPace(s.id, 'bid', { bids: 1, fmt: inr, variant: 0 });
-    const war = studioPace(s.id, 'bid', { bids: 9, fmt: inr, variant: 0 });
-    assert.ok(calm >= 1 && calm <= 1.3, `${s.id} is never slowed down: ${calm}`);
-    if (s.id !== 'classic') assert.ok(war > calm, `${s.id} speeds up in a bidding war`);
-  }
-  assert.ok(studioPace('cricket', 'bid', { bids: 1, fmt: inr, variant: 0 }) >= 1.15, 'the commentator is quick');
+test('every host speaks at normal pace, and a bid flows without long pauses', () => {
+  for (const s of STYLES) for (const bids of [1, 9]) assert.equal(studioPace(s.id, 'bid', { bids, fmt: inr, variant: 0 }), 1, `${s.id} is never faster or slower`);
   for (const s of STYLES.filter((x) => x.id !== 'classic')) {
     for (const bids of [1, 4, 9]) for (let variant = 0; variant < 4; variant++) {
       const b = announce(s.id, 'bid', { team: 'Red', rival: 'Blue', player: 'Asha', amount: 40 * L, bids, fmt: inr, variant })!;
@@ -187,6 +181,12 @@ test('a bidding war is spoken at talking speed: no slow hosts, no long pauses', 
     }
     const c = announce(s.id, 'call', { amount: 40 * L, call: 2, fmt: inr, variant: 0 })!;
     assert.ok(!c.text.includes('...'), `${s.id}: ${c.text}`);
+  }
+  // plenty of different lines: a host does not keep repeating the same two or three
+  for (const s of STYLES.filter((x) => x.id !== 'classic')) {
+    const lines = new Set<string>();
+    for (const bids of [1, 2, 4, 9]) for (let variant = 0; variant < 12; variant++) lines.add(announce(s.id, 'bid', { team: 'Red', rival: 'Blue', player: 'Asha', amount: 40 * L, bids, fmt: inr, variant })!.text);
+    assert.ok(lines.size >= 12, `${s.id} has ${lines.size} different bid lines`);
   }
   // the cricket commentator is excited from the first ball
   const first = announce('cricket', 'bid', { team: 'Red', amount: 40 * L, bids: 1, fmt: inr, variant: 0 })!;

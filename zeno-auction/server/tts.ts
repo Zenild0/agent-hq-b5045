@@ -27,9 +27,10 @@ export interface TtsConfig {
 export const DEFAULT_VOICES: TtsConfig['voices'] = {
   kbc: ['hi-IN-Chirp3-HD-Charon', 'hi-IN-Chirp3-HD-Fenrir', 'hi-IN-Neural2-B', 'hi-IN-Wavenet-C', 'hi-IN-Standard-B'],
   cricket: ['hi-IN-Chirp3-HD-Puck', 'hi-IN-Chirp3-HD-Orus', 'hi-IN-Neural2-C', 'hi-IN-Wavenet-B', 'hi-IN-Standard-C'],
-  wwe: ['en-US-Chirp3-HD-Fenrir', 'en-US-Chirp3-HD-Puck', 'en-US-Neural2-J', 'en-US-Wavenet-D', 'en-US-Standard-D'],
+  // the deepest, most booming male voices for the ring announcer, the arena narrator and the trailer
+  wwe: ['en-US-Chirp3-HD-Algenib', 'en-US-Chirp3-HD-Alnilam', 'en-US-Chirp3-HD-Orus', 'en-US-Neural2-D', 'en-US-Wavenet-D', 'en-US-Standard-D'],
   mk: ['en-US-Chirp3-HD-Charon', 'en-US-Chirp3-HD-Algenib', 'en-US-Neural2-D', 'en-US-Wavenet-B', 'en-US-Standard-B'],
-  trailer: ['en-US-Chirp3-HD-Iapetus', 'en-US-Chirp3-HD-Orus', 'en-US-Neural2-D', 'en-US-Wavenet-D', 'en-US-Standard-B'],
+  trailer: ['en-US-Chirp3-HD-Alnilam', 'en-US-Chirp3-HD-Iapetus', 'en-US-Neural2-D', 'en-US-Wavenet-D', 'en-US-Standard-B'],
   show: ['en-US-Chirp3-HD-Zephyr', 'en-US-Chirp3-HD-Aoede', 'en-US-Neural2-F', 'en-US-Wavenet-F', 'en-US-Standard-C'],
   velvet: ['en-US-Chirp3-HD-Sulafat', 'en-US-Chirp3-HD-Kore', 'en-US-Neural2-H', 'en-US-Wavenet-H', 'en-US-Standard-E'],
   assistant: ['en-IN-Chirp3-HD-Kore', 'en-IN-Chirp3-HD-Aoede', 'en-IN-Neural2-A', 'en-IN-Wavenet-A', 'en-IN-Standard-A'],
@@ -66,7 +67,7 @@ export function mockWav(seconds = 0.25): Buffer {
 type Fetch = typeof fetch;
 
 export class Tts {
-  private inflight = new Map<string, Promise<{ audio: Buffer; type: string }>>();
+  private inflight = new Map<string, Promise<{ audio: Buffer; type: string; paced: boolean }>>();
   /** voices Google refused, so they are not tried again */
   private badVoices = new Set<string>();
   constructor(private cfg: TtsConfig, private fetcher: Fetch = fetch, private now = () => new Date()) {
@@ -112,18 +113,23 @@ export class Tts {
   }
 
   /** The sentence as audio, from the cache or freshly made. Throws when it cannot (the screen then uses its own voice). */
-  async speak(style: Exclude<AnnouncerStyle, 'classic'>, text: string, rate = 1): Promise<{ audio: Buffer; type: string }> {
+  /**
+   * `paced`: the recording really is at the asked pace (false when the voice only speaks at its own pace; a marker file
+   * next to the recording remembers that, so the screen knows not to slow it down to make it deeper).
+   */
+  async speak(style: Exclude<AnnouncerStyle, 'classic'>, text: string, rate = 1): Promise<{ audio: Buffer; type: string; paced: boolean }> {
     const file = this.fileFor(style, text, rate);
     const type = this.cfg.provider === 'mock' ? 'audio/wav' : 'audio/mpeg';
-    if (existsSync(file)) return { audio: readFileSync(file), type };
+    if (existsSync(file)) return { audio: readFileSync(file), type, paced: !existsSync(`${file}.np`) };
     const running = this.inflight.get(file);
     if (running) return running;
     const job = (async () => {
       if (text.length > this.remaining()) throw new Error('monthly voice budget used up');
-      const audio = this.cfg.provider === 'mock' ? mockWav() : await this.google(style, text, rate);
+      const { audio, paced } = this.cfg.provider === 'mock' ? { audio: mockWav(), paced: true } : await this.google(style, text, rate);
       this.addUsage(text.length);
       writeFileSync(file, audio);
-      return { audio, type };
+      if (!paced) writeFileSync(`${file}.np`, '');
+      return { audio, type, paced };
     })().finally(() => this.inflight.delete(file));
     this.inflight.set(file, job);
     return job;
@@ -132,7 +138,7 @@ export class Tts {
   /** voices that refused a speaking pace (they are then asked at their own pace) */
   private noPace = new Set<string>();
 
-  private async google(style: Exclude<AnnouncerStyle, 'classic'>, text: string, rate: number): Promise<Buffer> {
+  private async google(style: Exclude<AnnouncerStyle, 'classic'>, text: string, rate: number): Promise<{ audio: Buffer; paced: boolean }> {
     let lastError = 'no voice available';
     for (const name of this.cfg.voices[style]) {
       if (this.badVoices.has(name)) continue;
@@ -153,7 +159,7 @@ export class Tts {
       }
       if (res.ok) {
         const body = (await res.json()) as { audioContent?: string };
-        if (body.audioContent) return Buffer.from(body.audioContent, 'base64');
+        if (body.audioContent) return { audio: Buffer.from(body.audioContent, 'base64'), paced: paced && !this.noPace.has(name) };
         lastError = 'empty answer';
         continue;
       }
@@ -175,7 +181,10 @@ export class Tts {
     let total = 0;
     for (const { f, s } of files) {
       total += s.size;
-      if (total > maxMb * 1024 * 1024) rmSync(path.join(this.cfg.dir, f), { force: true });
+      if (total > maxMb * 1024 * 1024) {
+        rmSync(path.join(this.cfg.dir, f), { force: true });
+        rmSync(path.join(this.cfg.dir, `${f}.np`), { force: true });
+      }
     }
   }
 }

@@ -79,6 +79,10 @@ export default function Terms() {
           <li>The server also makes a nightly safety backup that is kept for 7 days, so a deleted auction can remain in a backup for up to a week before it disappears.</li>
           <li>You can download the whole auction as a file to your own computer and bring it back later. ZenoBid is not meant to be where you keep your records.</li>
           <li>Admin links and team PINs are secrets. Anyone who has them can act for that team or auction. Don’t share them publicly.</li>
+          <li>
+            “Use voice” on a captain’s phone: the phone’s own browser turns what the captain says into words (Chrome and Edge use Google’s speech service, Safari uses Apple’s).
+            ZenoBid only receives the bid that results; it never records or stores the audio.
+          </li>
           {info?.voice && (
             <li>
               Studio announcer voices: when a screen has one of the studio hosts on (any style except Classic), the sentence being announced (team and player names, amounts, purse left) is sent to

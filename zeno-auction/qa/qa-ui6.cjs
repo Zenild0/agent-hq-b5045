@@ -33,9 +33,9 @@ async function session(browser, style, voices, code) {
 
   const expect = {
     classic: { bid: new RegExp(`^${team.team}, 20 lakh`), pitch: undefined },
-    wwe: { bid: new RegExp(`${team.team}.*20 lakh`), pitch: 0.8, rate: 1.12, voice: 'Microsoft Ravi', lang: 'en-IN' },
-    mk: { bid: new RegExp(`${team.team}.*20 lakh`), pitch: 0.25, rate: 0.92, voice: 'Microsoft Ravi', lang: 'en-IN' },
-    kbc: { bid: /बीस लाख रुपये/, pitch: 0.6, rate: 0.95, voice: 'Microsoft Hemant', lang: 'hi-IN' },
+    wwe: { bid: new RegExp(`${team.team}.*20 lakh`), pitch: 0.7, rate: 1, voice: 'Microsoft Ravi', lang: 'en-IN' },
+    mk: { bid: new RegExp(`${team.team}.*20 lakh`), pitch: 0.25, rate: 1, voice: 'Microsoft Ravi', lang: 'en-IN' },
+    kbc: { bid: /बीस लाख रुपये/, pitch: 0.6, rate: 1, voice: 'Microsoft Hemant', lang: 'hi-IN' },
   };
   for (const style of ['classic', 'wwe', 'mk', 'kbc']) {
     const s = await session(b, style, VOICES_ALL, c.code);

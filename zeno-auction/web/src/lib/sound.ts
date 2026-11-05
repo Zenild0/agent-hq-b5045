@@ -329,26 +329,20 @@ async function studioVoices(): Promise<boolean> {
   return serverVoice;
 }
 
-function impulse(c: AudioContext, seconds: number, decay: number) {
-  const len = Math.floor(c.sampleRate * seconds);
-  const b = c.createBuffer(2, len, c.sampleRate);
-  for (let ch = 0; ch < 2; ch++) {
-    const d = b.getChannelData(ch);
-    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
-  }
-  return b;
-}
-/** The room each style is heard in: an arena, a TV studio, a dark temple. Hotter bidding = a little faster and louder. */
-const STAGE = {
-  wwe: { rate: 1.0, verb: 2.2, wet: 0.26, bass: 3, drive: 0, gain: 1.1 },
-  kbc: { rate: 1.0, verb: 1.2, wet: 0.16, bass: 4, drive: 0, gain: 1.05 },
-  mk: { rate: 1.0, verb: 3.0, wet: 0.4, bass: 6, drive: 0.3, gain: 1.15 },
-  show: { rate: 1.0, verb: 1.0, wet: 0.14, bass: 1, drive: 0, gain: 1.05 },
-  velvet: { rate: 1.0, verb: 1.6, wet: 0.2, bass: 3, drive: 0, gain: 1.0 },
-  trailer: { rate: 1.0, verb: 3.0, wet: 0.34, bass: 7, drive: 0.12, gain: 1.15 },
-  cricket: { rate: 1.0, verb: 2.6, wet: 0.24, bass: 2, drive: 0, gain: 1.1 },
-  assistant: { rate: 1.0, verb: 0.6, wet: 0.06, bass: 0, drive: 0, gain: 1.0 },
-} as const;
+/**
+ * How each host sounds on the speakers: a clean, close voice with no echo; the deep hosts get more bass and a little
+ * grit, from the voice itself and the bass, never from changing the speed.
+ */
+const STAGE: Record<Exclude<AnnouncerStyle, 'classic'>, { bass: number; drive: number; gain: number }> = {
+  wwe: { bass: 7, drive: 0.08, gain: 1.15 },
+  kbc: { bass: 4, drive: 0, gain: 1.05 },
+  mk: { bass: 6, drive: 0.12, gain: 1.15 },
+  show: { bass: 1, drive: 0, gain: 1.05 },
+  velvet: { bass: 3, drive: 0, gain: 1.0 },
+  trailer: { bass: 7, drive: 0.06, gain: 1.15 },
+  cricket: { bass: 2, drive: 0, gain: 1.1 },
+  assistant: { bass: 0, drive: 0, gain: 1.0 },
+};
 /** the line playing now (one at a time: a new line fades the old one out) */
 let current: { src: AudioBufferSourceNode; out: GainNode } | null = null;
 /** bumps with every new announcement; a recording that arrives late for an older one is dropped */
@@ -369,14 +363,14 @@ function hush() {
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
 }
 
-function playStaged(buf: AudioBuffer, style: Exclude<AnnouncerStyle, 'classic'>, heat = 0) {
+function playStaged(buf: AudioBuffer, style: Exclude<AnnouncerStyle, 'classic'>) {
   const c = audio();
   if (!c) return;
   hush();
   const P = STAGE[style];
   const src = c.createBufferSource();
   src.buffer = buf;
-  src.playbackRate.value = P.rate; // the server already sets the pace (faster as the excitement builds); no pitch change here
+  src.playbackRate.value = 1; // played exactly as recorded: never faster, never stretched
   const bass = c.createBiquadFilter();
   bass.type = 'lowshelf';
   bass.frequency.value = 180;
@@ -397,17 +391,10 @@ function playStaged(buf: AudioBuffer, style: Exclude<AnnouncerStyle, 'classic'>,
   }
   const comp = c.createDynamicsCompressor();
   tail.connect(comp);
-  const out = c.createGain(); // everything of this line, echo included, so it can be faded as one
-  out.gain.value = 1;
+  const out = c.createGain(); // the whole line, so it can be faded as one
+  out.gain.value = P.gain;
   out.connect(c.destination);
-  const dry = c.createGain();
-  dry.gain.value = P.gain + heat * 0.08;
-  const verb = c.createConvolver();
-  verb.buffer = impulse(c, P.verb, 2.6);
-  const wet = c.createGain();
-  wet.gain.value = P.wet;
-  comp.connect(dry).connect(out);
-  comp.connect(verb).connect(wet).connect(out);
+  comp.connect(out); // a clean voice: no echo
   src.start();
   duck(buf.duration / src.playbackRate.value);
   current = { src, out };
@@ -420,7 +407,7 @@ function playStaged(buf: AudioBuffer, style: Exclude<AnnouncerStyle, 'classic'>,
  * Says one line: the studio recording from the server when it has one, otherwise this device's own voice.
  * Only the newest line is ever heard: whatever was playing stops, and a recording that arrives too late is dropped.
  */
-function sayLine(line: SpeechLine, url: string, style: Exclude<AnnouncerStyle, 'classic'>, heat: number) {
+function sayLine(line: SpeechLine, url: string, style: Exclude<AnnouncerStyle, 'classic'>) {
   const my = ++turn;
   void (async () => {
     const c = audio();
@@ -429,7 +416,7 @@ function sayLine(line: SpeechLine, url: string, style: Exclude<AnnouncerStyle, '
         const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
         if (res.ok) {
           const buf = await c.decodeAudioData(await res.arrayBuffer());
-          if (my === turn) playStaged(buf, style, heat);
+          if (my === turn) playStaged(buf, style);
           return;
         }
       } catch {
@@ -449,7 +436,7 @@ export function previewAnnouncer(style: AnnouncerStyle, voiceName?: string) {
   fxFor(style, true).bid(heat);
   if (!line) return;
   if (style === 'classic') return speak(line.text, voiceName);
-  sayLine(line, `/api/voice-sample/${style}`, style, heat);
+  sayLine(line, `/api/voice-sample/${style}`, style);
 }
 
 // ---- one announcer per browser ---------------------------------------------------------------------
@@ -540,7 +527,7 @@ export function useAuctionSound(snap: Snapshot | null, prefs: SoundPrefs, opts: 
       const line = announce(style, kind, ctx);
       if (!line) return;
       if (style === 'classic') return speak(line.text, prefs.voiceName);
-      sayLine(line, `/api/events/${encodeURIComponent(snap.code)}/voice/${ev.seq}?style=${style}`, style, heat);
+      sayLine(line, `/api/events/${encodeURIComponent(snap.code)}/voice/${ev.seq}?style=${style}`, style);
     };
     const fx = prefs.sfx ? fxFor(style, prefs.voice) : null;
     /** the chosen host runs every part of the auction; classic keeps its original plain announcements */

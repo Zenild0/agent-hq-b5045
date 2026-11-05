@@ -458,8 +458,10 @@ async function sendVoice(res: Response, style: Exclude<AnnouncerStyle, 'classic'
     if (++e.n > VOICE_PER_HOUR) throw new AuctionError('Too many new voice lines this hour', 429);
   }
   try {
-    const { audio, type } = await tts.speak(style, text, rate ?? 1);
+    const { audio, type, paced } = await tts.speak(style, text, rate ?? 1);
     res.set('Content-Type', type);
+    // tells the screen whether the recording is at the asked pace (then it may play it a little lower to deepen it)
+    res.set('X-Voice-Paced', paced ? '1' : '0');
     res.set('Cache-Control', 'public, max-age=86400');
     res.send(audio);
   } catch (err) {
@@ -484,7 +486,7 @@ app.get('/api/events/:code/voice/:seq', (req, res, next) => {
     const ctx = momentCtx(d, ev);
     const line = announce(style, ev.type, ctx);
     if (!line) throw new AuctionError('Nothing to say', 404);
-    await sendVoice(res, style, line.text, studioPace(style, ev.type, ctx), d.code);
+    await sendVoice(res, style, line.text, studioPace(style), d.code);
   })().catch(next);
 });
 
@@ -493,7 +495,7 @@ app.get('/api/voice-sample/:style', (req, res, next) => {
   (async () => {
     const style = styleOf(req.params.style);
     const line = announce(style, 'bid', SAMPLE_CTX)!;
-    await sendVoice(res, style, line.text, studioPace(style, 'bid', SAMPLE_CTX), 'sample');
+    await sendVoice(res, style, line.text, studioPace(style), 'sample');
   })().catch(next);
 });
 

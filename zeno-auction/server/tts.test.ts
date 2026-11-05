@@ -48,7 +48,7 @@ test('each sentence is made once and then served from disk', async () => {
   const t = new Tts(cfg(), g.fetcher);
   const a = await t.speak('wwe', 'Thunder Hawks bid one crore!');
   assert.equal(a.type, 'audio/mpeg');
-  assert.match(a.audio.toString(), /^mp3:en-US-Chirp3-HD-Fenrir:Thunder Hawks bid one crore!$/);
+  assert.match(a.audio.toString(), /^mp3:en-US-Chirp3-HD-Algenib:Thunder Hawks bid one crore!$/);
   assert.equal(t.has('wwe', 'Thunder Hawks bid one crore!'), true);
   const b = await t.speak('wwe', 'Thunder Hawks bid one crore!');
   assert.deepEqual(b.audio, a.audio);

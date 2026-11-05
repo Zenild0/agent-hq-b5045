@@ -2,6 +2,7 @@ import { Gavel } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { formatMoney } from '../../../shared/money';
+import { VoiceBid } from '../components/VoiceBid';
 import { checkBid, maxBid, nextBidAmount, sortSquad, stepFor, teamStats } from '../../../shared/rules';
 import { useOwnSquadSort } from '../lib/squadSort';
 import type { Snapshot } from '../../../shared/types';
@@ -185,6 +186,7 @@ export default function Captain() {
             <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--hairline)] bg-ink-950/90 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-xl sm:p-4" style={{ ['--beat' as string]: `${tempo.beat}s` } as React.CSSProperties}>
               <div className="mx-auto max-w-3xl">
                 <Heartbeat tempo={tempo} color={tempo.intensity > 0.55 ? HOT : me.color} className="mb-1 h-5 w-full opacity-80" />
+                <VoiceBid canBid={open && block.ok} reason={open ? (block.ok ? '' : block.reason) : 'Bidding is not open'} min={min} limit={limit} settings={settings} place={place} />
                 <StatusLine open={open} iLead={iLead} outbid={open && iBidOnThis && !iLead} reason={block.ok ? '' : block.reason} />
                 <button
                   disabled={!block.ok || busy}
