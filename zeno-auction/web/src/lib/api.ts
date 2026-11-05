@@ -85,6 +85,8 @@ export async function restoreEvent(file: unknown) {
 export interface PlatformInfo {
   env: 'production' | 'test';
   payments: boolean;
+  /** the server makes studio announcer voices */
+  voice?: boolean;
   price: number;
   operatorName: string;
   contact: string;

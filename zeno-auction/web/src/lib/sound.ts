@@ -166,17 +166,116 @@ export function speakLine(line: SpeechLine) {
   let text = line.text;
   let lang: 'en' | 'hi' = line.lang;
   let voice = pickStyleVoice(voices, lang, line.gender ?? 'male');
-  if (line.lang === 'hi' && !voice) {
-    text = line.alt ?? line.text;
-    lang = 'en';
-    voice = pickStyleVoice(voices.filter((v) => /en[-_]in/i.test(v.lang)).length ? voices.filter((v) => /en[-_]in/i.test(v.lang)) : voices, 'en', line.gender ?? 'male');
+  if (line.lang === 'hi') {
+    // A male host needs a male voice. If the only Hindi voice is female, a male Indian-English voice reading the same
+    // words in Latin letters sounds far better than a female voice forced down (which sounds like an old woman).
+    const indianEnglish = voices.filter((v) => /en[-_]in/i.test(v.lang));
+    const maleEnglish = pickStyleVoice(indianEnglish.length ? indianEnglish : voices, 'en', 'male');
+    if (!voice || (isFemaleVoice(voice) && maleEnglish && !isFemaleVoice(maleEnglish))) {
+      text = line.alt ?? line.text;
+      lang = 'en';
+      voice = maleEnglish;
+    }
   }
   const u = new SpeechSynthesisUtterance(text);
   if (voice) u.voice = voice;
   u.lang = voice?.lang ?? (lang === 'hi' ? 'hi-IN' : 'en-IN');
-  u.rate = line.rate ?? 1;
-  u.pitch = line.pitch ?? 1;
+  // never push a female voice deep: it only sounds strange. Keep her natural, a little slower for drama.
+  const female = voice ? isFemaleVoice(voice) : false;
+  u.rate = female ? Math.min(1.05, Math.max(0.9, line.rate ?? 1)) : (line.rate ?? 1);
+  u.pitch = female ? 1 : (line.pitch ?? 1);
   synth.speak(u);
+}
+
+// ---- studio voices from the server (when it has them), played through each style's sound stage ----------------
+
+let serverVoice: boolean | null = null;
+/** Whether this server makes studio voices (asked once per page). */
+async function studioVoices(): Promise<boolean> {
+  if (serverVoice !== null) return serverVoice;
+  try {
+    const r = await fetch('/api/platform', { cache: 'no-store' });
+    serverVoice = !!(await r.json()).voice;
+  } catch {
+    serverVoice = false;
+  }
+  return serverVoice;
+}
+
+function impulse(c: AudioContext, seconds: number, decay: number) {
+  const len = Math.floor(c.sampleRate * seconds);
+  const b = c.createBuffer(2, len, c.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = b.getChannelData(ch);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+  }
+  return b;
+}
+/** The room each style is heard in: an arena, a TV studio, a dark temple. */
+const STAGE = {
+  wwe: { rate: 1.0, verb: 2.4, wet: 0.3, bass: 3, drive: 0, gain: 1.15 },
+  kbc: { rate: 0.97, verb: 1.3, wet: 0.2, bass: 5, drive: 0, gain: 1.1 },
+  mk: { rate: 0.84, verb: 3.6, wet: 0.5, bass: 7, drive: 0.35, gain: 1.2 },
+} as const;
+let playing: AudioBufferSourceNode | null = null;
+
+function playStaged(buf: AudioBuffer, style: Exclude<AnnouncerStyle, 'classic'>) {
+  const c = audio();
+  if (!c) return;
+  try {
+    playing?.stop();
+  } catch {
+    /* already ended */
+  }
+  const P = STAGE[style];
+  const src = c.createBufferSource();
+  src.buffer = buf;
+  src.playbackRate.value = P.rate; // slower = deeper
+  const bass = c.createBiquadFilter();
+  bass.type = 'lowshelf';
+  bass.frequency.value = 180;
+  bass.gain.value = P.bass;
+  let tail: AudioNode = bass;
+  src.connect(bass);
+  if (P.drive > 0) {
+    const shaper = c.createWaveShaper();
+    const k = P.drive * 60;
+    const curve = new Float32Array(1024);
+    for (let i = 0; i < curve.length; i++) {
+      const x = (i / curve.length) * 2 - 1;
+      curve[i] = ((1 + k) * x) / (1 + k * Math.abs(x));
+    }
+    shaper.curve = curve;
+    bass.connect(shaper);
+    tail = shaper;
+  }
+  const comp = c.createDynamicsCompressor();
+  tail.connect(comp);
+  const dry = c.createGain();
+  dry.gain.value = P.gain;
+  const verb = c.createConvolver();
+  verb.buffer = impulse(c, P.verb, 2.6);
+  const wet = c.createGain();
+  wet.gain.value = P.wet;
+  comp.connect(dry).connect(c.destination);
+  comp.connect(verb).connect(wet).connect(c.destination);
+  src.start();
+  playing = src;
+}
+
+/** Plays a studio line from the server. Resolves false (so the caller can use the browser's voice) if it cannot. */
+async function playServerLine(url: string, style: Exclude<AnnouncerStyle, 'classic'>): Promise<boolean> {
+  const c = audio();
+  if (!c || !(await studioVoices())) return false;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return false;
+    const buf = await c.decodeAudioData(await res.arrayBuffer());
+    playStaged(buf, style);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** What the "Hear it" button plays: a bid in the chosen style. */
@@ -185,8 +284,10 @@ export function previewAnnouncer(style: AnnouncerStyle, voiceName?: string) {
   const line = announce(style, 'bid', { team: 'Thunder Hawks', amount: 12_000_000, fmt, variant: 0 });
   effects(style).bid();
   if (!line) return;
-  if (style === 'classic') speak(line.text, voiceName);
-  else setTimeout(() => speakLine(line), 350);
+  if (style === 'classic') return speak(line.text, voiceName);
+  void playServerLine(`/api/voice-sample/${style}`, style).then((ok) => {
+    if (!ok) setTimeout(() => speakLine(line), 200);
+  });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -250,8 +351,11 @@ export function useAuctionSound(snap: Snapshot | null, prefs: SoundPrefs) {
       if (!prefs.voice) return;
       const line = announce(style, kind, { ...ctx, amount });
       if (!line) return;
-      if (style === 'classic') speak(line.text, prefs.voiceName);
-      else speakLine(line);
+      if (style === 'classic') return speak(line.text, prefs.voiceName);
+      // the studio voice from the server if it has one; otherwise this device's own voice
+      void playServerLine(`/api/events/${encodeURIComponent(snap.code)}/voice/${ev.seq}?style=${style}`, style).then((ok) => {
+        if (!ok) speakLine(line);
+      });
     };
     const fx = prefs.sfx ? effects(style) : null;
 

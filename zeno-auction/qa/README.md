@@ -6,7 +6,7 @@ HTTP / WebSocket API. They are what was used to test the app before release.
 ```bash
 npm install                                   # installs playwright (the package only)
 npx playwright install chromium               # one-time browser download
-DEV_KEY=qa-developer-key-1234 npm start &     # (after npm run build) the app on http://localhost:8787 — DEV_KEY switches on the payment / developer features the last two suites test
+DEV_KEY=qa-developer-key-1234 TTS_PROVIDER=mock npm start &     # (after npm run build) the app on http://localhost:8787 — DEV_KEY switches on the payment / developer features the last two suites test
 npm run qa                                    # runs everything (≈ 8 min)
 ```
 
@@ -26,6 +26,7 @@ Run one script on its own with `node qa/qa-api.cjs`.
 | `qa-pay.cjs` | Going live: locked until paid or granted, practice always free, UPI reference request, developer approve / reject / grant / take back, live unlock on the admin screen, signed unlock surviving "Restore from file" (forgeries ignored), price 0 = free, developer-key throttle. Needs `DEV_KEY` on the server |
 | `qa-ui5.cjs` | Theme picker (29 themes), light/dark switch (per device, organiser default), brand logo / banner / "Powered by ZenoBid", team-list sorting (captain's own, auctioneer's for the big screen), unlock dialog with QR, developer page, Terms page. Needs `DEV_KEY` |
 | `qa-ui6.cjs` | The announcer styles: every bid, call and sale is spoken with team and amount in each style (WWE, KBC in Hindi words, Mortal Kombat); pace, depth and voice per style; fallback to Latin-letter Hindi when a device has no Hindi voice; the style picker and "Hear it". Speech is replaced by a recorder, so no audio device is needed |
+| `qa-voice.cjs` | Studio voices made by the server: the sample and live-moment links (formats, caching, old moments refused, styles checked), the big screen plays the server's recording instead of the device voice, "Hear it" plays the studio sample, and the device voice takes over (a male voice, never a female one pushed deep) when the server cannot make one. Needs `TTS_PROVIDER=mock` on the server |
 | `qa-multitab.cjs N` | N tabs in one browser, then a bid (the regression test for the "6 tabs" bug) |
 
 The engine rules are also covered by `npm test`, including a randomised stress test

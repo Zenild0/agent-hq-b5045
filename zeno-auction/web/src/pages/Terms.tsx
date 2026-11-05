@@ -79,6 +79,13 @@ export default function Terms() {
           <li>The server also makes a nightly safety backup that is kept for 7 days, so a deleted auction can remain in a backup for up to a week before it disappears.</li>
           <li>You can download the whole auction as a file to your own computer and bring it back later. ZenoBid is not meant to be where you keep your records.</li>
           <li>Admin links and team PINs are secrets. Anyone who has them can act for that team or auction. Don’t share them publicly.</li>
+          {info?.voice && (
+            <li>
+              Studio announcer voices: when a screen has the WWE, KBC or Mortal Kombat announcer on, the sentence being announced (team name, player name, amount) is sent to
+              Google Cloud Text-to-Speech to be turned into speech, and the recording is kept on this server so it can be replayed. Nothing else is sent. The voices are
+              original styles, not imitations of any real person.
+            </li>
+          )}
         </ul>
       </section>
 

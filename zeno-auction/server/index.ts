@@ -9,6 +9,8 @@ import { AuctionError, createStore, nextDue, randomCode, runAction, tick, type A
 import { buildArchive, restoreArchive } from './archive';
 import { clientIp } from './net';
 import { currentGate, devEnabled, getPlatform, isDevKey, refreshAccess, savePlatform } from './platform';
+import { Tts, ttsConfigFromEnv } from './tts';
+import { announce, isStyle, type AnnouncerStyle, type SpeechKind } from '../shared/announcer';
 import { DATA_DIR, deleteEventFiles, flushAll, loadAll, readUpload, saveSafetyCopy, saveSoon, UPLOADS_DIR, writeUploads } from './persist';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -423,12 +425,79 @@ app.get('/api/platform', (_req, res) => {
   const g = currentGate();
   res.json({
     env: APP_ENV,
+    voice: !!tts && tts.enabled,
     payments: g.required,
     price: g.required ? g.price : 0,
     operatorName: c.operatorName,
     contact: c.contact,
     limits: { ...LIMITS, screensPerAuction: MAX_SCREENS, auctionsOnServer: MAX_EVENTS, autoDeleteDays: AUTO_DELETE_DAYS },
   });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Studio announcer voices (Google Cloud Text-to-Speech; off unless GOOGLE_TTS_KEY is set)
+// ---------------------------------------------------------------------------------------------
+
+const ttsCfg = ttsConfigFromEnv(process.env, DATA_DIR);
+const tts = ttsCfg ? new Tts(ttsCfg) : null;
+if (tts) {
+  tts.prune();
+  setInterval(() => tts.prune(), 6 * 3_600_000).unref();
+  console.log(`Studio announcer voices: on (${ttsCfg!.provider}; ${tts.remaining().toLocaleString('en')} characters left this month)`);
+}
+// New sentences made per auction per hour (anything already made is free and not counted).
+const VOICE_PER_HOUR = Number(process.env.TTS_PER_AUCTION_HOUR ?? 400);
+const voiceMade = new Map<string, { n: number; reset: number }>();
+const SAY_KINDS = new Set<SpeechKind>(['reveal', 'bid', 'call', 'sold', 'unsold']);
+
+async function sendVoice(res: Response, style: Exclude<AnnouncerStyle, 'classic'>, text: string, rate: number | undefined, budgetKey: string) {
+  if (!tts) throw new AuctionError('Studio voices are not switched on', 404);
+  if (!tts.has(style, text)) {
+    const now = Date.now();
+    let e = voiceMade.get(budgetKey);
+    if (!e || now > e.reset) voiceMade.set(budgetKey, (e = { n: 0, reset: now + 3_600_000 }));
+    if (++e.n > VOICE_PER_HOUR) throw new AuctionError('Too many new voice lines this hour', 429);
+  }
+  try {
+    const { audio, type } = await tts.speak(style, text, rate ?? 1);
+    res.set('Content-Type', type);
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(audio);
+  } catch (err) {
+    console.error('Announcer voice:', (err as Error).message);
+    throw new AuctionError('The studio voice is not available right now', 503);
+  }
+}
+
+const styleOf = (v: unknown) => {
+  if (!isStyle(v) || v === 'classic') throw new AuctionError('Choose WWE, KBC or Mortal Kombat', 400);
+  return v;
+};
+
+/** The spoken line for the auction's latest moment (a bid, a call, SOLD…). Screens ask by the moment's number. */
+app.get('/api/events/:code/voice/:seq', (req, res, next) => {
+  (async () => {
+    const style = styleOf(req.query.style);
+    const store = findEvent(req);
+    const d = store.data;
+    const ev = d.live.lastEvent;
+    if (!ev || ev.seq !== Number(req.params.seq) || !SAY_KINDS.has(ev.type as SpeechKind)) throw new AuctionError('That moment has passed', 404);
+    const player = d.players.find((p) => p.id === ev.playerId);
+    const team = d.captains.find((c) => c.id === ev.captainId);
+    const amount = ev.type === 'reveal' ? (player ? player.basePrice || d.settings.defaultBasePrice : 0) : ev.amount;
+    const line = announce(style, ev.type as SpeechKind, { team: team?.team, player: player?.name, amount, call: ev.call, fmt: d.settings, variant: ev.seq });
+    if (!line) throw new AuctionError('Nothing to say', 404);
+    await sendVoice(res, style, line.text, line.rate, d.code);
+  })().catch(next);
+});
+
+/** A fixed sample for the "Hear it" button. */
+app.get('/api/voice-sample/:style', (req, res, next) => {
+  (async () => {
+    const style = styleOf(req.params.style);
+    const line = announce(style, 'bid', { team: 'Thunder Hawks', amount: 12_000_000, fmt: { symbol: '₹', moneyStyle: 'indian' }, variant: 0 })!;
+    await sendVoice(res, style, line.text, line.rate, 'sample');
+  })().catch(next);
 });
 
 /** The admin says "I have paid" and gives the UPI reference; the developer then approves it. */

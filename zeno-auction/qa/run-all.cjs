@@ -14,6 +14,7 @@ const suites = [
   ['Payments: price, UPI request, approval, signed unlock (needs DEV_KEY on the server)', 'qa-pay.cjs'],
   ['Look & feel, sorting, brand, unlock dialog, developer page (needs DEV_KEY)', 'qa-ui5.cjs'],
   ['Announcer styles: WWE / KBC (Hindi) / Mortal Kombat, spoken bids, voice fallbacks', 'qa-ui6.cjs'],
+  ['Studio voices from the server (needs TTS_PROVIDER=mock on the server)', 'qa-voice.cjs'],
 ];
 let failed = 0;
 for (const [title, file] of suites) {

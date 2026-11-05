@@ -225,6 +225,34 @@ By default everything is free. These features switch on only when **you** add a 
 
 If the key ever leaks: edit the `DEV_KEY=` line with `sudo nano /etc/zenobid.env` and restart the service.
 
+## Part 10 — Studio announcer voices (WWE / KBC / Mortal Kombat)
+
+Without this, the announcer uses whatever voices the watching computer has installed, and those can sound robotic. With it, **your server** makes each line with Google's natural "neural" voices (a deep male Hindi host for KBC, an arena announcer for WWE, a dark narrator for Mortal Kombat) and the big screen plays it with an echo that suits the style. These are original voices, not copies of any real person.
+
+**New words:** an **API** is a door one program uses to ask another for something (here: "please say this sentence"). An **API key** is the password for that door. **Text-to-Speech (TTS)** turns written words into a voice recording.
+
+The key is a secret, like `DEV_KEY`: it lives only in `/etc/zenobid.env`, written by you. **Never paste it in a chat or on GitHub.**
+
+1. **Switch on the voice service** (one time). In the Google Cloud console (the same project as your server), open the menu ☰ → **APIs & Services** → **Library**, search **Cloud Text-to-Speech API**, open it and click **Enable**.
+2. **Make the key.** ☰ → **APIs & Services** → **Credentials** → **+ Create credentials** → **API key**. Google shows the key: click **Edit API key** (or the key's name) and under **API restrictions** choose **Restrict key** → tick only **Cloud Text-to-Speech API** → **Save**. Now the key can do nothing except make voices. Copy the key (keep this page open).
+3. **Put it on the server.** In the server's terminal, run this line. It asks you to paste the key, shows nothing while you paste (that is normal), and writes it straight into the settings file:
+   ```
+   read -rsp "Paste the key, then press Enter: " K && echo "GOOGLE_TTS_KEY=$K" | sudo tee -a /etc/zenobid.env > /dev/null && unset K && echo
+   ```
+4. **Restart ZenoBid** when no auction is live: `sudo systemctl restart zenobid`
+5. **Check it:** `sudo journalctl -u zenobid -n 20 --no-pager | grep -i voice` should say `Studio announcer voices: on (google; 300,000 characters left this month)`. On the big screen, tick **Announcer**, pick a style and click **▶ Hear it**.
+
+**What it costs.** Every sentence is made **once** and kept on the server, so "Going once…" or a price said before costs nothing the second time. Your server also stops itself at **300,000 new characters a month** (a line is about 40 characters, so roughly 7,000 new lines) and then quietly falls back to the computer's own voices until the next month. Google gives a free monthly allowance for these voices; check the current numbers on Google's *Text-to-Speech pricing* page, and keep your budget alert switched on. To change the monthly cap, add a line like `TTS_MONTHLY_CHARS=100000` to `/etc/zenobid.env` and restart.
+
+**Data out (the 1 GB free).** Each spoken line is a small file (about 10–20 KB) sent to every screen that has the announcer switched on. Switch the announcer on **only on the big screen** (the one shared in Zoom), not on every captain's phone.
+
+**On your own computer (to try it before the server).** In the terminal where you run the app, set the key for that window only, then start the app as usual:
+- Windows PowerShell: `$env:GOOGLE_TTS_KEY = "paste-the-key-here"` then `npm run dev`
+- Windows Command Prompt: `set GOOGLE_TTS_KEY=paste-the-key-here` then `npm run dev`
+- Mac / Linux: `GOOGLE_TTS_KEY=paste-the-key-here npm run dev`
+
+**If something goes wrong:** the screens simply use their own voices, so an auction never stops because of this. The server's messages (`sudo journalctl -u zenobid -n 40 --no-pager`) show the reason, e.g. `403` means the key is wrong or not allowed to use Text-to-Speech (repeat step 1–2). If the key ever leaks: delete it in **Credentials**, make a new one, and replace the `GOOGLE_TTS_KEY=` line with `sudo nano /etc/zenobid.env`.
+
 ---
 
 ## Updates, backups and safety nets
@@ -259,4 +287,4 @@ Google's free server includes about **1 GB of data out per month**. ZenoBid send
 
 ## Dictionary (A–Z)
 
-**Backup** – a spare copy of your data. **Environment (staging / production)** – a copy of the app for one purpose: *production* is the real site, *staging* is the rehearsal copy where new things are tried first. **Branch** – one version line of a repo. **Build** – turning source code into runnable files. **Command** – one typed instruction. **Commit** – a saved snapshot of changes in git. **Cron/timer** – a scheduled job. **DNS** – the internet's phone book. **Environment variable** – a setting a program reads on start. **git** – the tool that tracks versions of code. **GitHub** – a website that stores git repos. **Health check** – a tiny "are you OK?" page. **HTTP/HTTPS** – the language of web pages / its padlocked version. **JSON** – a simple text format for data; auction files are JSON. **localhost** – this very computer. **Node.js** – runs JavaScript on servers. **npm** – installs libraries for Node. **Port** – a numbered door on a computer. **Secret key** – a long random password a program checks (like `DEV_KEY`); it lives in a settings file and nowhere public. **Pull/fetch** – download new changes. **Push** – upload your changes. **Repo** – a project's folder on GitHub. **Reverse proxy** – a front desk passing visitors to the right app. **Rollback** – going back to the last working version. **Script** – a file of commands. **Server** – an always-on computer others visit. **Service** – a program kept running by the system. **SSH** – secure remote terminal. **Subdomain** – the front part of an address (`auction.`). **`sudo`** – run as administrator. **Swap** – disk used as emergency memory. **systemd** – the manager of services and timers on Linux. **Terminal** – the window where you type commands. **Tunnel** – a private pipe to Cloudflare. **VM** – a rented slice of a computer. **WebSocket** – an always-open line for instant updates.
+**API / API key** – a door one program uses to ask another for something / the password for that door. **Backup** – a spare copy of your data. **Environment (staging / production)** – a copy of the app for one purpose: *production* is the real site, *staging* is the rehearsal copy where new things are tried first. **Branch** – one version line of a repo. **Build** – turning source code into runnable files. **Command** – one typed instruction. **Commit** – a saved snapshot of changes in git. **Cron/timer** – a scheduled job. **DNS** – the internet's phone book. **Environment variable** – a setting a program reads on start. **git** – the tool that tracks versions of code. **GitHub** – a website that stores git repos. **Health check** – a tiny "are you OK?" page. **HTTP/HTTPS** – the language of web pages / its padlocked version. **JSON** – a simple text format for data; auction files are JSON. **localhost** – this very computer. **Node.js** – runs JavaScript on servers. **npm** – installs libraries for Node. **Port** – a numbered door on a computer. **Secret key** – a long random password a program checks (like `DEV_KEY`); it lives in a settings file and nowhere public. **Pull/fetch** – download new changes. **Push** – upload your changes. **Repo** – a project's folder on GitHub. **Reverse proxy** – a front desk passing visitors to the right app. **Rollback** – going back to the last working version. **Script** – a file of commands. **Server** – an always-on computer others visit. **Service** – a program kept running by the system. **SSH** – secure remote terminal. **Subdomain** – the front part of an address (`auction.`). **`sudo`** – run as administrator. **Swap** – disk used as emergency memory. **systemd** – the manager of services and timers on Linux. **Terminal** – the window where you type commands. **TTS (Text-to-Speech)** – turning written words into a voice recording. **Tunnel** – a private pipe to Cloudflare. **VM** – a rented slice of a computer. **WebSocket** – an always-open line for instant updates.
