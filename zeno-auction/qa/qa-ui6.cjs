@@ -15,6 +15,7 @@ async function session(browser, style, voices, code) {
   }, [style, voices]);
   // this suite tests the device's own voices: a server with studio voices switched on is told "not now"
   await ctx.route(/\/voice(-sample)?\//, (r) => r.fulfill({ status: 503, body: '{}' }));
+  await ctx.route('**/api/platform', async (r) => { const res = await r.fetch(); const j = await res.json(); j.voice = false; await r.fulfill({ response: res, json: j }); });
   const p = await ctx.newPage(); p.on('pageerror', e => errors.push(`${style}: ${e.message}`));
   await p.goto(`${BASE}/e/${code}/live`); await p.waitForSelector('text=Join code'); await sleep(500);
   return { ctx, p, said: () => p.evaluate(() => window.__said), clear: () => p.evaluate(() => { window.__said = []; }) };
@@ -81,6 +82,7 @@ async function session(browser, style, voices, code) {
   const ctx = await b.newContext({ viewport: { width: 1300, height: 800 } });
   await ctx.addInitScript((voices) => { window.__said = []; Object.defineProperty(window, 'SpeechSynthesisUtterance', { value: class { constructor(t) { this.text = t; } }, configurable: true }); Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: { getVoices: () => voices, cancel() {}, addEventListener() {}, speak(u) { window.__said.push({ text: u.text, pitch: u.pitch, voice: u.voice && u.voice.name }); } } }); }, VOICES_ALL);
   await ctx.route(/\/voice(-sample)?\//, (r) => r.fulfill({ status: 503, body: '{}' }));
+  await ctx.route('**/api/platform', async (r) => { const res = await r.fetch(); const j = await res.json(); j.voice = false; await r.fulfill({ response: res, json: j }); });
   const p = await ctx.newPage(); p.on('pageerror', e => errors.push('picker: ' + e.message));
   await p.goto(`${BASE}/e/${c.code}/live`); await p.waitForSelector('text=Join code');
   t('the style picker is hidden until the announcer is on', await p.locator('select[aria-label="Announcer style"]').count() === 0);

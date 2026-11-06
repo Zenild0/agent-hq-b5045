@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readdirSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { DEFAULT_VOICES, Tts, mockWav, ttsConfigFromEnv, type TtsConfig } from './tts';
+import { DEFAULT_EXPRESSIVE_VOICES, DEFAULT_VOICES, Tts, mockWav, ttsConfigFromEnv, type TtsConfig } from './tts';
 
 const dir = () => mkdtempSync(path.join(tmpdir(), 'zeno-tts-'));
 const cfg = (over: Partial<TtsConfig> = {}): TtsConfig => ({
@@ -12,6 +12,7 @@ const cfg = (over: Partial<TtsConfig> = {}): TtsConfig => ({
   dir: path.join(dir(), 'tts-cache'),
   monthlyChars: 1000,
   voices: DEFAULT_VOICES,
+  expressive: { on: false, model: 'gemini-2.5-flash-tts', monthlyChars: 1000, voices: DEFAULT_EXPRESSIVE_VOICES },
   ...over,
 });
 
@@ -48,7 +49,7 @@ test('each sentence is made once and then served from disk', async () => {
   const t = new Tts(cfg(), g.fetcher);
   const a = await t.speak('wwe', 'Thunder Hawks bid one crore!');
   assert.equal(a.type, 'audio/mpeg');
-  assert.match(a.audio.toString(), /^mp3:en-US-Chirp3-HD-Algenib:Thunder Hawks bid one crore!$/);
+  assert.match(a.audio.toString(), /^mp3:en-US-Chirp3-HD-Alnilam:Thunder Hawks bid one crore!$/);
   assert.equal(t.has('wwe', 'Thunder Hawks bid one crore!'), true);
   const b = await t.speak('wwe', 'Thunder Hawks bid one crore!');
   assert.deepEqual(b.audio, a.audio);
@@ -57,7 +58,7 @@ test('each sentence is made once and then served from disk', async () => {
   // the same words in another style are a different recording
   await t.speak('mk', 'Thunder Hawks bid one crore!');
   assert.equal(g.calls.length, 2);
-  assert.equal(g.calls[1].voice, 'en-US-Chirp3-HD-Charon');
+  assert.equal(g.calls[1].voice, 'en-US-Chirp3-HD-Algenib');
   // the key travels to Google only, and the text sent is exactly the sentence
   assert.match(g.calls[0].url, /^https:\/\/texttospeech\.googleapis\.com\/v1\/text:synthesize\?key=k+$/);
   assert.equal(g.calls[0].body.input.text, 'Thunder Hawks bid one crore!');
@@ -140,29 +141,66 @@ test('the cache is kept small by removing the oldest recordings', () => {
   assert.ok(existsSync(path.join(c.dir, 'usage.json')));
 });
 
-test('a faster pace is asked for (and kept apart in the cache); a voice that refuses a pace is asked without one', async () => {
-  const g = fakeGoogle();
-  const t = new Tts(cfg(), g.fetcher);
-  await t.speak('cricket', 'Chhakka!', 1.23);
-  assert.equal(g.calls[0].body.audioConfig.speakingRate, 1.23);
-  assert.equal(t.has('cricket', 'Chhakka!', 1.23), true);
-  assert.equal(t.has('cricket', 'Chhakka!'), false, 'the same words at another pace are another recording');
-  await t.speak('cricket', 'Chhakka!', 1.23);
-  assert.equal(g.calls.length, 1);
+const X = (over: Partial<TtsConfig['expressive']> = {}) => ({ expressive: { on: true, model: 'gemini-2.5-flash-tts', monthlyChars: 1000, voices: DEFAULT_EXPRESSIVE_VOICES, ...over } });
 
-  // a voice that answers 400 to a pace, but works without one
-  const calls: any[] = [];
-  const picky = (async (_url: string, init: RequestInit) => {
-    const body = JSON.parse(String(init.body));
-    calls.push(body);
-    if (body.audioConfig.speakingRate) return new Response('{"error":"no pace"}', { status: 400 });
-    return new Response(JSON.stringify({ audioContent: Buffer.from('ok').toString('base64') }), { status: 200 });
-  }) as unknown as typeof fetch;
-  const t2 = new Tts(cfg(), picky);
-  await t2.speak('kbc', 'ek baar', 1.1);
-  assert.equal(calls.length, 2);
-  assert.equal(calls[1].voice.name, calls[0].voice.name, 'the same (best) voice, not a worse one');
-  await t2.speak('kbc', 'do baar', 1.1);
-  assert.equal(calls.length, 3, 'next time it goes straight to "no pace" for that voice');
-  assert.equal(calls[2].audioConfig.speakingRate, undefined);
+test('the expressive voice gets the line AND a director\'s note, and is kept apart from the studio recording', async () => {
+  const g = fakeGoogle();
+  const t = new Tts(cfg(X()), g.fetcher);
+  const a = await t.speak('cricket', 'Chhakka!', { direction: 'Explosive joy!' });
+  assert.equal(a.kind, 'expressive');
+  assert.equal(g.calls.length, 1);
+  const body = g.calls[0].body;
+  assert.deepEqual(body.input, { prompt: 'Explosive joy!', text: 'Chhakka!' });
+  assert.deepEqual(body.voice, { languageCode: 'hi-IN', name: 'Fenrir', modelName: 'gemini-2.5-flash-tts' });
+  assert.equal(t.expressiveUsed(), 'Chhakka!'.length);
+  assert.equal(t.used(), 0, 'counted in its own budget');
+  // the same words with the same direction: from disk
+  await t.speak('cricket', 'Chhakka!', { direction: 'Explosive joy!' });
+  assert.equal(g.calls.length, 1);
+  assert.equal(t.has('cricket', 'Chhakka!', { direction: 'Explosive joy!' }), true);
+  // another direction is another performance
+  await t.speak('cricket', 'Chhakka!', { direction: 'Calm.' });
+  assert.equal(g.calls.length, 2);
+});
+
+test('when the expressive voice cannot answer, the studio voice speaks instead (and the expressive one rests)', async () => {
+  // refused (for example the model is not enabled for this key): studio voice, and no new expressive tries for a while
+  const g = fakeGoogle((v) => (DEFAULT_VOICES.mk.includes(v) ? 200 : 403));
+  const t = new Tts(cfg(X()), g.fetcher);
+  const warn = console.warn;
+  const warned: string[] = [];
+  console.warn = (m: string) => void warned.push(m);
+  try {
+    const a = await t.speak('mk', 'Finish him!', { direction: 'Roar.' });
+    assert.equal(a.kind, 'studio');
+    assert.equal(g.calls[0].body.voice.modelName, 'gemini-2.5-flash-tts');
+    assert.equal(g.calls[1].body.voice.name, 'en-US-Chirp3-HD-Algenib');
+    assert.equal(g.calls[1].body.input.prompt, undefined, 'studio voices get no director\'s note');
+    const b = await t.speak('mk', 'Fight!', { direction: 'Roar.' });
+    assert.equal(b.kind, 'studio');
+    assert.equal(g.calls.filter((c) => c.body.voice.modelName).length, 1, 'resting: not asked again straight away');
+    assert.equal(warned.length, 1, 'the reason is logged once');
+    assert.doesNotMatch(warned[0], /key=|k{10}/, 'the key never appears in the log');
+  } finally {
+    console.warn = warn;
+  }
+});
+
+test('the expressive budget is a hard cap; switched off means never asked', async () => {
+  const g = fakeGoogle();
+  const t = new Tts(cfg(X({ monthlyChars: 10 })), g.fetcher);
+  assert.equal((await t.speak('wwe', 'Red, 40!', { direction: 'Loud.' })).kind, 'expressive');
+  assert.equal((await t.speak('wwe', 'Blue, 45 lakh!', { direction: 'Loud.' })).kind, 'studio', 'over the cap: studio voice');
+  const off = fakeGoogle();
+  const t2 = new Tts(cfg(X({ on: false })), off.fetcher);
+  assert.equal((await t2.speak('wwe', 'Red, 40!', { direction: 'Loud.' })).kind, 'studio');
+  assert.ok(off.calls.every((c) => !c.body.voice.modelName));
+  // from the environment
+  const env = ttsConfigFromEnv({ GOOGLE_TTS_KEY: 'A'.repeat(39) }, '/d')!;
+  assert.equal(env.expressive.on, false, 'paid voices are OFF unless the owner switches them on');
+  assert.equal(ttsConfigFromEnv({ GOOGLE_TTS_KEY: 'A'.repeat(39), TTS_EXPRESSIVE: 'off' }, '/d')!.expressive.on, false);
+  const env2 = ttsConfigFromEnv({ GOOGLE_TTS_KEY: 'A'.repeat(39), TTS_EXPRESSIVE: 'on', TTS_EXPRESSIVE_VOICE_CRICKET: 'Puck', TTS_EXPRESSIVE_MONTHLY_CHARS: '5000' }, '/d')!;
+  assert.equal(env2.expressive.on, true, 'only when asked for');
+  assert.deepEqual(env2.expressive.voices.cricket, { lang: 'hi-IN', name: 'Puck' });
+  assert.equal(env2.expressive.monthlyChars, 5000);
 });

@@ -437,8 +437,10 @@ function sayLine(line: SpeechLine, url: string, style: Exclude<AnnouncerStyle, '
   void (async () => {
     const c = audio();
     if (c && (await studioVoices())) {
+      // The server has studio voices: wait for its recording (an acted line can take a few seconds the first time).
+      // If it cannot make one, stay quiet rather than switch to this device's robotic voice; the badge says so.
       try {
-        const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+        const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
         if (res.ok) {
           const buf = await c.decodeAudioData(await res.arrayBuffer());
           setStudio('on');
@@ -447,13 +449,15 @@ function sayLine(line: SpeechLine, url: string, style: Exclude<AnnouncerStyle, '
         }
         if (res.status >= 500 || res.status === 429) {
           setStudio('failing');
-          console.warn(`Studio voice unavailable (${res.status}); using this device's voice instead.`);
+          console.warn(`Studio voice unavailable (${res.status}); this line is skipped.`);
         }
       } catch (err) {
         setStudio('failing');
-        console.warn("Studio voice unavailable; using this device's voice instead.", err);
+        console.warn('Studio voice unavailable; this line is skipped.', err);
       }
+      return;
     }
+    // no studio voices on this server at all: this device's own voice
     if (my !== turn) return;
     hush();
     speakLine(line);

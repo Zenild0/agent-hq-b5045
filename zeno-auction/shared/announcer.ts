@@ -688,6 +688,56 @@ export function announce(style: AnnouncerStyle, kind: SpeechKind, ctx: AnnounceC
   return line && line.text ? line : null;
 }
 
+// ---- voice direction: how each line should be PERFORMED ---------------------------------------------------
+// The expressive voices (server/tts.ts) are actors: with each line they get the host's personality brief and a
+// director's note for this exact moment. The note follows the emotional arc of a live auction: anticipation when a
+// player comes up, energy that climbs with every bid, suspense through the calls, release and celebration on SOLD,
+// sympathy for no sale, and cheeky, personal provocation when the room goes quiet. Pace stays natural (never slowed
+// down or sped up): emotion comes from tone, emphasis, energy and pauses, the way a great host does it.
+
+const PERSONA: Record<Exclude<AnnouncerStyle, 'classic'>, string> = {
+  wwe: 'You are a legendary arena ring announcer with an enormous, deep, booming bass voice and total command of the crowd. Larger than life: you punch every team name, stretch the big words for effect, and make every bid sound like a main event.',
+  kbc: 'You are a much-loved Hindi TV quiz-show host with a deep, rich, warm baritone and impeccable Hindi diction (a natural Indian Hindi accent, never an English one). You speak to the audience like family: gracious, dramatic, a master of suspense who leans into pauses, then lights up with genuine warmth and delight.',
+  mk: 'You are the narrator of a brutal, legendary fighting tournament: a very deep, gravelly, menacing voice, full of dark power and theatrical intensity. You growl the quiet words and ROAR the big ones. Every bid is a strike in battle.',
+  show: 'You are a glamorous, bubbly prime-time game-show host with a huge smile in your voice: sparkling, playful, warm and genuinely thrilled for every contestant. You squeal a little at big moments and cheer people on.',
+  velvet: 'You are a smooth, sultry late-night radio host: a low, warm, intimate voice, unhurried and confident, with a playful, teasing charm and a knowing smile. Classy and alluring, never explicit.',
+  trailer: 'You are an epic Hollywood movie-trailer narrator: a very deep, gravelly voice with enormous cinematic gravitas, ominous weight and dramatic pauses, as if every bid were the plot twist of the year.',
+  cricket: 'You are a wildly passionate Hindi cricket commentator in a packed, roaring stadium (a natural Indian Hindi accent, Hindi and Hinglish, never an English accent). Explosive, joyful and emotional: your voice soars and cracks with excitement, you celebrate like every bid is a six in the last over, and you live every moment with the crowd.',
+  assistant: 'You are a friendly, warm and clear voice assistant: upbeat, helpful and calm, with a smile in your voice and a touch of excitement for big moments.',
+};
+
+const ENERGY = ['calm but upbeat', 'lively and rising', 'high, thrilled', 'explosive, breathless, at the very top of your energy'];
+
+/** The director's note for one line: who the host is, what this moment feels like, and how to deliver it. */
+export function voiceDirection(style: AnnouncerStyle, kind: SpeechKind, c: AnnounceCtx): string {
+  if (style === 'classic') return '';
+  const heat = heatOf(c);
+  const hindi = STYLES.find((x) => x.id === style)?.lang === 'hi';
+  let moment = '';
+  switch (kind) {
+    case 'spin': moment = 'The wheel is spinning to pick the next player. Build curious, excited anticipation, as if leaning towards the audience.'; break;
+    case 'reveal': moment = 'A new player has just come up. Introduce them grandly, with pride and anticipation, then invite the bidding with a smile.'; break;
+    case 'bid': moment = `A team has just placed a bid. Announce the team and the amount crisply and with punch, like a live sports call. Energy: ${ENERGY[heat]}${heat >= 2 ? '; the room is in a bidding war, let the thrill come through' : ''}.`; break;
+    case 'call': {
+      const n = c.call ?? 1;
+      moment = n === 1 ? 'First call: firm, expectant, building suspense.' : n === 2 ? 'Second call: more tension, urgent, almost a warning, holding the room in suspense.' : 'Final call: maximum suspense and drama, the decisive moment.';
+      if (style === 'mk' && n === 3) moment += ' ROAR the last words with full menace.';
+      break;
+    }
+    case 'sold': moment = heat >= 2 ? 'SOLD after a fierce bidding war! Release all the built-up tension in an explosive, triumphant celebration, full of joy and admiration.' : 'SOLD! Celebrate with proud, happy triumph and congratulate the team warmly.'; break;
+    case 'unsold': moment = 'Nobody bid for this player. Sound genuinely disappointed but kind and sympathetic, with a soft sigh, and a hint of hope for next time.'; break;
+    case 'undo': moment = 'A bid has just been taken back. Sound surprised, then make the correction quickly and with a little drama.'; break;
+    case 'lull': moment = !c.team || !(c.bids ?? 0)
+      ? 'Nobody has bid yet. Playfully and personally challenge the room to make the first move: warm, teasing, encouraging.'
+      : `The room has gone quiet after this bid. Talk directly to the teams: tease, provoke and dare them to go higher, cheeky and conversational, with a smile. Energy: ${ENERGY[heat]}.`; break;
+    case 'break': moment = 'Announce a short strategy break: relaxed, friendly, a little conspiratorial.'; break;
+    case 'breakext': moment = 'The break is being extended: easy-going and friendly.'; break;
+    case 'breakend': moment = 'The break is over: an energetic, delighted welcome back.'; break;
+    case 'round': moment = 'A brand-new round is starting: a big, celebratory announcement full of fresh energy.'; break;
+  }
+  return `${PERSONA[style]} ${moment} Speak at a natural, normal talking pace (not slowed down, not rushed): put the emotion into tone, emphasis and energy.${hindi ? ' Speak in Hindi with a natural Indian accent; English words such as team names are said the Indian way.' : ''} Say only the given words.`;
+}
+
 /** What "Hear it" plays: a bid, then the host's comment when the room goes quiet (classic: just the bid). */
 export function sampleLine(style: AnnouncerStyle): SpeechLine | null {
   const bid = announce(style, 'bid', SAMPLE_CTX);

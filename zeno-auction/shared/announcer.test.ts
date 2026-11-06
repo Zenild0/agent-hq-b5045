@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SAMPLE_CTX, SPEECH_KINDS, STYLES, announce, heatOf, sampleLine, studioPace, hindiMoney, isStyle, momentCtx, type AnnouncerStyle, type SpeechKind } from './announcer';
+import { SAMPLE_CTX, SPEECH_KINDS, STYLES, announce, heatOf, sampleLine, studioPace, voiceDirection, hindiMoney, isStyle, momentCtx, type AnnouncerStyle, type SpeechKind } from './announcer';
 import { pickStyleVoice } from './voice';
 import { spokenMoney } from './money';
 
@@ -214,4 +214,25 @@ test('the organiser can write their own last call ("going thrice"), for every ho
   const src = { players: [], captains: [{ id: 'a', team: 'Red' }], settings: { ...inr, defaultBasePrice: L, lastCall: 'Finish them!' }, live: { bids: [{ captainId: 'a', amount: 5 * L }] } };
   assert.equal(momentCtx(src, { seq: 1, type: 'call', call: 3 }).lastCall, 'Finish them!');
   assert.equal(momentCtx(src, { seq: 1, type: 'call', call: 2 }).lastCall, undefined);
+});
+
+test('every line comes with a director\'s note: who the host is, the feeling of the moment, natural pace', () => {
+  const hosts = STYLES.filter((x) => x.id !== 'classic');
+  for (const s of hosts) {
+    for (const kind of [...SPEECH_KINDS, 'lull' as const]) {
+      const d = voiceDirection(s.id, kind, { team: 'Red', amount: 40 * L, bids: 3, call: 2, fmt: inr, variant: 0 });
+      assert.ok(d.length > 120, `${s.id}/${kind}`);
+      assert.match(d, /natural, normal talking pace/);
+      if (s.lang === 'hi') assert.match(d, /natural Indian accent/, `${s.id} must not sound English`);
+    }
+  }
+  // the energy climbs with the bidding, and the sale releases it
+  const calm = voiceDirection('cricket', 'bid', { bids: 1, fmt: inr, variant: 0 });
+  const war = voiceDirection('cricket', 'bid', { bids: 9, fmt: inr, variant: 0 });
+  assert.notEqual(calm, war);
+  assert.match(war, /explosive, breathless/);
+  assert.match(voiceDirection('mk', 'call', { call: 3, fmt: inr, variant: 0 }), /ROAR/);
+  assert.match(voiceDirection('wwe', 'sold', { bids: 8, fmt: inr, variant: 0 }), /triumphant/);
+  assert.match(voiceDirection('kbc', 'unsold', { fmt: inr, variant: 0 }), /sympathetic/);
+  assert.equal(voiceDirection('classic', 'bid', { fmt: inr, variant: 0 }), '');
 });

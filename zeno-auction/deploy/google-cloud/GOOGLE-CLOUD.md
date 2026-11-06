@@ -244,6 +244,8 @@ The key is a secret, like `DEV_KEY`: it lives only in `/etc/zenobid.env`, writte
 4. **Restart ZenoBid** when no auction is live: `sudo systemctl restart zenobid`
 5. **Check it:** `sudo journalctl -u zenobid -n 20 --no-pager | grep -i voice` should say `Studio announcer voices: on (google; 300,000 characters left this month)`. On the big screen, tick **Announcer**, pick a style and click **▶ Hear it**.
 
+**Free by default.** All hosts use Google's free studio voices, kept far inside the free monthly allowance. Google also sells "acted" AI voices (Gemini) that follow a director's note for every line; ZenoBid can use them but they are **paid per use**, so they are **off** and stay off unless you add the line `TTS_EXPRESSIVE=on` to `/etc/zenobid.env` yourself (a hard monthly cap, `TTS_EXPRESSIVE_MONTHLY_CHARS`, default 40,000 characters, still applies).
+
 **What it costs.** Every sentence is made **once** and kept on the server, so "Going once…" or a price said before costs nothing the second time. Your server also stops itself at **300,000 new characters a month** (a line is about 40 characters, so roughly 7,000 new lines) and then quietly falls back to the computer's own voices until the next month. Google gives a free monthly allowance for these voices; check the current numbers on Google's *Text-to-Speech pricing* page, and keep your budget alert switched on. To change the monthly cap, add a line like `TTS_MONTHLY_CHARS=100000` to `/etc/zenobid.env` and restart.
 
 **Data out (the 1 GB free).** Each spoken line is a small file (about 10–20 KB) sent to every screen that has the announcer switched on. Switch the announcer on **only on the big screen** (the one shared in Zoom), not on every captain's phone.

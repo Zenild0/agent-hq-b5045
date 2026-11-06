@@ -10,8 +10,8 @@ import { AuctionError, createStore, nextDue, randomCode, runAction, tick, type A
 import { buildArchive, restoreArchive } from './archive';
 import { clientIp } from './net';
 import { currentGate, devEnabled, getPlatform, isDevKey, refreshAccess, savePlatform } from './platform';
-import { Tts, ttsConfigFromEnv } from './tts';
-import { LULL_MS, announce, sampleLine, isSpeechKind, isStyle, momentCtx, studioPace, type AnnouncerStyle } from '../shared/announcer';
+import { Tts, ttsConfigFromEnv, type SpeakOptions } from './tts';
+import { LULL_MS, SAMPLE_CTX, announce, sampleLine, isSpeechKind, isStyle, momentCtx, voiceDirection, type AnnouncerStyle } from '../shared/announcer';
 import { DATA_DIR, deleteEventFiles, flushAll, loadAll, readUpload, saveSafetyCopy, saveSoon, UPLOADS_DIR, writeUploads } from './persist';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -445,24 +445,24 @@ if (tts) {
   tts.prune();
   setInterval(() => tts.prune(), 6 * 3_600_000).unref();
   console.log(`Studio announcer voices: on (${ttsCfg!.provider}; ${tts.remaining().toLocaleString('en')} characters left this month)`);
+  console.log(ttsCfg!.expressive.on ? `Expressive (acted) voices: on (${ttsCfg!.expressive.model}; ${tts.expressiveRemaining().toLocaleString('en')} characters left this month)` : 'Expressive (acted) voices: off');
 }
 // New sentences made per auction per hour (anything already made is free and not counted).
 const VOICE_PER_HOUR = Number(process.env.TTS_PER_AUCTION_HOUR ?? 400);
 const voiceMade = new Map<string, { n: number; reset: number }>();
 
-async function sendVoice(res: Response, style: Exclude<AnnouncerStyle, 'classic'>, text: string, rate: number | undefined, budgetKey: string) {
+async function sendVoice(res: Response, style: Exclude<AnnouncerStyle, 'classic'>, text: string, opts: SpeakOptions, budgetKey: string) {
   if (!tts) throw new AuctionError('Studio voices are not switched on', 404);
-  if (!tts.has(style, text, rate ?? 1)) {
+  if (!tts.has(style, text, opts)) {
     const now = Date.now();
     let e = voiceMade.get(budgetKey);
     if (!e || now > e.reset) voiceMade.set(budgetKey, (e = { n: 0, reset: now + 3_600_000 }));
     if (++e.n > VOICE_PER_HOUR) throw new AuctionError('Too many new voice lines this hour', 429);
   }
   try {
-    const { audio, type, paced } = await tts.speak(style, text, rate ?? 1);
+    const { audio, type, kind } = await tts.speak(style, text, opts);
     res.set('Content-Type', type);
-    // tells the screen whether the recording is at the asked pace (then it may play it a little lower to deepen it)
-    res.set('X-Voice-Paced', paced ? '1' : '0');
+    res.set('X-Voice-Kind', kind); // expressive (acted) or studio
     res.set('Cache-Control', 'public, max-age=86400');
     res.send(audio);
   } catch (err) {
@@ -491,7 +491,8 @@ app.get('/api/events/:code/voice/:seq', (req, res, next) => {
     if (lull && (!(ev.type === 'bid' || ev.type === 'reveal') || d.live.phase !== 'bidding' || Date.now() - ev.at < LULL_MS - 1500)) throw new AuctionError('Not a quiet moment', 404);
     const line = announce(style, lull ? 'lull' : ev.type, ctx);
     if (!line) throw new AuctionError('Nothing to say', 404);
-    await sendVoice(res, style, line.text, studioPace(style), d.code);
+    const kindNow = lull ? 'lull' : ev.type;
+    await sendVoice(res, style, line.text, { direction: voiceDirection(style, kindNow, ctx), urgent: kindNow === 'bid' || kindNow === 'call' }, d.code);
   })().catch(next);
 });
 
@@ -500,7 +501,7 @@ app.get('/api/voice-sample/:style', (req, res, next) => {
   (async () => {
     const style = styleOf(req.params.style);
     const line = sampleLine(style)!;
-    await sendVoice(res, style, line.text, studioPace(style), 'sample');
+    await sendVoice(res, style, line.text, { direction: voiceDirection(style, 'lull', SAMPLE_CTX) }, 'sample');
   })().catch(next);
 });
 

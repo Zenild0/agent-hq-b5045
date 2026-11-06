@@ -7,7 +7,7 @@ const L = require('./lib.cjs'); const { chromium, BASE, sleep, t, api, done } = 
 const errors = [];
 const VOICES = [{ name: 'Microsoft Kalpana', lang: 'hi-IN' }, { name: 'Microsoft Ravi', lang: 'en-IN' }, { name: 'Microsoft Heera', lang: 'en-IN' }];
 
-async function screen(browser, style, code, { failVoice = false } = {}) {
+async function screen(browser, style, code, { failVoice = false, noStudio = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1300, height: 800 } });
   await ctx.addInitScript(([style, voices]) => {
     localStorage.setItem('zeno:sound', JSON.stringify({ sfx: false, voice: true, style }));
@@ -17,6 +17,7 @@ async function screen(browser, style, code, { failVoice = false } = {}) {
     Object.defineProperty(window, 'SpeechSynthesisUtterance', { value: class { constructor(text) { this.text = text; } }, configurable: true });
     Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: { getVoices: () => voices, cancel() {}, addEventListener() {}, speak(u) { window.__said.push({ text: u.text, lang: u.lang, pitch: u.pitch, voice: u.voice && u.voice.name }); } } });
   }, [style, VOICES]);
+  if (noStudio) await ctx.route('**/api/platform', async (r) => { const res = await r.fetch(); const j = await res.json(); j.voice = false; await r.fulfill({ response: res, json: j }); });
   if (failVoice) await ctx.route(/\/voice(-sample)?\//, (r) => r.fulfill({ status: 503, body: '{}' }));
   const p = await ctx.newPage(); p.on('pageerror', (e) => errors.push(`${style}: ${e.message}`));
   const asked = []; p.on('request', (r) => { if (/\/voice(-sample)?\//.test(r.url())) asked.push(r.url()); });
@@ -76,14 +77,18 @@ async function screen(browser, style, code, { failVoice = false } = {}) {
   }
   await s.ctx.close();
 
-  // the server cannot make a voice (no key / budget used / Google down): the device voice takes over
+  // the studio voice fails (Google down, budget used): the screen stays quiet, never the robotic device voice
   const f = await screen(b, 'kbc', c.code, { failVoice: true });
   await host('call'); await sleep(1500);
-  const said = await f.said();
-  t('when the server has no recording, the device voice speaks instead', said.length === 1, JSON.stringify(said));
-  // this device has only a female Hindi voice: a male Indian-English voice reads the Hindi words in Latin letters
-  t('…a male host is never read by a female voice pushed deep', said[0] && said[0].voice === 'Microsoft Ravi' && !/[ऀ-ॿ]/.test(said[0].text), JSON.stringify(said));
+  t('when the studio voice fails, the screen stays quiet (no robotic voice)', (await f.said()).length === 0, JSON.stringify(await f.said()));
   await f.ctx.close();
+  // a server with no studio voices at all: the device voice speaks, and a male host is never a female voice pushed deep
+  const f2 = await screen(b, 'kbc', c.code, { noStudio: true });
+  await host('call'); await sleep(1500);
+  const said = await f2.said();
+  t('a server without studio voices: the device voice speaks', said.length === 1, JSON.stringify(said));
+  t('…a male host is never read by a female voice pushed deep', said[0] && said[0].voice === 'Microsoft Ravi' && !/[ऀ-ॿ]/.test(said[0].text), JSON.stringify(said));
+  await f2.ctx.close();
 
   // the host runs every part of the auction: take-backs, breaks, new rounds
   for (const style of ['show', 'velvet', 'trailer', 'cricket', 'assistant']) t(`sample ${style}: a recording comes back`, (await fetch(`${BASE}/api/voice-sample/${style}`)).status === 200);
