@@ -248,7 +248,9 @@ The key is a secret, like `DEV_KEY`: it lives only in `/etc/zenobid.env`, writte
 
 **Data out (the 1 GB free).** Each spoken line is a small file (about 10–20 KB) sent to every screen that has the announcer switched on. Switch the announcer on **only on the big screen** (the one shared in Zoom), not on every captain's phone.
 
-**On your own computer (to try it before the server).** In the terminal where you run the app, set the key for that window only, then start the app as usual:
+**On your own computer (to try it before the server), the easy way: save the key once.** In the `zeno-auction` folder, run `notepad .env`, click **Yes** to create the file, type `GOOGLE_TTS_KEY=` and paste your key straight after it (one line, no spaces), save and close. From then on `npm run dev` finds the key by itself and prints `Settings read from .env: GOOGLE_TTS_KEY`. The `.env` file never goes to GitHub. The big screen shows **Studio voice ✓** next to the announcer when the studio voice is working, and **⚠ Studio voice off** when it is not (then the computer's own, robotic voice is used).
+
+Or set the key for one window only, then start the app as usual:
 - Windows PowerShell: `$env:GOOGLE_TTS_KEY = "paste-the-key-here"` then `npm run dev`
 - Windows Command Prompt: `set GOOGLE_TTS_KEY=paste-the-key-here` then `npm run dev`
 - Mac / Linux: `GOOGLE_TTS_KEY=paste-the-key-here npm run dev`

@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { Room } from '../lib/useRoom';
 import { STYLES, isStyle } from '../../../shared/announcer';
-import { previewAnnouncer, sfx, speak, useVoices, type SoundPrefs } from '../lib/sound';
+import { previewAnnouncer, sfx, speak, useStudioStatus, useVoices, type SoundPrefs } from '../lib/sound';
 import { ModeToggle } from './Brand';
 import { FullScreenMessage, Logo } from './ui';
 
@@ -112,6 +112,7 @@ export function SoundControls({ prefs, update }: { prefs: SoundPrefs; update: (p
           ))}
         </select>
       )}
+      {prefs.voice && (prefs.style ?? 'classic') !== 'classic' && <StudioBadge />}
       {prefs.voice && (prefs.style ?? 'classic') !== 'classic' && (
         <button className="btn-ghost !px-3 !py-2 !text-xs" title="Play a sample bid in this style" onClick={() => previewAnnouncer(prefs.style ?? 'classic', prefs.voiceName)}>
           ▶ Hear it
@@ -139,5 +140,30 @@ export function SoundControls({ prefs, update }: { prefs: SoundPrefs; update: (p
       )}
       <ModeToggle />
     </div>
+  );
+}
+
+/** Which voice the host is using: the studio voice, or (with a warning) this device's own voice. */
+function StudioBadge() {
+  const status = useStudioStatus();
+  if (status === 'checking') return null;
+  if (status === 'on')
+    return (
+      <span data-testid="studio-badge" className="chip !text-[11px] text-emerald-300" title="The host speaks with the studio voice made by the server.">
+        Studio voice ✓
+      </span>
+    );
+  return (
+    <span
+      data-testid="studio-badge"
+      className="chip !text-[11px] text-amber-300"
+      title={
+        status === 'off'
+          ? 'This server has no studio voices switched on (no Google key), so this device’s own voice is used and may sound robotic.'
+          : 'The studio voice did not answer, so this device’s own voice is used for now. It switches back by itself.'
+      }
+    >
+      ⚠ {status === 'off' ? 'Studio voice off' : 'Studio voice not answering'}: device voice
+    </span>
   );
 }

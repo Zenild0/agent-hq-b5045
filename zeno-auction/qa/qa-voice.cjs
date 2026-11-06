@@ -17,7 +17,7 @@ async function screen(browser, style, code, { failVoice = false } = {}) {
     Object.defineProperty(window, 'SpeechSynthesisUtterance', { value: class { constructor(text) { this.text = text; } }, configurable: true });
     Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: { getVoices: () => voices, cancel() {}, addEventListener() {}, speak(u) { window.__said.push({ text: u.text, lang: u.lang, pitch: u.pitch, voice: u.voice && u.voice.name }); } } });
   }, [style, VOICES]);
-  if (failVoice) await ctx.route('**/voice/**', (r) => r.fulfill({ status: 503, body: '{}' }));
+  if (failVoice) await ctx.route(/\/voice(-sample)?\//, (r) => r.fulfill({ status: 503, body: '{}' }));
   const p = await ctx.newPage(); p.on('pageerror', (e) => errors.push(`${style}: ${e.message}`));
   const asked = []; p.on('request', (r) => { if (/\/voice(-sample)?\//.test(r.url())) asked.push(r.url()); });
   await p.goto(`${BASE}/e/${code}/live`); await p.waitForSelector('text=Join code'); await sleep(500);
@@ -95,6 +95,26 @@ async function screen(browser, style, code, { failVoice = false } = {}) {
   const brkEv = (await api.state(c.code)).live.lastEvent;
   t('a strategy break can be heard', brkEv && brkEv.type === 'break' && (await v(brkEv.seq, 'cricket')).status === 200, JSON.stringify([brk, brkEv]));
   await host('break.end').catch(() => {});
+
+  // the badge says which voice the host is using
+  {
+    const ok = await screen(b, 'wwe', c.code);
+    await ok.p.waitForSelector('[data-testid="studio-badge"]', { timeout: 5000 }).catch(() => {});
+    t('badge: "Studio voice ✓" when the server makes the voice', /Studio voice ✓/.test(await ok.p.locator('[data-testid="studio-badge"]').innerText().catch(() => '')));
+    await ok.ctx.close();
+    const ctxOff = await b.newContext();
+    await ctxOff.addInitScript(() => localStorage.setItem('zeno:sound', JSON.stringify({ sfx: false, voice: true, style: 'kbc' })));
+    await ctxOff.route('**/api/platform', async (r) => { const res = await r.fetch(); const j = await res.json(); j.voice = false; await r.fulfill({ response: res, json: j }); });
+    const off = await ctxOff.newPage();
+    await off.goto(`${BASE}/e/${c.code}/live`); await off.waitForSelector('text=Join code');
+    await off.waitForSelector('[data-testid="studio-badge"]', { timeout: 5000 }).catch(() => {});
+    t('badge: "Studio voice off" (with a warning) when the server has no Google key', /Studio voice off/.test(await off.locator('[data-testid="studio-badge"]').innerText().catch(() => '')));
+    await ctxOff.close();
+    const bad = await screen(b, 'kbc', c.code, { failVoice: true });
+    await bad.p.click('button:has-text("Hear it")'); await sleep(1500);
+    t('badge: "not answering" when the studio voice fails', /not answering/.test(await bad.p.locator('[data-testid="studio-badge"]').innerText().catch(() => '')));
+    await bad.ctx.close();
+  }
 
   // a bid is just "<team>, <amount>"; after 5 quiet seconds the host makes ONE comment, and a new bid cancels it
   {

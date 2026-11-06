@@ -1,3 +1,4 @@
+import './localEnv'; // first: a private .env file (if there is one) fills in settings before anything reads them
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';

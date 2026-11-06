@@ -326,7 +326,32 @@ async function studioVoices(): Promise<boolean> {
   } catch {
     serverVoice = false;
   }
+  setStudio(serverVoice ? 'on' : 'off');
   return serverVoice;
+}
+
+/**
+ * Which voice the hosts are using, shown next to the announcer switch so nobody is surprised by a robotic voice:
+ * 'on' = the studio voice from the server; 'off' = the server has no studio voices (no Google key), so this device's
+ * own voice speaks; 'failing' = the server has them but could not make the last line (Google not answering).
+ */
+export type StudioStatus = 'checking' | 'on' | 'off' | 'failing';
+let studio: StudioStatus = 'checking';
+const studioListeners = new Set<() => void>();
+function setStudio(s: StudioStatus) {
+  if (studio === s) return;
+  studio = s;
+  studioListeners.forEach((f) => f());
+}
+export function useStudioStatus(): StudioStatus {
+  const [, rerender] = useState(0);
+  useEffect(() => {
+    const f = () => rerender((n) => n + 1);
+    studioListeners.add(f);
+    void studioVoices();
+    return () => void studioListeners.delete(f);
+  }, []);
+  return studio;
 }
 
 /**
@@ -416,11 +441,17 @@ function sayLine(line: SpeechLine, url: string, style: Exclude<AnnouncerStyle, '
         const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
         if (res.ok) {
           const buf = await c.decodeAudioData(await res.arrayBuffer());
+          setStudio('on');
           if (my === turn) playStaged(buf, style);
           return;
         }
-      } catch {
-        /* fall through to the device voice */
+        if (res.status >= 500 || res.status === 429) {
+          setStudio('failing');
+          console.warn(`Studio voice unavailable (${res.status}); using this device's voice instead.`);
+        }
+      } catch (err) {
+        setStudio('failing');
+        console.warn("Studio voice unavailable; using this device's voice instead.", err);
       }
     }
     if (my !== turn) return;
