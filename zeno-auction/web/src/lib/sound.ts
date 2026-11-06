@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatMoney, spokenMoney } from '../../../shared/money';
-import { SAMPLE_CTX, announce, heatOf, hostsEverything, isStyle, momentCtx, type AnnouncerStyle, type SpeechLine } from '../../../shared/announcer';
+import { LULL_MS, SAMPLE_CTX, announce, heatOf, hostsEverything, sampleLine, isStyle, momentCtx, type AnnouncerStyle, type SpeechLine } from '../../../shared/announcer';
 import { englishVoices, isFemaleVoice, pickStyleVoice, pickVoice } from '../../../shared/voice';
 import type { Snapshot } from '../../../shared/types';
 import { fmtDuration } from './useCountdown';
@@ -431,7 +431,7 @@ function sayLine(line: SpeechLine, url: string, style: Exclude<AnnouncerStyle, '
 
 /** What the "Hear it" button plays: a bidding war in the chosen style. */
 export function previewAnnouncer(style: AnnouncerStyle, voiceName?: string) {
-  const line = announce(style, 'bid', SAMPLE_CTX);
+  const line = sampleLine(style);
   const heat = heatOf(SAMPLE_CTX);
   fxFor(style, true).bid(heat);
   if (!line) return;
@@ -505,6 +505,13 @@ export function useSoundPrefs(defaults: SoundPrefs = { sfx: false, voice: false 
  */
 export function useAuctionSound(snap: Snapshot | null, prefs: SoundPrefs, opts: { primary?: boolean } = {}) {
   const lastSeq = useRef<number | null>(null);
+  const latest = useRef(snap);
+  latest.current = snap;
+  /** the host's comment waiting for a quiet moment (cancelled by anything that happens first) */
+  const lull = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (lull.current) clearTimeout(lull.current);
+  }, []);
   useEffect(() => {
     if (!snap) return;
     const ev = snap.live.lastEvent;
@@ -514,6 +521,7 @@ export function useAuctionSound(snap: Snapshot | null, prefs: SoundPrefs, opts: 
     }
     if (!ev || ev.seq === lastSeq.current) return;
     lastSeq.current = ev.seq;
+    if (lull.current) clearTimeout(lull.current); // something happened: no comment about the quiet
     if (snap.now - ev.at > 15_000) return; // stale (e.g. tab was asleep) — don't replay old calls
     if (!prefs.sfx && !prefs.voice) return;
 
@@ -529,6 +537,16 @@ export function useAuctionSound(snap: Snapshot | null, prefs: SoundPrefs, opts: 
       if (style === 'classic') return speak(line.text, prefs.voiceName);
       sayLine(line, `/api/events/${encodeURIComponent(snap.code)}/voice/${ev.seq}?style=${style}`, style);
     };
+    /** if nobody bids for a few seconds, the host says one comment to push the room */
+    const commentIfQuiet = () => {
+      if (!prefs.voice || !hosted) return;
+      lull.current = setTimeout(() => {
+        const now = latest.current;
+        if (!now || now.live.lastEvent?.seq !== ev.seq || now.live.phase !== 'bidding') return;
+        const line = announce(style, 'lull', momentCtx(now, ev));
+        if (line) sayLine(line, `/api/events/${encodeURIComponent(now.code)}/voice/${ev.seq}?style=${style}&kind=lull`, style as Exclude<AnnouncerStyle, 'classic'>);
+      }, LULL_MS);
+    };
     const fx = prefs.sfx ? fxFor(style, prefs.voice) : null;
     /** the chosen host runs every part of the auction; classic keeps its original plain announcements */
     const hosted = hostsEverything(style);
@@ -543,10 +561,12 @@ export function useAuctionSound(snap: Snapshot | null, prefs: SoundPrefs, opts: 
         case 'reveal':
           fx?.reveal();
           sayStyled('reveal');
+          commentIfQuiet();
           break;
         case 'bid':
           fx?.bid(heat);
-          sayStyled('bid'); // "who bid how much"
+          sayStyled('bid'); // just the team and the amount
+          commentIfQuiet();
           break;
         case 'call':
           fx?.call(ev.call ?? 1);

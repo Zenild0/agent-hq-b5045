@@ -10,7 +10,7 @@ import { buildArchive, restoreArchive } from './archive';
 import { clientIp } from './net';
 import { currentGate, devEnabled, getPlatform, isDevKey, refreshAccess, savePlatform } from './platform';
 import { Tts, ttsConfigFromEnv } from './tts';
-import { SAMPLE_CTX, announce, isSpeechKind, isStyle, momentCtx, studioPace, type AnnouncerStyle } from '../shared/announcer';
+import { LULL_MS, announce, sampleLine, isSpeechKind, isStyle, momentCtx, studioPace, type AnnouncerStyle } from '../shared/announcer';
 import { DATA_DIR, deleteEventFiles, flushAll, loadAll, readUpload, saveSafetyCopy, saveSoon, UPLOADS_DIR, writeUploads } from './persist';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -484,7 +484,11 @@ app.get('/api/events/:code/voice/:seq', (req, res, next) => {
     const ev = d.live.lastEvent;
     if (!ev || ev.seq !== Number(req.params.seq) || !isSpeechKind(ev.type)) throw new AuctionError('That moment has passed', 404);
     const ctx = momentCtx(d, ev);
-    const line = announce(style, ev.type, ctx);
+    // ?kind=lull: the host's comment when nobody has bid for a few seconds after a bid (or after a new player).
+    // Only while that bid is still the latest thing that happened and the room really has been quiet.
+    const lull = req.query.kind === 'lull';
+    if (lull && (!(ev.type === 'bid' || ev.type === 'reveal') || d.live.phase !== 'bidding' || Date.now() - ev.at < LULL_MS - 1500)) throw new AuctionError('Not a quiet moment', 404);
+    const line = announce(style, lull ? 'lull' : ev.type, ctx);
     if (!line) throw new AuctionError('Nothing to say', 404);
     await sendVoice(res, style, line.text, studioPace(style), d.code);
   })().catch(next);
@@ -494,7 +498,7 @@ app.get('/api/events/:code/voice/:seq', (req, res, next) => {
 app.get('/api/voice-sample/:style', (req, res, next) => {
   (async () => {
     const style = styleOf(req.params.style);
-    const line = announce(style, 'bid', SAMPLE_CTX)!;
+    const line = sampleLine(style)!;
     await sendVoice(res, style, line.text, studioPace(style), 'sample');
   })().catch(next);
 });

@@ -96,6 +96,31 @@ async function screen(browser, style, code, { failVoice = false } = {}) {
   t('a strategy break can be heard', brkEv && brkEv.type === 'break' && (await v(brkEv.seq, 'cricket')).status === 200, JSON.stringify([brk, brkEv]));
   await host('break.end').catch(() => {});
 
+  // a bid is just "<team>, <amount>"; after 5 quiet seconds the host makes ONE comment, and a new bid cancels it
+  {
+    const s0 = await api.state(c.code, c.adminKey);
+    const free = s0.players.find((p) => p.status === 'available');
+    await host('pick', { playerId: free.id }); await sleep(300);
+    const scr = await screen(b, 'kbc', c.code);
+    await bid(); const bSeq = (await api.state(c.code)).live.lastEvent.seq;
+    t('a comment is refused before the room has been quiet', (await v(bSeq, 'kbc').then(() => fetch(`${BASE}/api/events/${c.code}/voice/${bSeq}?style=kbc&kind=lull`))).status === 404);
+    await sleep(6500);
+    const lulls = scr.asked.filter((u) => /kind=lull/.test(u));
+    t('after 5 quiet seconds the screen asks for the host\'s comment, once', lulls.length === 1 && lulls[0].includes(`/voice/${bSeq}?`), JSON.stringify(scr.asked));
+    t('…and the server makes it', (await fetch(`${BASE}/api/events/${c.code}/voice/${bSeq}?style=kbc&kind=lull`)).status === 200);
+    t('no second comment for the same quiet moment', (await sleep(5500), scr.asked.filter((u) => /kind=lull/.test(u)).length === 1));
+    // a quick answer: no comment
+    const s1 = await api.state(c.code, c.adminKey);
+    const tokB = s1.secrets.captainTokens[s1.captains[1].id];
+    const before = scr.asked.length;
+    await fetch(`${BASE}/api/events/${c.code}/cmd`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-key': tokB }, body: JSON.stringify({ action: 'bid', params: {} }) });
+    await sleep(2500); await bid(); await sleep(2500);
+    await host('call'); await sleep(3000);
+    t('bids within 5 seconds of each other get no comment in between', !scr.asked.slice(before).some((u) => /kind=lull/.test(u)), JSON.stringify(scr.asked.slice(before)));
+    await scr.ctx.close();
+    await host('sold'); await host('next');
+  }
+
   // one browser, two pages (the big screen and the admin page): only ONE voice, from the big screen
   {
     const ctx = await b.newContext({ viewport: { width: 1100, height: 700 } });

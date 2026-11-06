@@ -10,9 +10,12 @@
 import { spokenMoney, type MoneyFmt } from './money';
 
 export type AnnouncerStyle = 'classic' | 'wwe' | 'kbc' | 'mk' | 'show' | 'velvet' | 'trailer' | 'cricket' | 'assistant';
-export type SpeechKind = 'spin' | 'reveal' | 'bid' | 'call' | 'sold' | 'unsold' | 'undo' | 'break' | 'breakext' | 'breakend' | 'round';
+/** 'lull' is not an event: it is the host's comment when nobody has bid for a few seconds (see LULL_MS). */
+export type SpeechKind = 'spin' | 'reveal' | 'bid' | 'call' | 'sold' | 'unsold' | 'undo' | 'break' | 'breakext' | 'breakend' | 'round' | 'lull';
 export const SPEECH_KINDS: readonly SpeechKind[] = ['spin', 'reveal', 'bid', 'call', 'sold', 'unsold', 'undo', 'break', 'breakext', 'breakend', 'round'];
 export const isSpeechKind = (v: unknown): v is SpeechKind => SPEECH_KINDS.includes(v as SpeechKind);
+/** How long the room must be quiet (no new bid) before the host comments. */
+export const LULL_MS = 5000;
 
 export const STYLES: { id: AnnouncerStyle; label: string; hint: string; lang: 'en' | 'hi' }[] = [
   { id: 'classic', label: 'Classic', hint: 'A clear, friendly announcer', lang: 'en' },
@@ -210,10 +213,6 @@ interface Host {
   voice: { pitch: number; rate: number; gender: 'male' | 'female' };
   spin: Pair[];
   reveal: Pair[];
-  /** by excitement: first bid, warming up, heated, bidding war */
-  bid: Pair[][];
-  /** extra lines for the same levels, used when another team was just outbid */
-  rivalBid: Pair[][];
   /** going once / twice / three times: a few ways of saying each */
   call: [Pair[], Pair[], Pair[]];
   sold: Pair[];
@@ -248,45 +247,6 @@ const HOSTS: Record<Exclude<AnnouncerStyle, 'classic'>, Host> = {
       en((v) => `In this corner... weighing in at ${v.a}... ${v.p}!`),
       en((v) => `Put your hands together for... ${v.p}! The bidding opens at ${v.a}!`),
       en((v) => `Here comes ${v.p}! And this crowd is ready! Opening bid... ${v.a}!`),
-    ],
-    bid: [
-      [
-        en((v) => `And we have our first bid! ${v.t}! ${v.a}!`),
-        en((v) => `${v.t} gets us started! ${v.a}!`),
-        en((v) => `${v.t} steps into the ring first! ${v.a}!`),
-        en((v) => `First blood to ${v.t}! ${v.a}!`),
-        en((v) => `${v.t} throws the first punch! ${v.a}!`),
-      ],
-      [
-        en((v) => `${v.t}! ${v.a}!`),
-        en((v) => `And ${v.t} raises the stakes... ${v.a}!`),
-        en((v) => `${v.t} fires back! ${v.a}!`),
-        en((v) => `Here comes ${v.t}! ${v.a}!`),
-        en((v) => `${v.t} wants this one! ${v.a}!`),
-        en((v) => `Look out! ${v.t} with ${v.a}!`),
-      ],
-      [
-        en((v) => `Oh my! ${v.t} slams it down! ${v.a}! Can anybody top that?!`),
-        en((v) => `This is getting heated! ${v.t}... ${v.a}!`),
-        en((v) => `${v.t} is not backing down! ${v.a}!`),
-        en((v) => `Good heavens! ${v.t} with ${v.a}!`),
-        en((v) => `The crowd is on its feet! ${v.t}, ${v.a}!`),
-        en((v) => `${v.t} goes to the top rope! ${v.a}!`),
-      ],
-      [
-        en((v) => `OH MY! ${v.t}! ${v.a}! This place is about to EXPLODE!`),
-        en((v) => `Unbelievable! ${v.t} with ${v.a}! We have an all-out WAR!`),
-        en((v) => `${v.t}! ${v.a}! Somebody stop this match!`),
-        en((v) => `Are you kidding me?! ${v.t} with ${v.a}! This is a main event!`),
-        en((v) => `${v.t}! ${v.a}! I have never seen anything like this in my life!`),
-        en((v) => `The roof is coming off! ${v.t}, ${v.a}!`),
-      ],
-    ],
-    rivalBid: [
-      [],
-      [en((v) => `${v.t} answers ${v.r}! ${v.a}!`), en((v) => `${v.r} had it... but ${v.t} takes it back! ${v.a}!`)],
-      [en((v) => `${v.r} is not happy! ${v.t} takes it to ${v.a}!`), en((v) => `${v.t} and ${v.r}, toe to toe! ${v.a}!`)],
-      [en((v) => `${v.t} hits ${v.r} with ${v.a}! What a counter!`), en((v) => `${v.r}, you got anything left?! ${v.t} says ${v.a}!`)],
     ],
     call: [
       [en((v) => `${v.ap}Going once! Do I hear more?!`), en((v) => `${v.ap}Going once! Anybody?!`), en((v) => `Going once at ${v.a}! Who wants it?!`)],
@@ -331,45 +291,6 @@ const HOSTS: Record<Exclude<AnnouncerStyle, 'classic'>, Host> = {
       hi((v) => `तालियों से स्वागत कीजिए... ${v.p} का! बोली... ${v.a} से.`, (v) => `Taaliyon se swaagat kijiye... ${v.p} ka! Boli... ${v.a} se.`),
       hi((v) => `अगला नाम है... ${v.p}! और बोली की शुरुआत... ${v.a}.`, (v) => `Agla naam hai... ${v.p}! Aur boli ki shuruaat... ${v.a}.`),
     ],
-    bid: [
-      [
-        hi((v) => `और पहली बोली आई है... ${v.t} की तरफ़ से... ${v.a}!`, (v) => `Aur pehli boli aayi hai... ${v.t} ki taraf se... ${v.a}!`),
-        hi((v) => `${v.t} ने खाता खोला है... ${v.a}!`, (v) => `${v.t} ne khaata khola hai... ${v.a}!`),
-        hi((v) => `शुरुआत ${v.t} ने की है... ${v.a}!`, (v) => `Shuruaat ${v.t} ne ki hai... ${v.a}!`),
-        hi((v) => `${v.t}, आपकी बोली... ${v.a}. बहुत ख़ूब!`, (v) => `${v.t}, aapki boli... ${v.a}. Bahut khoob!`),
-        hi((v) => `पहला हाथ उठा है... ${v.t} का! ${v.a}!`, (v) => `Pehla haath utha hai... ${v.t} ka! ${v.a}!`),
-      ],
-      [
-        hi((v) => `अरे वाह! ${v.t}... ${v.a}!`, (v) => `Arre waah! ${v.t}... ${v.a}!`),
-        hi((v) => `बोली बढ़कर हुई... ${v.a}! ${v.t} के नाम!`, (v) => `Boli badhkar hui... ${v.a}! ${v.t} ke naam!`),
-        hi((v) => `${v.t} पीछे हटने वाले नहीं हैं... ${v.a}!`, (v) => `${v.t} peeche hatne waale nahin hain... ${v.a}!`),
-        hi((v) => `सुनिए, सुनिए! ${v.t}... ${v.a}!`, (v) => `Suniye, suniye! ${v.t}... ${v.a}!`),
-        hi((v) => `${v.t} ने बोली आगे बढ़ाई... ${v.a}!`, (v) => `${v.t} ne boli aage badhaayi... ${v.a}!`),
-        hi((v) => `बहुत बढ़िया, ${v.t}! ${v.a}!`, (v) => `Bahut badhiya, ${v.t}! ${v.a}!`),
-      ],
-      [
-        hi((v) => `क्या बात है! मुक़ाबला कड़ा हो गया है! ${v.t}... ${v.a}!`, (v) => `Kya baat hai! Muqaabla kada ho gaya hai! ${v.t}... ${v.a}!`),
-        hi((v) => `देखिए, देखिए! ${v.t} ने बोली पहुँचा दी... ${v.a} पर!`, (v) => `Dekhiye, dekhiye! ${v.t} ne boli pahuncha di... ${v.a} par!`),
-        hi((v) => `माहौल गरम है! ${v.t}... ${v.a}!`, (v) => `Maahaul garam hai! ${v.t}... ${v.a}!`),
-        hi((v) => `${v.t}, आप तो कमाल कर रहे हैं! ${v.a}!`, (v) => `${v.t}, aap to kamaal kar rahe hain! ${v.a}!`),
-        hi((v) => `यह बोली रुकने का नाम नहीं ले रही! ${v.t}... ${v.a}!`, (v) => `Yeh boli rukne ka naam nahin le rahi! ${v.t}... ${v.a}!`),
-        hi((v) => `वाह, वाह! ${v.t} ने लगाई... ${v.a}!`, (v) => `Waah, waah! ${v.t} ne lagaayi... ${v.a}!`),
-      ],
-      [
-        hi((v) => `अविश्वसनीय! अद्भुत! ${v.t}... ${v.a}! यह बोली अब रुकने वाली नहीं!`, (v) => `Avishvasneeya! Adbhut! ${v.t}... ${v.a}! Yeh boli ab rukne waali nahin!`),
-        hi((v) => `दिल थाम के बैठिए, देवियों और सज्जनों! ${v.t}... ${v.a}!`, (v) => `Dil thaam ke baithiye, deviyon aur sajjano! ${v.t}... ${v.a}!`),
-        hi((v) => `जंग छिड़ गई है! ${v.t}... ${v.a}!`, (v) => `Jung chhid gayi hai! ${v.t}... ${v.a}!`),
-        hi((v) => `ऐसा मुक़ाबला मैंने बहुत कम देखा है! ${v.t}... ${v.a}!`, (v) => `Aisa muqaabla maine bahut kam dekha hai! ${v.t}... ${v.a}!`),
-        hi((v) => `सारे रिकॉर्ड टूट रहे हैं! ${v.t}... ${v.a}!`, (v) => `Saare record toot rahe hain! ${v.t}... ${v.a}!`),
-        hi((v) => `यह है असली मुक़ाबला! ${v.t}... ${v.a}!`, (v) => `Yeh hai asli muqaabla! ${v.t}... ${v.a}!`),
-      ],
-    ],
-    rivalBid: [
-      [],
-      [hi((v) => `${v.t} ने ${v.r} को पीछे छोड़ा... ${v.a}!`, (v) => `${v.t} ne ${v.r} ko peeche chhoda... ${v.a}!`), hi((v) => `${v.r} की बोली का जवाब... ${v.t}! ${v.a}!`, (v) => `${v.r} ki boli ka jawaab... ${v.t}! ${v.a}!`)],
-      [hi((v) => `${v.r} अब क्या करेंगे? ${v.t} ने बोली लगाई... ${v.a}!`, (v) => `${v.r} ab kya karenge? ${v.t} ne boli lagaayi... ${v.a}!`), hi((v) => `${v.r}, आपकी बारी! ${v.t} ने कहा... ${v.a}!`, (v) => `${v.r}, aapki baari! ${v.t} ne kaha... ${v.a}!`)],
-      [hi((v) => `${v.r} और ${v.t} आमने-सामने! ${v.t}... ${v.a}!`, (v) => `${v.r} aur ${v.t} aamne-saamne! ${v.t}... ${v.a}!`), hi((v) => `${v.t} बनाम ${v.r}... कौन झुकेगा? ${v.a}!`, (v) => `${v.t} banaam ${v.r}... kaun jhukega? ${v.a}!`)],
-    ],
     call: [
       [hi((v) => `${v.ap}एक बार!`, (v) => `${v.ap}ek baar!`), hi((v) => `${v.ap}एक बार... कोई और?`, (v) => `${v.ap}ek baar... koi aur?`), hi((v) => `एक बार... ${v.a}!`, (v) => `Ek baar... ${v.a}!`)],
       [hi((v) => `${v.ap}दो बार! कोई है... जो आगे बढ़े?`, (v) => `${v.ap}do baar! Koi hai... jo aage badhe?`), hi((v) => `दो बार! सोच लीजिए... समय कम है!`, (v) => `Do baar! Soch lijiye... samay kam hai!`), hi((v) => `${v.ap}दो बार!`, (v) => `${v.ap}do baar!`)],
@@ -407,24 +328,6 @@ const HOSTS: Record<Exclude<AnnouncerStyle, 'classic'>, Host> = {
       en((v) => `A new challenger approaches... ${v.p}! The bidding begins at ${v.a}.`),
       en((v) => `From the shadows... ${v.p}. Opening bid, ${v.a}.`),
       en((v) => `The tournament summons ${v.p}! Bidding starts at ${v.a}.`),
-    ],
-    bid: [
-      [en((v) => `${v.t}... ${v.a}.`), en((v) => `${v.t} makes the first move... ${v.a}.`), en((v) => `${v.t} steps forward. ${v.a}.`), en((v) => `The first strike... ${v.t}. ${v.a}.`)],
-      [en((v) => `${v.t} strikes... ${v.a}!`), en((v) => `${v.t}! ${v.a}!`), en((v) => `${v.t} attacks! ${v.a}!`), en((v) => `Excellent! ${v.t}, ${v.a}!`), en((v) => `${v.t} fights on! ${v.a}!`)],
-      [en((v) => `Brutal! ${v.t}... ${v.a}!`), en((v) => `${v.t}! ${v.a}! No mercy!`), en((v) => `Savage! ${v.t}, ${v.a}!`), en((v) => `${v.t} shows no fear! ${v.a}!`), en((v) => `Combo! ${v.t}, ${v.a}!`)],
-      [
-        en((v) => `${v.t} unleashes ${v.a}! The arena trembles!`),
-        en((v) => `Outstanding! ${v.t}... ${v.a}! Who dares to fight back?!`),
-        en((v) => `Fight! ${v.t}! ${v.a}! This battle is legendary!`),
-        en((v) => `Superb! ${v.t}, ${v.a}! The gods are watching!`),
-        en((v) => `${v.t}! ${v.a}! Unstoppable!`),
-      ],
-    ],
-    rivalBid: [
-      [],
-      [en((v) => `${v.t} counters ${v.r}! ${v.a}!`), en((v) => `${v.r} is challenged! ${v.t}, ${v.a}!`)],
-      [en((v) => `${v.r} is wounded! ${v.t}... ${v.a}!`), en((v) => `${v.t} strikes back at ${v.r}! ${v.a}!`)],
-      [en((v) => `${v.t} versus ${v.r}! ${v.a}! Only one will survive!`), en((v) => `${v.r} stands alone against ${v.t}! ${v.a}!`)],
     ],
     call: [
       [en((v) => `${v.ap}Going once! Prepare yourselves!`), en((v) => `${v.ap}Going once...`), en((v) => `Going once... the arena waits.`)],
@@ -464,13 +367,6 @@ const HOSTS: Record<Exclude<AnnouncerStyle, 'classic'>, Host> = {
       en((v) => `Behind door number one... it's ${v.p}! Bidding starts at ${v.a}!`),
       en((v) => `Say hello to ${v.p}! We're starting at ${v.a}!`),
     ],
-    bid: [
-      [en((v) => `And ${v.t} buzzes in first! ${v.a}!`), en((v) => `${v.t} is on the board with ${v.a}!`), en((v) => `First answer from ${v.t}: ${v.a}!`), en((v) => `${v.t} gets us going! ${v.a}!`)],
-      [en((v) => `${v.t}! ${v.a}! Ooh, I like it!`), en((v) => `Ding ding ding! ${v.t}, ${v.a}!`), en((v) => `${v.t} says ${v.a}! Good answer!`), en((v) => `Ooh! ${v.t}, ${v.a}!`), en((v) => `${v.t} is playing! ${v.a}!`)],
-      [en((v) => `Oh, this is getting good! ${v.t}... ${v.a}! The board is lighting up!`), en((v) => `Ooh! ${v.t} goes big! ${v.a}! Who's next?!`), en((v) => `${v.t} is on fire! ${v.a}!`), en((v) => `Bonus round energy! ${v.t}, ${v.a}!`)],
-      [en((v) => `Oh my goodness! ${v.t}! ${v.a}! This is the round of the night!`), en((v) => `Are you kidding me?! ${v.t} with ${v.a}! Somebody get these teams some water!`), en((v) => `${v.t}! ${v.a}! I have never seen anything like it!`), en((v) => `Jackpot energy! ${v.t}, ${v.a}!`)],
-    ],
-    rivalBid: [[], [en((v) => `${v.t} steals it from ${v.r}! ${v.a}!`)], [en((v) => `${v.r}, are you going to take that?! ${v.t}, ${v.a}!`)], [en((v) => `${v.t} and ${v.r} just won't stop! ${v.a}!`)]],
     call: [
       [en((v) => `${v.ap}Going once... the clock is ticking!`), en((v) => `${v.ap}Going once!`)],
       [en((v) => `${v.ap}Going twice! Is that your final answer, everybody?`), en((v) => `Going twice! Tick tock!`)],
@@ -495,13 +391,6 @@ const HOSTS: Record<Exclude<AnnouncerStyle, 'classic'>, Host> = {
     lang: 'en', voice: { pitch: 0.95, rate: 1, gender: 'female' },
     spin: [en(() => `Mmm... let's see who the wheel picks for us tonight.`), en(() => `Round and round... who's next?`), en(() => `Let it spin... I love a surprise.`)],
     reveal: [en((v) => `Mmm... up next... ${v.p}. Starting at ${v.a}. Take your time... or don't.`), en((v) => `Well, hello... ${v.p}. The bidding opens at... ${v.a}.`), en((v) => `Say hi to ${v.p}. Starting at ${v.a}... who's interested?`)],
-    bid: [
-      [en((v) => `${v.t}... ${v.a}. Bold move.`), en((v) => `Oh... ${v.t}. ${v.a}. I noticed.`), en((v) => `${v.t} goes first... ${v.a}. I like that.`)],
-      [en((v) => `${v.t}... ${v.a}. Now we're talking.`), en((v) => `Mmm... ${v.t}... ${v.a}.`), en((v) => `${v.t}, ${v.a}. Getting interesting.`), en((v) => `Oh, ${v.t}. ${v.a}. Smooth.`)],
-      [en((v) => `Oh, ${v.t}... ${v.a}. Somebody's feeling confident tonight.`), en((v) => `${v.t}... ${v.a}. It's getting warm in here.`), en((v) => `${v.t}, ${v.a}. Don't stop now.`)],
-      [en((v) => `Ooh... ${v.t}. ${v.a}. Now that... is irresistible.`), en((v) => `${v.t}... ${v.a}. You really know how to make an entrance.`), en((v) => `${v.a}... from ${v.t}. I could listen to this all night.`)],
-    ],
-    rivalBid: [[], [en((v) => `${v.t} takes it from ${v.r}... ${v.a}. Smooth.`)], [en((v) => `${v.r}... are you going to let ${v.t} have this? ${v.a}.`)], [en((v) => `${v.t} and ${v.r}... this is getting interesting. ${v.a}.`)]],
     call: [[en((v) => `${v.ap}Once.`), en(() => `Going once...`)], [en(() => `Twice... don't keep me waiting.`), en(() => `Going twice...`)], [en(() => `Three times... last chance, darling.`), en(() => `Going three times...`)]],
     sold: [en((v) => `Sold... ${v.p}, to ${v.t}, for ${v.a}. Enjoy.`), en((v) => `${v.p} goes home with ${v.t}... ${v.a}. Lovely.`)],
     soldHot: [en((v) => `And... it's yours, ${v.t}. ${v.p}... for ${v.a}. Worth every bit.`), en((v) => `${v.t} wins ${v.p}... ${v.a}. That was fun.`)],
@@ -521,13 +410,6 @@ const HOSTS: Record<Exclude<AnnouncerStyle, 'classic'>, Host> = {
     lang: 'en', voice: { pitch: 0.4, rate: 1, gender: 'male' },
     spin: [en(() => `In a world... where fate spins the wheel...`), en(() => `One wheel... one spin... one destiny.`), en(() => `This season... the wheel decides.`)],
     reveal: [en((v) => `In a world... where every team needs a hero... one player... ${v.p}. Opening bid... ${v.a}.`), en((v) => `This season... one name... ${v.p}. The bidding begins... at ${v.a}.`), en((v) => `Coming up... ${v.p}. Starting at ${v.a}.`)],
-    bid: [
-      [en((v) => `${v.t}... makes their move. ${v.a}.`), en((v) => `One team... dared to bid first. ${v.t}... ${v.a}.`), en((v) => `It begins. ${v.t}, ${v.a}.`)],
-      [en((v) => `${v.t}... ${v.a}.`), en((v) => `${v.t} raises the stakes... ${v.a}.`), en((v) => `The plot thickens. ${v.t}, ${v.a}.`)],
-      [en((v) => `The battle... intensifies. ${v.t}... ${v.a}!`), en((v) => `No one... saw this coming. ${v.t}... ${v.a}!`), en((v) => `Everything... is on the line. ${v.t}, ${v.a}!`)],
-      [en((v) => `This summer... the bidding war... of the century! ${v.t}... ${v.a}!`), en((v) => `Only one team... will survive. ${v.t}... ${v.a}!`), en((v) => `Legends... are made tonight. ${v.t}... ${v.a}!`)],
-    ],
-    rivalBid: [[], [en((v) => `${v.r} thought it was over... but ${v.t}... ${v.a}.`)], [en((v) => `${v.r}... versus ${v.t}... ${v.a}!`)], [en((v) => `Two teams. One player. ${v.t}... ${v.a}!`)]],
     call: [[en((v) => `${v.ap}Going once.`)], [en(() => `Going twice... time is running out.`)], [en(() => `Going three times... this is... the final chapter.`)]],
     sold: [en((v) => `${v.p}... joins ${v.t}... for ${v.a}. The story... begins.`), en((v) => `${v.t}... and ${v.p}. ${v.a}. A new chapter.`)],
     soldHot: [en((v) => `${v.t}... ${v.p}... ${v.a}. The legend... begins. Coming soon... to a squad near you.`), en((v) => `After the battle of the century... ${v.t} wins ${v.p}. ${v.a}.`)],
@@ -556,45 +438,6 @@ const HOSTS: Record<Exclude<AnnouncerStyle, 'classic'>, Host> = {
       hi((v) => `क्रीज़ पर आ गए हैं ${v.p}! बेस प्राइस ${v.a}!`, (v) => `Crease par aa gaye hain ${v.p}! Base price ${v.a}!`),
       hi((v) => `सबकी नज़रें ${v.p} पर! बोली ${v.a} से शुरू!`, (v) => `Sabki nazrein ${v.p} par! Boli ${v.a} se shuru!`),
       hi((v) => `पवेलियन से निकल रहे हैं ${v.p}! शुरुआत ${v.a} से!`, (v) => `Pavilion se nikal rahe hain ${v.p}! Shuruaat ${v.a} se!`),
-    ],
-    bid: [
-      [
-        hi((v) => `${v.t} ने खाता खोला! ${v.a}! शानदार शुरुआत!`, (v) => `${v.t} ne khaata khola! ${v.a}! Shaandaar shuruaat!`),
-        hi((v) => `पहली ही गेंद पर रन! ${v.t}, ${v.a}!`, (v) => `Pehli hi gend par run! ${v.t}, ${v.a}!`),
-        hi((v) => `${v.t} ने पहला शॉट खेला! ${v.a}!`, (v) => `${v.t} ne pehla shot khela! ${v.a}!`),
-        hi((v) => `खेल शुरू! ${v.t}, ${v.a}!`, (v) => `Khel shuru! ${v.t}, ${v.a}!`),
-        hi((v) => `सिंगल लिया ${v.t} ने! ${v.a}!`, (v) => `Single liya ${v.t} ne! ${v.a}!`),
-      ],
-      [
-        hi((v) => `चौका! ${v.t}, ${v.a}!`, (v) => `Chauka! ${v.t}, ${v.a}!`),
-        hi((v) => `क्या टाइमिंग है! ${v.t}, ${v.a}!`, (v) => `Kya timing hai! ${v.t}, ${v.a}!`),
-        hi((v) => `${v.t} ने गैप ढूँढ लिया! ${v.a}!`, (v) => `${v.t} ne gap dhoondh liya! ${v.a}!`),
-        hi((v) => `बढ़िया शॉट! ${v.t}, ${v.a}!`, (v) => `Badhiya shot! ${v.t}, ${v.a}!`),
-        hi((v) => `कवर ड्राइव! ${v.t}, ${v.a}!`, (v) => `Cover drive! ${v.t}, ${v.a}!`),
-        hi((v) => `दो रन और! ${v.t}, ${v.a}!`, (v) => `Do run aur! ${v.t}, ${v.a}!`),
-      ],
-      [
-        hi((v) => `छक्का! छक्का! ${v.t}, ${v.a}!`, (v) => `Chhakka! Chhakka! ${v.t}, ${v.a}!`),
-        hi((v) => `ओहो हो! क्या शॉट है! ${v.t}, ${v.a}!`, (v) => `Oho ho! Kya shot hai! ${v.t}, ${v.a}!`),
-        hi((v) => `ज़बरदस्त! ${v.t} रुकने का नाम नहीं ले रहे! ${v.a}!`, (v) => `Zabardast! ${v.t} rukne ka naam nahin le rahe! ${v.a}!`),
-        hi((v) => `हेलीकॉप्टर शॉट! ${v.t}, ${v.a}!`, (v) => `Helicopter shot! ${v.t}, ${v.a}!`),
-        hi((v) => `गेंद हवा में... और बाउंड्री के पार! ${v.t}, ${v.a}!`, (v) => `Gend hawa mein... aur boundary ke paar! ${v.t}, ${v.a}!`),
-        hi((v) => `स्टेडियम में शोर! ${v.t}, ${v.a}!`, (v) => `Stadium mein shor! ${v.t}, ${v.a}!`),
-      ],
-      [
-        hi((v) => `अविश्वसनीय! एक और छक्का! ${v.t}, ${v.a}! पूरा स्टेडियम खड़ा हो गया!`, (v) => `Avishvasneeya! Ek aur chhakka! ${v.t}, ${v.a}! Poora stadium khada ho gaya!`),
-        hi((v) => `गेंद स्टेडियम के बाहर! ${v.t}, ${v.a}! क्या मुक़ाबला है भाई!`, (v) => `Gend stadium ke bahar! ${v.t}, ${v.a}! Kya muqaabla hai bhai!`),
-        hi((v) => `धमाकेदार! ${v.t}, ${v.a}! सुपर ओवर जैसा रोमांच!`, (v) => `Dhamaakedaar! ${v.t}, ${v.a}! Super over jaisa romaanch!`),
-        hi((v) => `यह मैच नहीं, जंग है! ${v.t}, ${v.a}!`, (v) => `Yeh match nahin, jung hai! ${v.t}, ${v.a}!`),
-        hi((v) => `ऐसा मुक़ाबला सालों में एक बार! ${v.t}, ${v.a}!`, (v) => `Aisa muqaabla saalon mein ek baar! ${v.t}, ${v.a}!`),
-        hi((v) => `आसमान छू गई बोली! ${v.t}, ${v.a}!`, (v) => `Aasmaan chhoo gayi boli! ${v.t}, ${v.a}!`),
-      ],
-    ],
-    rivalBid: [
-      [],
-      [hi((v) => `${v.t} ने ${v.r} की गेंद सीधी बाउंड्री के पार भेजी! ${v.a}!`, (v) => `${v.t} ne ${v.r} ki gend seedhi boundary ke paar bheji! ${v.a}!`), hi((v) => `${v.r} को जवाब दिया ${v.t} ने! ${v.a}!`, (v) => `${v.r} ko jawaab diya ${v.t} ne! ${v.a}!`)],
-      [hi((v) => `${v.r} दबाव में! ${v.t}, ${v.a}!`, (v) => `${v.r} dabaav mein! ${v.t}, ${v.a}!`), hi((v) => `${v.r} की फ़ील्डिंग बिखर गई! ${v.t}, ${v.a}!`, (v) => `${v.r} ki fielding bikhar gayi! ${v.t}, ${v.a}!`)],
-      [hi((v) => `${v.t} बनाम ${v.r}! आर-पार की लड़ाई! ${v.a}!`, (v) => `${v.t} banaam ${v.r}! Aar-paar ki ladaai! ${v.a}!`), hi((v) => `${v.r} और ${v.t}, आख़िरी ओवर जैसा रोमांच! ${v.a}!`, (v) => `${v.r} aur ${v.t}, aakhiri over jaisa romaanch! ${v.a}!`)],
     ],
     call: [
       [hi((v) => `${v.ap}एक बार!`, (v) => `${v.ap}ek baar!`), hi((v) => `एक बार! ${v.a}!`, (v) => `Ek baar! ${v.a}!`)],
@@ -629,13 +472,6 @@ const HOSTS: Record<Exclude<AnnouncerStyle, 'classic'>, Host> = {
     lang: 'en', voice: { pitch: 1, rate: 1, gender: 'female' },
     spin: [en(() => `Spinning the wheel now.`), en(() => `Let's see who's next.`)],
     reveal: [en((v) => `Next up: ${v.p}. Base price, ${v.a}.`), en((v) => `Now bidding on ${v.p}. Starting at ${v.a}.`), en((v) => `${v.p} is on the block. Base price ${v.a}.`)],
-    bid: [
-      [en((v) => `First bid: ${v.t}, ${v.a}.`), en((v) => `${v.t} opens the bidding at ${v.a}.`), en((v) => `We have a bid. ${v.t}, ${v.a}.`)],
-      [en((v) => `New bid from ${v.t}: ${v.a}.`), en((v) => `${v.t} bids ${v.a}.`), en((v) => `${v.t} is now on top, at ${v.a}.`), en((v) => `Now at ${v.a}, from ${v.t}.`)],
-      [en((v) => `${v.t} raises to ${v.a}. The bidding is picking up.`), en((v) => `${v.t}, ${v.a}. That's a big jump.`), en((v) => `${v.t} leads with ${v.a}. Lots of interest in this one.`)],
-      [en((v) => `${v.t}, ${v.a}! This is a real bidding war.`), en((v) => `Wow. ${v.t} bids ${v.a}. That's well above the base price.`), en((v) => `${v.t} now at ${v.a}. Everyone wants this player.`)],
-    ],
-    rivalBid: [[], [en((v) => `${v.t} outbids ${v.r}: ${v.a}.`)], [en((v) => `${v.t} outbids ${v.r} again: ${v.a}.`)], [en((v) => `${v.t} and ${v.r} keep going. ${v.t}, ${v.a}!`)]],
     call: [[en((v) => `${v.ap}Going once.`)], [en((v) => `${v.ap}Going twice.`)], [en((v) => `Final call: ${v.ap}going three times.`)]],
     sold: [en((v) => `Sold. ${v.p} joins ${v.t} for ${v.a}.`), en((v) => `${v.p} goes to ${v.t}, for ${v.a}.`)],
     soldHot: [en((v) => `Sold! ${v.p} joins ${v.t} for ${v.a}. What a contest!`), en((v) => `After a long bidding war, ${v.p} goes to ${v.t} for ${v.a}.`)],
@@ -650,6 +486,105 @@ const HOSTS: Record<Exclude<AnnouncerStyle, 'classic'>, Host> = {
     left: [en((v) => `${v.t} now has ${v.left} left.`)],
     allIn: [en((v) => `Heads up: that's almost all of ${v.t}'s purse.`)],
     squad: [en((v) => `That's player number ${v.n} for ${v.t}.`)],
+  },
+};
+
+// ---- after a quiet moment: the host's comment ----------------------------------------------------------
+// A bid itself is just "<team>, <amount>". If nobody bids for a few seconds, the host says ONE comment to push the
+// room: before the first bid ("open"), or about the standing bid, more excited the hotter the bidding (heat 0–3);
+// sometimes aimed at the team that was just outbid ("rival").
+
+interface Lull { open: Pair[]; heat: Pair[][]; rival: Pair[] }
+
+const LULL: Record<Exclude<AnnouncerStyle, 'classic'>, Lull> = {
+  wwe: {
+    open: [en(() => `Who's going to start this one?! Somebody make a move!`), en((v) => `${v.p} is waiting! Who wants to throw the first bid?!`), en(() => `Come on! Don't be shy! Who's opening?!`), en(() => `The ring is empty! Somebody get in there!`)],
+    heat: [
+      [en((v) => `${v.t} is the only one in the ring at ${v.a}! Anybody else?!`), en((v) => `${v.a} from ${v.t}... is that it?! Who's next?!`), en((v) => `Come on! ${v.t} can't have it that easy!`), en((v) => `Is nobody going to challenge ${v.t}?!`)],
+      [en((v) => `${v.t} holds it at ${v.a}! Who's got the guts?!`), en(() => `The bid stands! Do I hear more?!`), en((v) => `${v.a}! Is anybody stepping up?!`), en((v) => `${v.t} is waiting for a challenger!`)],
+      [en((v) => `What a fight! ${v.t} leads at ${v.a}! Who's next?!`), en(() => `This crowd wants MORE! Anybody?!`), en((v) => `${v.t} is on top... but for how long?!`), en((v) => `Somebody answer ${v.t}!`)],
+      [en((v) => `This is a WAR! ${v.t} sits at ${v.a}! Who dares to go higher?!`), en(() => `Unbelievable bidding! Is there anybody left standing?!`), en((v) => `${v.t} at ${v.a}! The crowd is going insane!`), en((v) => `Will anybody top ${v.a}?! Come on!`)],
+    ],
+    rival: [en((v) => `${v.r}, are you just going to let ${v.t} have this?!`), en((v) => `${v.r}! Your move!`), en((v) => `${v.r}, it's now or never!`)],
+  },
+  kbc: {
+    open: [
+      hi(() => `तो देवियों और सज्जनों... कौन लगाएगा पहली बोली?`, () => `To deviyon aur sajjano... kaun lagaayega pehli boli?`),
+      hi((v) => `${v.p} आपका इंतज़ार कर रहे हैं... कोई तो बोली लगाइए!`, (v) => `${v.p} aapka intezaar kar rahe hain... koi to boli lagaiye!`),
+      hi(() => `सोचिए मत... बोली लगाइए!`, () => `Sochiye mat... boli lagaiye!`),
+      hi(() => `मंच तैयार है... बस आपकी बोली का इंतज़ार है!`, () => `Manch taiyaar hai... bas aapki boli ka intezaar hai!`),
+    ],
+    heat: [
+      [hi((v) => `${v.t} की बोली... ${v.a}. क्या कोई और है?`, (v) => `${v.t} ki boli... ${v.a}. Kya koi aur hai?`), hi((v) => `बस ${v.t}? और कोई नहीं?`, (v) => `Bas ${v.t}? Aur koi nahin?`), hi((v) => `${v.a} पर अटकी है बोली... कोई आगे आएगा?`, (v) => `${v.a} par atki hai boli... koi aage aayega?`)],
+      [hi((v) => `${v.t} आगे हैं... ${v.a}. कोई चुनौती देगा?`, (v) => `${v.t} aage hain... ${v.a}. Koi chunauti dega?`), hi((v) => `बोली ${v.t} के पास है... और आप?`, (v) => `Boli ${v.t} ke paas hai... aur aap?`), hi(() => `समय निकल रहा है... कोई और बोली?`, () => `Samay nikal raha hai... koi aur boli?`)],
+      [hi((v) => `क्या मुक़ाबला है! ${v.t} आगे हैं ${v.a} पर... अब कौन?`, (v) => `Kya muqaabla hai! ${v.t} aage hain ${v.a} par... ab kaun?`), hi(() => `माहौल गरम है... कोई और हिम्मत करेगा?`, () => `Maahaul garam hai... koi aur himmat karega?`), hi((v) => `${v.t} ने बाज़ी पकड़ी हुई है... कोई छीनेगा?`, (v) => `${v.t} ne baazi pakdi hui hai... koi chheenega?`)],
+      [hi((v) => `देवियों और सज्जनों, यह बोली इतिहास बना रही है! ${v.t}, ${v.a}... क्या कोई और?`, (v) => `Deviyon aur sajjano, yeh boli itihaas bana rahi hai! ${v.t}, ${v.a}... kya koi aur?`), hi((v) => `दिल थाम के बैठिए... कौन देगा ${v.t} को टक्कर?`, (v) => `Dil thaam ke baithiye... kaun dega ${v.t} ko takkar?`), hi(() => `अविश्वसनीय मुक़ाबला! क्या यह आख़िरी बोली है?`, () => `Avishvasneeya muqaabla! Kya yeh aakhiri boli hai?`)],
+    ],
+    rival: [hi((v) => `${v.r}, क्या आप हार मान लेंगे?`, (v) => `${v.r}, kya aap haar maan lenge?`), hi((v) => `${v.r}, आपकी बारी है!`, (v) => `${v.r}, aapki baari hai!`)],
+  },
+  mk: {
+    open: [en(() => `Who will step into the arena first?`), en(() => `The arena waits... who dares?`), en((v) => `${v.p} stands alone... challenge them.`)],
+    heat: [
+      [en((v) => `${v.t} stands alone at ${v.a}... who will fight?`), en((v) => `No challenger for ${v.t}?`), en((v) => `${v.a}... the arena is silent.`)],
+      [en((v) => `${v.t} holds the arena at ${v.a}. Who dares?`), en((v) => `Is there no one to face ${v.t}?`), en((v) => `The challenge stands... ${v.a}.`)],
+      [en((v) => `${v.t} leads at ${v.a}... the battle rages on. Who's next?`), en(() => `Fight back! Or fall!`), en((v) => `${v.t} awaits the next challenger...`)],
+      [en((v) => `Legendary battle! ${v.t} at ${v.a}... who will strike next?`), en(() => `The arena trembles! Any warrior left?`), en((v) => `${v.a}... only the brave go higher!`)],
+    ],
+    rival: [en((v) => `${v.r}... will you surrender?`), en((v) => `${v.r}... fight back!`)],
+  },
+  show: {
+    open: [en(() => `Who's going to buzz in first? Come on, don't be shy!`), en((v) => `${v.p} is up for grabs! Who wants to play?`), en(() => `The board is empty! Let's get a bid!`)],
+    heat: [
+      [en((v) => `${v.t} is the only one on the board at ${v.a}! Anybody else want to play?`), en((v) => `Just ${v.t} so far! Come on, everybody!`), en((v) => `${v.a} from ${v.t}... do I hear another buzzer?`)],
+      [en((v) => `${v.t} is in the lead at ${v.a}! Who's next?`), en(() => `Ooh, the clock is ticking! Any more bids?`), en((v) => `${v.t} has it for now! Anybody?`)],
+      [en((v) => `What a round! ${v.t} leads at ${v.a}! Who's going to buzz in?`), en(() => `The board is hot! Any more?`), en((v) => `${v.t} is on top... can anybody beat it?`)],
+      [en((v) => `This is the round of the night! ${v.t} at ${v.a}! Who's still playing?`), en(() => `Oh my goodness! Anybody going higher?!`), en((v) => `${v.t} at ${v.a}! Is that your final answer, everybody?`)],
+    ],
+    rival: [en((v) => `${v.r}, are you going to let that go?!`), en((v) => `${v.r}, buzz in!`)],
+  },
+  velvet: {
+    open: [en(() => `Mmm... nobody yet? Somebody start us off.`), en((v) => `${v.p} is waiting... don't be shy.`), en(() => `Who's first? I'm listening.`)],
+    heat: [
+      [en((v) => `Just ${v.t}, at ${v.a}... anyone else?`), en((v) => `Only ${v.t}... how lonely.`), en((v) => `${v.a}... is that all?`)],
+      [en((v) => `${v.t} has it, at ${v.a}... for now.`), en(() => `Anyone else feeling brave?`), en((v) => `Mmm... ${v.t} is ahead. Who's next?`)],
+      [en((v) => `${v.t} at ${v.a}... it's getting warm in here. Anyone?`), en(() => `Don't stop now...`), en((v) => `${v.t} leads... are you going to let them?`)],
+      [en((v) => `${v.t} at ${v.a}... irresistible. Anyone dare go higher?`), en(() => `Oh, this is fun. Who's next?`), en(() => `I could watch this all night... anyone?`)],
+    ],
+    rival: [en((v) => `${v.r}... you're not giving up, are you?`), en((v) => `${v.r}... your move, darling.`)],
+  },
+  trailer: {
+    open: [en(() => `In a world... where no one has bid yet...`), en(() => `One player... waiting for a team.`), en(() => `Who... will make the first move?`)],
+    heat: [
+      [en((v) => `${v.t}... stands alone. At ${v.a}.`), en((v) => `One bid... ${v.a}. Will anyone answer?`), en(() => `Silence... falls over the auction.`)],
+      [en((v) => `${v.t} leads... at ${v.a}. But the story... isn't over.`), en((v) => `Who... will challenge ${v.t}?`), en(() => `The stakes... are rising.`)],
+      [en((v) => `The battle... rages on. ${v.t}, at ${v.a}.`), en(() => `Every team... must choose. Now.`), en((v) => `${v.t} holds on... for now.`)],
+      [en((v) => `The bidding war... of the century. ${v.t}, at ${v.a}. Who's next?`), en(() => `Only the bold... go higher.`), en(() => `This is... the final act.`)],
+    ],
+    rival: [en((v) => `${v.r}... must decide. Fight... or fall.`), en((v) => `${v.r}... your story... isn't over.`)],
+  },
+  cricket: {
+    open: [
+      hi(() => `पहली गेंद का इंतज़ार! कौन खोलेगा खाता?`, () => `Pehli gend ka intezaar! Kaun kholega khaata?`),
+      hi((v) => `${v.p} क्रीज़ पर खड़े हैं! कोई तो बोली लगाओ!`, (v) => `${v.p} crease par khade hain! Koi to boli lagao!`),
+      hi(() => `फ़ील्डिंग सेट है... अब बोली का इंतज़ार!`, () => `Fielding set hai... ab boli ka intezaar!`),
+    ],
+    heat: [
+      [hi((v) => `${v.t} ने खाता खोला, ${v.a}! कोई और बल्लेबाज़?`, (v) => `${v.t} ne khaata khola, ${v.a}! Koi aur ballebaaz?`), hi((v) => `अभी सिर्फ़ ${v.t}! बाक़ी टीमें कहाँ हैं?`, (v) => `Abhi sirf ${v.t}! Baaki teamein kahaan hain?`), hi((v) => `${v.a} पर डॉट बॉल! कोई रन लेगा?`, (v) => `${v.a} par dot ball! Koi run lega?`)],
+      [hi((v) => `${v.t} आगे, ${v.a}! अगला शॉट कौन लगाएगा?`, (v) => `${v.t} aage, ${v.a}! Agla shot kaun lagaayega?`), hi(() => `रन रेट बढ़ रहा है! और बोली?`, () => `Run rate badh raha hai! Aur boli?`), hi((v) => `${v.t} क्रीज़ पर जमे हुए! कोई आउट करेगा?`, (v) => `${v.t} crease par jame hue! Koi out karega?`)],
+      [hi((v) => `क्या मैच है! ${v.t} आगे, ${v.a}! कौन मारेगा अगला छक्का?`, (v) => `Kya match hai! ${v.t} aage, ${v.a}! Kaun maarega agla chhakka?`), hi(() => `स्टेडियम शोर से गूँज रहा है! और बोली?`, () => `Stadium shor se goonj raha hai! Aur boli?`), hi(() => `दबाव बढ़ रहा है! कौन झुकेगा?`, () => `Dabaav badh raha hai! Kaun jhukega?`)],
+      [hi((v) => `आख़िरी ओवर जैसा रोमांच! ${v.t}, ${v.a}! कोई और?`, (v) => `Aakhiri over jaisa romaanch! ${v.t}, ${v.a}! Koi aur?`), hi(() => `सुपर ओवर! कौन मारेगा विनिंग शॉट?`, () => `Super over! Kaun maarega winning shot?`), hi(() => `यह बोली आसमान में! क्या कोई और ऊपर जाएगा?`, () => `Yeh boli aasmaan mein! Kya koi aur upar jaayega?`)],
+    ],
+    rival: [hi((v) => `${v.r}, जवाबी हमला कब?`, (v) => `${v.r}, jawaabi hamla kab?`), hi((v) => `${v.r} को चाहिए एक बड़ा शॉट!`, (v) => `${v.r} ko chahiye ek bada shot!`)],
+  },
+  assistant: {
+    open: [en((v) => `No bids yet for ${v.p}. The base price is ${v.a}.`), en(() => `Waiting for the first bid.`), en((v) => `${v.p} is still open. Would anyone like to start the bidding?`)],
+    heat: [
+      [en((v) => `${v.t} has the only bid so far, at ${v.a}.`), en((v) => `The current bid is ${v.a}, from ${v.t}. Any other bids?`), en((v) => `Only one bid so far: ${v.t}.`)],
+      [en((v) => `${v.t} leads at ${v.a}. Any more bids?`), en((v) => `Current bid: ${v.a}, ${v.t}.`), en(() => `There's still time to bid.`)],
+      [en((v) => `${v.t} is ahead at ${v.a}. The bidding is active.`), en((v) => `Still with ${v.t} at ${v.a}. Anyone else?`)],
+      [en((v) => `${v.t} leads at ${v.a}, well above the base price. Any more bids?`), en((v) => `This one is popular. ${v.t}, ${v.a}. Anyone higher?`)],
+    ],
+    rival: [en((v) => `${v.r}, would you like to bid again?`)],
   },
 };
 
@@ -673,7 +608,7 @@ function durationWords(sec: number, script: 'en' | 'deva' | 'latin'): string {
 function reactions(h: Host, kind: SpeechKind, c: AnnounceCtx): Pair[] {
   const out: Pair[] = [];
   const one = (list: Pair[]) => pick(list, c.variant);
-  if (kind === 'bid' && c.allIn) out.push(one(h.allIn));
+  if (kind === 'lull' && c.allIn) out.push(one(h.allIn));
   if (kind === 'sold') {
     if (c.record) out.push(one(h.record));
     else if ((c.bids ?? 0) <= 1 && c.base && c.amount && c.amount <= c.base) out.push(one(h.steal));
@@ -687,6 +622,9 @@ function reactions(h: Host, kind: SpeechKind, c: AnnounceCtx): Pair[] {
 export function studioPace(_style?: AnnouncerStyle, _kind?: SpeechKind, _c?: AnnounceCtx): number {
   return 1;
 }
+
+/** Hosts whose plain bid line ends calmly ("Red, 40 lakh.") rather than with a shout. */
+const CALM = new Set<AnnouncerStyle>(['velvet', 'trailer', 'assistant']);
 
 function hosted(style: Exclude<AnnouncerStyle, 'classic'>, kind: SpeechKind, c: AnnounceCtx): SpeechLine | null {
   const h = HOSTS[style];
@@ -709,11 +647,16 @@ function hosted(style: Exclude<AnnouncerStyle, 'classic'>, kind: SpeechKind, c: 
     case 'spin': line = pick(h.spin, c.variant); break;
     case 'reveal': if (c.player) line = pick(h.reveal, c.variant); break;
     case 'bid':
-      if (c.team && c.amount) {
-        const level = Math.min(heat, h.bid.length - 1);
-        line = pick([...h.bid[level], ...(c.rival ? h.rivalBid[level] ?? [] : [])], c.variant);
-      }
+      // just the team and the bid, nothing else
+      if (c.team && c.amount) line = CALM.has(style) ? [(v) => `${v.t}, ${v.a}.`, (v) => `${v.t}, ${v.a}.`] : [(v) => `${v.t}, ${v.a}!`, (v) => `${v.t}, ${v.a}!`];
       break;
+    case 'lull': {
+      // the room has gone quiet: one comment to push it
+      const L = LULL[style];
+      if (!c.team || !(c.bids ?? 0)) line = c.player ? pick(L.open, c.variant) : undefined;
+      else line = pick([...L.heat[Math.min(heat, L.heat.length - 1)], ...(c.rival && heat >= 1 ? L.rival : [])], c.variant);
+      break;
+    }
     case 'call': {
       const n = Math.min(2, Math.max(0, (c.call ?? 1) - 1));
       const own = n === 2 ? c.lastCall?.trim() : '';
@@ -733,7 +676,7 @@ function hosted(style: Exclude<AnnouncerStyle, 'classic'>, kind: SpeechKind, c: 
   const parts = [line, ...reactions(h, kind, c)];
   const vd = vars('deva'), vl = vars('latin');
   // In the bidding, long "..." pauses become ordinary commas so a bid flows like normal speech (the speed itself never changes).
-  const brisk = kind === 'bid' || kind === 'call' || kind === 'undo';
+  const brisk = kind === 'bid' || kind === 'call' || kind === 'undo' || kind === 'lull';
   const tidy = (x: string) => (brisk ? x.replace(/\.\.\.\s*(?=[!?.,]|$)/g, '').replace(/\.\.\.\s*/g, ', ') : x);
   const text = tidy(parts.map((p) => p[0](vd)).join(' '));
   const alt = h.lang === 'hi' ? tidy(parts.map((p) => p[1](vl)).join(' ')) : undefined;
@@ -743,6 +686,14 @@ function hosted(style: Exclude<AnnouncerStyle, 'classic'>, kind: SpeechKind, c: 
 export function announce(style: AnnouncerStyle, kind: SpeechKind, ctx: AnnounceCtx): SpeechLine | null {
   const line = style === 'classic' ? classic(kind, ctx) : hosted(style, kind, ctx);
   return line && line.text ? line : null;
+}
+
+/** What "Hear it" plays: a bid, then the host's comment when the room goes quiet (classic: just the bid). */
+export function sampleLine(style: AnnouncerStyle): SpeechLine | null {
+  const bid = announce(style, 'bid', SAMPLE_CTX);
+  const comment = style === 'classic' ? null : announce(style, 'lull', SAMPLE_CTX);
+  if (!bid || !comment) return bid;
+  return { ...bid, text: `${bid.text} ${comment.text}`, ...(bid.alt ? { alt: `${bid.alt} ${comment.alt ?? ''}`.trim() } : {}) };
 }
 
 /** Whether the style has a host line for every part of the auction (classic only speaks the bidding itself). */
