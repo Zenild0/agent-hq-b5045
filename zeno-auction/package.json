@@ -1,0 +1,56 @@
+{
+  "name": "zenobid",
+  "version": "1.0.0",
+  "description": "ZenoBid — the live team auction app. Captains bid, the auctioneer calls it, the whole Zoom room watches.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c magenta,cyan \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "tsx watch server/index.ts",
+    "dev:web": "vite",
+    "build": "vite build && esbuild server/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist-server/index.js",
+    "start": "node dist-server/index.js",
+    "test": "node --import tsx --test server/*.test.ts shared/*.test.ts",
+    "typecheck": "tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "qa": "node qa/run-all.cjs"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@fontsource/anton": "^5.1.0",
+    "@fontsource/barlow-condensed": "^5.3.0",
+    "@fontsource/cinzel": "^5.3.0",
+    "@fontsource/inter": "^5.1.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@fontsource/orbitron": "^5.3.0",
+    "@fontsource/playfair-display": "^5.3.0",
+    "@fontsource/sora": "^5.3.0",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.0",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/ws": "^8.18.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.0",
+    "esbuild": "^0.24.0",
+    "exceljs": "^4.4.0",
+    "lucide-react": "^0.460.0",
+    "playwright": "^1.63.0",
+    "postcss": "^8.4.49",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0",
+    "tailwindcss": "^3.4.16",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
+  }
+}

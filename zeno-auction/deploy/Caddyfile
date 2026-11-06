@@ -1,0 +1,21 @@
+# Caddy proxies HTTP and WebSocket traffic to the app and handles HTTPS certificates automatically.
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "SAMEORIGIN"
+		-Server
+	}
+
+	# photos are capped at 2 MB and JSON at 1 MB by the app; stop anything bigger at the door
+	request_body {
+		max_size 3MB
+	}
+
+	reverse_proxy app:8787 {
+		flush_interval -1
+	}
+}

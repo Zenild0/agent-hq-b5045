@@ -1,0 +1,24 @@
+# systemd unit for running without Docker. Copy to /etc/systemd/system/zenobid.service, then:
+#   sudo systemctl daemon-reload && sudo systemctl enable --now zenobid
+[Unit]
+Description=ZenoBid live auctions
+After=network.target
+
+[Service]
+Type=simple
+User=zenobid
+WorkingDirectory=/opt/zenobid
+Environment=NODE_ENV=production
+Environment=PORT=8787
+Environment=DATA_DIR=/var/lib/zenobid
+Environment=TRUST_PROXY=true
+ExecStart=/usr/bin/node dist-server/index.js
+Restart=always
+RestartSec=2
+# a little hardening
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/zenobid
+
+[Install]
+WantedBy=multi-user.target

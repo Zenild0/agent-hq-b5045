@@ -1,0 +1,206 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { existsSync, mkdtempSync, readdirSync, utimesSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { DEFAULT_EXPRESSIVE_VOICES, DEFAULT_VOICES, Tts, mockWav, ttsConfigFromEnv, type TtsConfig } from './tts';
+
+const dir = () => mkdtempSync(path.join(tmpdir(), 'zeno-tts-'));
+const cfg = (over: Partial<TtsConfig> = {}): TtsConfig => ({
+  key: 'k'.repeat(39),
+  provider: 'google',
+  dir: path.join(dir(), 'tts-cache'),
+  monthlyChars: 1000,
+  voices: DEFAULT_VOICES,
+  expressive: { on: false, model: 'gemini-2.5-flash-tts', monthlyChars: 1000, voices: DEFAULT_EXPRESSIVE_VOICES },
+  ...over,
+});
+
+/** A pretend Google: records what was asked and answers per voice name. */
+function fakeGoogle(answer: (voice: string) => number = () => 200) {
+  const calls: { voice: string; body: any; url: string }[] = [];
+  const fetcher = (async (url: string, init: RequestInit) => {
+    const body = JSON.parse(String(init.body));
+    calls.push({ voice: body.voice.name, body, url });
+    const status = answer(body.voice.name);
+    if (status !== 200) return new Response('{"error":"nope"}', { status });
+    return new Response(JSON.stringify({ audioContent: Buffer.from(`mp3:${body.voice.name}:${body.input.text}`).toString('base64') }), { status: 200 });
+  }) as unknown as typeof fetch;
+  return { calls, fetcher };
+}
+
+test('switched off without a key; on with a key or the test provider', () => {
+  assert.equal(ttsConfigFromEnv({}, '/tmp/x'), null);
+  assert.equal(ttsConfigFromEnv({ GOOGLE_TTS_KEY: 'short' }, '/tmp/x'), null);
+  const on = ttsConfigFromEnv({ GOOGLE_TTS_KEY: 'A'.repeat(39), TTS_MONTHLY_CHARS: '5000', TTS_VOICE_KBC: 'hi-IN-Custom-A' }, '/data');
+  assert.ok(on);
+  assert.equal(on.provider, 'google');
+  assert.equal(on.monthlyChars, 5000);
+  assert.equal(on.dir, path.join('/data', 'tts-cache'));
+  assert.equal(on.voices.kbc[0], 'hi-IN-Custom-A'); // the owner's choice first, the defaults after it
+  assert.equal(on.voices.kbc[1], DEFAULT_VOICES.kbc[0]);
+  assert.equal(ttsConfigFromEnv({ TTS_PROVIDER: 'mock' }, '/data')?.provider, 'mock');
+  // a default budget that stays well inside the free allowance
+  assert.equal(on && ttsConfigFromEnv({ GOOGLE_TTS_KEY: 'A'.repeat(39) }, '/d')?.monthlyChars, 300_000);
+});
+
+test('each sentence is made once and then served from disk', async () => {
+  const g = fakeGoogle();
+  const t = new Tts(cfg(), g.fetcher);
+  const a = await t.speak('wwe', 'Thunder Hawks bid one crore!');
+  assert.equal(a.type, 'audio/mpeg');
+  assert.match(a.audio.toString(), /^mp3:en-US-Chirp3-HD-Alnilam:Thunder Hawks bid one crore!$/);
+  assert.equal(t.has('wwe', 'Thunder Hawks bid one crore!'), true);
+  const b = await t.speak('wwe', 'Thunder Hawks bid one crore!');
+  assert.deepEqual(b.audio, a.audio);
+  assert.equal(g.calls.length, 1); // the repeat cost nothing
+  assert.equal(t.used(), 'Thunder Hawks bid one crore!'.length);
+  // the same words in another style are a different recording
+  await t.speak('mk', 'Thunder Hawks bid one crore!');
+  assert.equal(g.calls.length, 2);
+  assert.equal(g.calls[1].voice, 'en-US-Chirp3-HD-Algenib');
+  // the key travels to Google only, and the text sent is exactly the sentence
+  assert.match(g.calls[0].url, /^https:\/\/texttospeech\.googleapis\.com\/v1\/text:synthesize\?key=k+$/);
+  assert.equal(g.calls[0].body.input.text, 'Thunder Hawks bid one crore!');
+});
+
+test('two screens asking for the same new line at once make one request', async () => {
+  const g = fakeGoogle();
+  const t = new Tts(cfg(), g.fetcher);
+  const [a, b, c] = await Promise.all([t.speak('kbc', 'ek crore'), t.speak('kbc', 'ek crore'), t.speak('kbc', 'ek crore')]);
+  assert.equal(g.calls.length, 1);
+  assert.deepEqual(a.audio, b.audio);
+  assert.deepEqual(b.audio, c.audio);
+  assert.equal(t.used(), 'ek crore'.length);
+});
+
+test('a voice Google does not have is skipped (and remembered); a key problem stops at once', async () => {
+  const g = fakeGoogle((v) => (v.includes('Chirp3') ? 400 : 200));
+  const t = new Tts(cfg(), g.fetcher);
+  const a = await t.speak('kbc', 'pachaas lakh');
+  assert.match(a.audio.toString(), /hi-IN-Neural2-B/);
+  assert.deepEqual(g.calls.map((c) => c.voice), ['hi-IN-Chirp3-HD-Charon', 'hi-IN-Chirp3-HD-Fenrir', 'hi-IN-Neural2-B']);
+  // normal pace: nothing extra is asked
+  assert.equal(g.calls[0].body.audioConfig.speakingRate, undefined);
+  assert.equal(g.calls[2].body.voice.languageCode, 'hi-IN');
+  await t.speak('kbc', 'saath lakh');
+  assert.equal(g.calls.length, 4); // went straight to the voice that works
+
+  const denied = fakeGoogle(() => 403);
+  const t2 = new Tts(cfg(), denied.fetcher);
+  await assert.rejects(t2.speak('wwe', 'hello'), /403/);
+  assert.equal(denied.calls.length, 1);
+  assert.equal(t2.used(), 0); // nothing counted for a failure
+  assert.equal(t2.has('wwe', 'hello'), false);
+});
+
+test('the monthly budget is never passed, and starts again next month', async () => {
+  let now = new Date('2026-11-20T10:00:00Z');
+  const g = fakeGoogle();
+  const t = new Tts(cfg({ monthlyChars: 20 }), g.fetcher, () => now);
+  await t.speak('wwe', 'a'.repeat(15));
+  assert.equal(t.remaining(), 5);
+  assert.equal(t.enabled, true);
+  await assert.rejects(t.speak('wwe', 'b'.repeat(6)), /budget/);
+  assert.equal(g.calls.length, 1);
+  // what is already made still plays when the budget is used up
+  assert.equal((await t.speak('wwe', 'a'.repeat(15))).audio.length > 0, true);
+  await t.speak('wwe', 'c'.repeat(5));
+  assert.equal(t.enabled, false);
+  now = new Date('2026-12-01T00:00:01Z');
+  assert.equal(t.remaining(), 20);
+  assert.equal(t.enabled, true);
+});
+
+test('the test provider makes a real WAV without any network', async () => {
+  const fetcher = (() => {
+    throw new Error('no network in mock mode');
+  }) as unknown as typeof fetch;
+  const t = new Tts(cfg({ provider: 'mock', key: '' }), fetcher);
+  const a = await t.speak('mk', 'Finish him');
+  assert.equal(a.type, 'audio/wav');
+  assert.equal(a.audio.subarray(0, 4).toString(), 'RIFF');
+  assert.equal(a.audio.subarray(8, 12).toString(), 'WAVE');
+  assert.deepEqual(a.audio, mockWav());
+});
+
+test('the cache is kept small by removing the oldest recordings', () => {
+  const c = cfg();
+  const t = new Tts(c, fakeGoogle().fetcher);
+  const big = Buffer.alloc(400 * 1024);
+  for (let i = 0; i < 5; i++) {
+    const f = path.join(c.dir, `old${i}.mp3`);
+    writeFileSync(f, big);
+    const when = new Date(Date.UTC(2026, 0, 1 + i));
+    utimesSync(f, when, when);
+  }
+  writeFileSync(path.join(c.dir, 'usage.json'), '{"month":"2026-11","chars":3}');
+  t.prune(1); // 1 MB: keeps the two newest (800 KB)
+  const left = readdirSync(c.dir).sort();
+  assert.deepEqual(left, ['old3.mp3', 'old4.mp3', 'usage.json']);
+  assert.ok(existsSync(path.join(c.dir, 'usage.json')));
+});
+
+const X = (over: Partial<TtsConfig['expressive']> = {}) => ({ expressive: { on: true, model: 'gemini-2.5-flash-tts', monthlyChars: 1000, voices: DEFAULT_EXPRESSIVE_VOICES, ...over } });
+
+test('the expressive voice gets the line AND a director\'s note, and is kept apart from the studio recording', async () => {
+  const g = fakeGoogle();
+  const t = new Tts(cfg(X()), g.fetcher);
+  const a = await t.speak('cricket', 'Chhakka!', { direction: 'Explosive joy!' });
+  assert.equal(a.kind, 'expressive');
+  assert.equal(g.calls.length, 1);
+  const body = g.calls[0].body;
+  assert.deepEqual(body.input, { prompt: 'Explosive joy!', text: 'Chhakka!' });
+  assert.deepEqual(body.voice, { languageCode: 'hi-IN', name: 'Fenrir', modelName: 'gemini-2.5-flash-tts' });
+  assert.equal(t.expressiveUsed(), 'Chhakka!'.length);
+  assert.equal(t.used(), 0, 'counted in its own budget');
+  // the same words with the same direction: from disk
+  await t.speak('cricket', 'Chhakka!', { direction: 'Explosive joy!' });
+  assert.equal(g.calls.length, 1);
+  assert.equal(t.has('cricket', 'Chhakka!', { direction: 'Explosive joy!' }), true);
+  // another direction is another performance
+  await t.speak('cricket', 'Chhakka!', { direction: 'Calm.' });
+  assert.equal(g.calls.length, 2);
+});
+
+test('when the expressive voice cannot answer, the studio voice speaks instead (and the expressive one rests)', async () => {
+  // refused (for example the model is not enabled for this key): studio voice, and no new expressive tries for a while
+  const g = fakeGoogle((v) => (DEFAULT_VOICES.mk.includes(v) ? 200 : 403));
+  const t = new Tts(cfg(X()), g.fetcher);
+  const warn = console.warn;
+  const warned: string[] = [];
+  console.warn = (m: string) => void warned.push(m);
+  try {
+    const a = await t.speak('mk', 'Finish him!', { direction: 'Roar.' });
+    assert.equal(a.kind, 'studio');
+    assert.equal(g.calls[0].body.voice.modelName, 'gemini-2.5-flash-tts');
+    assert.equal(g.calls[1].body.voice.name, 'en-US-Chirp3-HD-Algenib');
+    assert.equal(g.calls[1].body.input.prompt, undefined, 'studio voices get no director\'s note');
+    const b = await t.speak('mk', 'Fight!', { direction: 'Roar.' });
+    assert.equal(b.kind, 'studio');
+    assert.equal(g.calls.filter((c) => c.body.voice.modelName).length, 1, 'resting: not asked again straight away');
+    assert.equal(warned.length, 1, 'the reason is logged once');
+    assert.doesNotMatch(warned[0], /key=|k{10}/, 'the key never appears in the log');
+  } finally {
+    console.warn = warn;
+  }
+});
+
+test('the expressive budget is a hard cap; switched off means never asked', async () => {
+  const g = fakeGoogle();
+  const t = new Tts(cfg(X({ monthlyChars: 10 })), g.fetcher);
+  assert.equal((await t.speak('wwe', 'Red, 40!', { direction: 'Loud.' })).kind, 'expressive');
+  assert.equal((await t.speak('wwe', 'Blue, 45 lakh!', { direction: 'Loud.' })).kind, 'studio', 'over the cap: studio voice');
+  const off = fakeGoogle();
+  const t2 = new Tts(cfg(X({ on: false })), off.fetcher);
+  assert.equal((await t2.speak('wwe', 'Red, 40!', { direction: 'Loud.' })).kind, 'studio');
+  assert.ok(off.calls.every((c) => !c.body.voice.modelName));
+  // from the environment
+  const env = ttsConfigFromEnv({ GOOGLE_TTS_KEY: 'A'.repeat(39) }, '/d')!;
+  assert.equal(env.expressive.on, false, 'paid voices are OFF unless the owner switches them on');
+  assert.equal(ttsConfigFromEnv({ GOOGLE_TTS_KEY: 'A'.repeat(39), TTS_EXPRESSIVE: 'off' }, '/d')!.expressive.on, false);
+  const env2 = ttsConfigFromEnv({ GOOGLE_TTS_KEY: 'A'.repeat(39), TTS_EXPRESSIVE: 'on', TTS_EXPRESSIVE_VOICE_CRICKET: 'Puck', TTS_EXPRESSIVE_MONTHLY_CHARS: '5000' }, '/d')!;
+  assert.equal(env2.expressive.on, true, 'only when asked for');
+  assert.deepEqual(env2.expressive.voices.cricket, { lang: 'hi-IN', name: 'Puck' });
+  assert.equal(env2.expressive.monthlyChars, 5000);
+});

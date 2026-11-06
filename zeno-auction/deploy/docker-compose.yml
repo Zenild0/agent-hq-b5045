@@ -1,0 +1,41 @@
+# ZenoBid on your own server: the app + Caddy, which gets and renews the HTTPS certificate by itself.
+#   cd deploy && cp .env.example .env && nano .env      # set DOMAIN
+#   docker compose up -d --build
+name: zenobid
+
+services:
+  app:
+    build:
+      context: ..
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "8787"
+      DATA_DIR: /data
+      TRUST_PROXY: "true" # Caddy is in front: use the visitor's real address for the wrong-key throttle
+    volumes:
+      - zenobid-data:/data # every auction + uploaded photo — back this up
+    expose:
+      - "8787"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in deploy/.env (for example auction.yourdomain.com)}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  zenobid-data:
+  caddy-data:
+  caddy-config:
