@@ -1325,7 +1325,7 @@ function drawHymnsTab() {
   $('#hymns').innerHTML = `
     <div class="card">
       <div class="row between"><div><h3 style="margin:0">Hymn library</h3><div class="muted">Hymns taught that are not in the book. Parents browse them by category.</div></div>
-        <div class="row"><button class="btn primary" id="addHymn">＋ Add hymn</button><button class="btn" id="addHymns">＋ Add many</button></div></div>
+        <div class="row"><button class="btn primary" id="addHymn">＋ Add hymn</button><button class="btn" id="addHymns">＋ Add many</button><button class="btn" id="hymnCats">⚙ Categories</button></div></div>
       <div class="row" role="group" aria-label="Order of hymns" style="margin-top:8px"><button class="btn small${az ? '' : ' primary'}" data-sort="cat">By category</button><button class="btn small${az ? ' primary' : ''}" data-sort="az">A–Z</button></div>
       <details style="margin-top:8px"><summary class="muted" style="cursor:pointer;min-height:36px;display:flex;align-items:center">Missing hymns? Bring them back from a backup</summary>
         <div class="muted" style="margin:6px 0">Choose a backup file (.tar from Settings, or a saved data .json). Only hymns that are missing are added; nothing else changes.</div>
@@ -1365,6 +1365,7 @@ function drawHymnsTab() {
   });
   $('#addHymn').addEventListener('click', () => openHymn(null));
   $('#addHymns').addEventListener('click', openHymnBulk);
+  $('#hymnCats').addEventListener('click', openHymnCategories);
   $('#hymns').querySelectorAll('[data-hview]').forEach((b) => b.addEventListener('click', () => {
     const h = hymns.find((x) => x.id === b.dataset.hview);
     openHymnViewer(h, categories.find((c) => c.id === h.category)?.label);
@@ -1376,7 +1377,48 @@ function drawHymnsTab() {
   }));
 }
 
-const catOptions = (selected) => hymnState.categories.map((c) => `<option value="${esc(c.id)}"${c.id === selected ? ' selected' : ''}>${esc(c.label)}</option>`).join('');
+const catOptions = (selected) => hymnState.categories.map((c) => `<option value="${esc(c.id)}"${c.id === selected ? ' selected' : ''}>${esc(c.label)}</option>`).join('') + '<option value="__new">＋ New category…</option>';
+// Choosing "＋ New category…" asks for a name, creates it, and selects it.
+function wireNewCategory(select) {
+  let last = select.value;
+  select.addEventListener('change', async () => {
+    if (select.value !== '__new') { last = select.value; return; }
+    const name = (prompt('Name of the new category (for example Marian hymns)') || '').trim();
+    if (!name) { select.value = last; return; }
+    try {
+      hymnState = { ...hymnState, ...(await call('teacher/hymn-categories', { method: 'POST', body: { label: name } })) };
+      const made = hymnState.categories.at(-1);
+      select.innerHTML = catOptions(made.id);
+      last = made.id;
+    } catch (err) { alert(err.message); select.value = last; }
+  });
+}
+
+// Add, rename and remove categories.
+function openHymnCategories() {
+  const draw = (msg = '') => {
+    $('#dlgBody').innerHTML = `
+      <div class="row between"><h2 style="margin:0">Hymn categories</h2><button class="btn small" id="close" aria-label="Close">✕</button></div>
+      <p class="muted">Parents see the hymns grouped by these. Change a name any time; a category with hymns in it can only be removed once they are moved.</p>
+      <div class="muted" id="catMsg" aria-live="polite" style="min-height:1.4em">${esc(msg)}</div>
+      ${hymnState.categories.map((c) => `
+        <div class="row" style="gap:6px;margin:6px 0" data-cat="${esc(c.id)}">
+          <input class="grow catName" value="${esc(c.label)}" maxlength="40" aria-label="Category name">
+          <span class="badge info" title="Hymns in it">${hymnState.hymns.filter((h) => h.category === c.id).length}</span>
+          <button class="ibtn" data-delcat="${esc(c.id)}" title="Remove this category" aria-label="Remove ${esc(c.label)}">✕</button></div>`).join('')}
+      <form id="newCat" class="row" style="gap:6px;margin-top:12px"><input name="label" class="grow" maxlength="40" placeholder="New category, e.g. Marian hymns" required aria-label="New category name"><button class="btn primary">＋ Add</button></form>`;
+    $('#close').addEventListener('click', () => { dlg.close(); loadHymns(); });
+    const apply = async (fn, okMsg) => { try { hymnState = { ...hymnState, ...(await fn()) }; draw(okMsg); } catch (err) { $('#catMsg').textContent = `⚠️ ${err.message}`; } };
+    $('#newCat').addEventListener('submit', (e) => { e.preventDefault(); apply(() => call('teacher/hymn-categories', { method: 'POST', body: { label: e.target.label.value } }), '✅ Added'); });
+    $('#dlgBody').querySelectorAll('.catName').forEach((i) => i.addEventListener('change', () => apply(() => call(`teacher/hymn-categories/${encodeURIComponent(i.closest('[data-cat]').dataset.cat)}`, { method: 'PATCH', body: { label: i.value } }), '✅ Renamed')));
+    $('#dlgBody').querySelectorAll('[data-delcat]').forEach((b) => b.addEventListener('click', () => {
+      const c = hymnState.categories.find((x) => x.id === b.dataset.delcat);
+      if (confirm(`Remove the category ${c.label}?`)) apply(() => call(`teacher/hymn-categories/${encodeURIComponent(c.id)}`, { method: 'DELETE' }), '✅ Removed');
+    }));
+  };
+  if (!dlg.open) dlg.showModal();
+  draw();
+}
 
 function openHymn(id, prefill = null) {
   const h = id ? hymnState.hymns.find((x) => x.id === id) : { title: prefill?.title || '', category: hymnState.categories[0].id, link: '', notes: '', audio: null };
@@ -1386,9 +1428,7 @@ function openHymn(id, prefill = null) {
     <form id="hf">
       <label class="field">Hymn title<input name="title" required maxlength="120" value="${esc(h.title)}"></label>
       <div class="card" style="margin:6px 0 12px">
-        <div class="row"><button type="button" class="btn small" id="findLy">🔎 Find lyrics online</button><span id="lyMsg" class="muted" aria-live="polite">Searches by the title above. You can edit the words before saving.</span></div>
-        <div class="row" style="margin-top:8px"><a class="btn small" id="gSearch" target="_blank" rel="noopener noreferrer" href="#">🌐 Search Google</a><a class="btn small" id="dhSearch" target="_blank" rel="noopener noreferrer" href="#">🎼 Search DivineHymns</a></div>
-        <div class="row" style="margin-top:8px;flex-wrap:nowrap"><input id="lyLink" type="url" class="grow" placeholder="Paste a link to the words (e.g. from divinehymns.com)" aria-label="Link to a page with the words"><button type="button" class="btn small" id="lyImport">Import</button></div>
+        <div class="row"><button type="button" class="btn small primary" id="findLy">🔎 Find lyrics</button><span id="lyMsg" class="muted" aria-live="polite">Looks in several free sources at once, using the title above. You can edit the words before saving.</span></div>
         <div id="lyList"></div>
       </div>
       <label class="field">Category<select name="category">${catOptions(h.category)}</select></label>
@@ -1427,16 +1467,9 @@ function openHymn(id, prefill = null) {
       await loadHymns();
     } catch (err) { $('#hmsg').textContent = `⚠️ ${err.message}`; }
   });
-  const q2 = (extra = '') => encodeURIComponent(`${$('#hf').elements.title.value.trim()} hymn lyrics${extra}`);
-  const setLinks = () => {
-    $('#gSearch').href = `https://www.google.com/search?q=${q2()}`;
-    $('#dhSearch').href = `https://www.google.com/search?q=${q2(' site:divinehymns.com')}`;
-  };
-  setLinks();
-  $('#hf').elements.title.addEventListener('input', setLinks);
   const showCards = (list) => {
     $('#lyList').innerHTML = list.map((x, i) => `
-      <details class="hymn" style="padding:8px 0" open><summary><b>${esc(x.title || 'Words from the page')}</b> <span class="muted">${esc(x.artist || x.host || '')}${x.album ? ` · ${esc(x.album)}` : ''}</span></summary>
+      <details class="hymn" style="padding:8px 0" open><summary><b>${esc(x.title || 'Words from the page')}</b> <span class="badge info">${esc(x.source || x.host || '')}</span> <span class="muted">${esc(x.artist || '')}${x.album ? ` · ${esc(x.album)}` : ''}</span></summary>
         <pre style="white-space:pre-wrap;font:inherit;margin:8px 0;max-height:200px;overflow:auto">${esc(x.lyrics)}</pre>
         <button type="button" class="btn small primary" data-use="${i}">Use these lyrics</button></details>`).join('')
       + (list.length ? '<div class="muted" style="margin-top:6px">Many songs are copyrighted. Use words you are allowed to share with the choir (older hymns are usually fine).</div>' : '');
@@ -1451,17 +1484,6 @@ function openHymn(id, prefill = null) {
       $('#dlgBody').scrollTop = 0;
     }));
   };
-  $('#lyImport').addEventListener('click', async () => {
-    const url = $('#lyLink').value.trim();
-    if (!url) { $('#lyMsg').textContent = 'Paste a link first.'; return; }
-    $('#lyMsg').textContent = 'Reading the page…';
-    $('#lyList').innerHTML = '';
-    try {
-      const r = await call('teacher/lyrics-link', { method: 'POST', body: { url } });
-      $('#lyMsg').textContent = `Read from ${r.host}.${r.cut ? ' It was long, so the end was cut.' : ''} Check it, remove anything extra, then use it.`;
-      showCards([r]);
-    } catch (err) { $('#lyMsg').textContent = `⚠️ ${err.message}`; }
-  });
   $('#findLy').addEventListener('click', async () => {
     const f = $('#hf');
     const q = f.elements.title.value.trim();
@@ -1470,10 +1492,12 @@ function openHymn(id, prefill = null) {
     $('#lyList').innerHTML = '';
     try {
       const r = await call(`teacher/lyrics?q=${encodeURIComponent(q)}`);
-      $('#lyMsg').textContent = r.results.length ? `${r.results.length} found. Preview one, then use it.` : 'Nothing found. Try the Google or DivineHymns button, then paste the page link below.';
+      const names = r.sources.filter((x) => x.ok).map((x) => x.name), down = r.sources.filter((x) => !x.ok).map((x) => x.name);
+      $('#lyMsg').textContent = (r.results.length ? `${r.results.length} found in ${names.join(', ')}. Preview one, then use it.` : `Nothing found for that title. You can type or paste the words in the box below.`) + (down.length ? ` (${down.join(', ')} could not be reached.)` : '');
       showCards(r.results);
     } catch (err) { $('#lyMsg').textContent = `⚠️ ${err.message}`; }
   });
+  wireNewCategory($('#hf').elements.category);
   if (prefill?.auto) $('#findLy').click();
   if (!id) return;
   const extType = { mp3: 'audio/mpeg', m4a: 'audio/mp4', wav: 'audio/wav', ogg: 'audio/ogg', aac: 'audio/aac' };
@@ -1510,6 +1534,7 @@ function openHymnBulk() {
       <div class="row" style="margin-top:8px"><button class="btn primary">Add hymns</button><span id="bmsg" class="muted" aria-live="polite"></span></div>
     </form><div id="bres"></div>`;
   if (!dlg.open) dlg.showModal();
+  wireNewCategory($('#hb').elements.category);
   $('#close').addEventListener('click', () => { dlg.close(); loadHymns(); });
   $('#hb').addEventListener('submit', async (e) => {
     e.preventDefault();

@@ -898,8 +898,37 @@ function deleteOccasion(occ) {
 
 // ---- hymn library: hymns taught that are not in the book ----------------------
 
+// The teacher can add, rename and remove categories. They start as the usual Mass parts and are kept in the data file.
 const HYMN_CATEGORIES = ['Entrance', 'LHM', 'Gloria', 'Response', 'Acclamation', 'Offertory', 'Holy', 'Peace', 'Communion', 'Recessional'];
 const HYMN_LABELS = { LHM: 'Lord Have Mercy (LHM)' };
+const hymnCats = () => (store.db.hymnCategories ??= HYMN_CATEGORIES.map((id) => ({ id, label: HYMN_LABELS[id] ?? id })));
+const hasHymnCat = (id) => hymnCats().some((c) => c.id === id);
+
+function hymnCategoryApi(method, rawId, body) {
+  let id = rawId;
+  try { id = rawId ? decodeURIComponent(rawId) : rawId; } catch { /* use it as it is */ }
+  const cats = hymnCats();
+  const label = () => { const l = text(body.label, 40, 'Category name').replace(/\s+/g, ' '); if (!l) throw new HttpError(400, 'Give the category a name'); return l; };
+  const taken = (l, except) => cats.some((c) => c !== except && c.label.toLowerCase() === l.toLowerCase());
+  if (method === 'POST' && !id) {
+    const l = label();
+    if (taken(l)) throw new HttpError(409, `${l} is already a category`);
+    let cid = l, n = 2;
+    while (cats.some((c) => c.id === cid)) cid = `${l} ${n++}`;
+    cats.push({ id: cid, label: l });
+  } else {
+    const c = cats.find((x) => x.id === id);
+    if (!c) throw new HttpError(404, 'Category not found');
+    if (method === 'PATCH') { const l = label(); if (taken(l, c)) throw new HttpError(409, `${l} is already a category`); c.label = l; }
+    else if (method === 'DELETE') {
+      const n = store.db.hymns.filter((h) => h.category === c.id).length;
+      if (n) throw new HttpError(400, `${c.label} still has ${n} hymn${n === 1 ? '' : 's'}. Move or delete them first.`);
+      store.db.hymnCategories = cats.filter((x) => x !== c);
+    } else throw new HttpError(405, 'Method not allowed');
+  }
+  store.save();
+  return hymnList();
+}
 const AUDIO_TYPES = {
   'audio/mpeg': 'mp3', 'audio/mp3': 'mp3', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/m4a': 'm4a',
   'audio/aac': 'aac', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/wave': 'wav', 'audio/ogg': 'ogg', 'audio/webm': 'webm',
@@ -914,7 +943,7 @@ const hymnOut = (h) => ({
 });
 
 const hymnList = () => ({
-  categories: HYMN_CATEGORIES.map((id) => ({ id, label: HYMN_LABELS[id] ?? id })),
+  categories: hymnCats().map((c) => ({ ...c })),
   hymns: [...store.db.hymns].sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' })).map(hymnOut),
 });
 
@@ -925,7 +954,7 @@ function applyHymn(h, body) {
     h.title = t;
   }
   if ('category' in body) {
-    if (!HYMN_CATEGORIES.includes(body.category)) throw new HttpError(400, 'Choose a category from the list');
+    if (!hasHymnCat(body.category)) throw new HttpError(400, 'Choose a category from the list');
     h.category = body.category;
   }
   if ('link' in body) {
@@ -937,35 +966,81 @@ function applyHymn(h, body) {
   if ('lyrics' in body) h.lyrics = text(body.lyrics, 6000, 'Lyrics');
 }
 
-// Teacher-only helper: look up lyrics online (free LRCLIB catalogue, no key, nothing is stored here).
-// The teacher reads, edits and chooses; only then does anything get saved with the hymn.
+// Teacher-only helper: look up the words online from several free sources at once (DivineHymns, Wikisource and the
+// LRCLIB catalogue). Nothing is stored here. The teacher reads, edits and chooses; only then is it saved with the hymn.
 const LYRICS_URL = process.env.CHOIR_LYRICS_URL || 'https://lrclib.net/api/search';
+const WIKISOURCE_URL = process.env.CHOIR_WIKISOURCE_URL || 'https://en.wikisource.org/w/api.php';
+const DIVINEHYMNS_URL = (process.env.CHOIR_DIVINEHYMNS_URL || 'https://divinehymns.com').replace(/\/+$/, '');
+const cleanText = (v, n) => String(v ?? '').replace(/\r\n?/g, '\n').trim().slice(0, n);
+const getText = async (url, accept = '*/*') => {
+  const r = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { 'user-agent': 'ChildrensChoirZD/1.0 (church choir app)', accept } });
+  if (!r.ok) throw new Error(`status ${r.status}`);
+  return r.text();
+};
+
+async function lyricsFromLrclib(term) {
+  const rows = JSON.parse(await getText(`${LYRICS_URL}?q=${encodeURIComponent(term)}`, 'application/json'));
+  const seen = new Set();
+  return (Array.isArray(rows) ? rows : []).map((x) => ({ title: cleanText(x?.trackName, 120), artist: cleanText(x?.artistName, 80), album: cleanText(x?.albumName, 80), lyrics: cleanText(x?.plainLyrics, 6000), source: 'LRCLIB' }))
+    .filter((x) => x.lyrics && !seen.has(`${x.title}|${x.artist}`.toLowerCase()) && seen.add(`${x.title}|${x.artist}`.toLowerCase()));
+}
+
+// Wikisource keeps old hymn texts that are in the public domain.
+async function lyricsFromWikisource(term) {
+  const api = (q) => `${WIKISOURCE_URL}?format=json&origin=*&action=query&${q}`;
+  const found = JSON.parse(await getText(api(`list=search&srlimit=3&srsearch=${encodeURIComponent(`${term} hymn`)}`), 'application/json'));
+  const titles = (found.query?.search ?? []).map((x) => x.title).slice(0, 3);
+  const out = [];
+  for (const t of titles) {
+    const j = JSON.parse(await getText(api(`prop=extracts&explaintext=1&exsectionformat=plain&titles=${encodeURIComponent(t)}`), 'application/json'));
+    const page = Object.values(j.query?.pages ?? {})[0];
+    const lyrics = cleanText(page?.extract, 6000);
+    if (lyrics.length > 40) out.push({ title: cleanText(String(t).split('/').pop(), 120), artist: '', album: '', host: 'en.wikisource.org', lyrics, source: 'Wikisource' });
+  }
+  return out;
+}
+
+// DivineHymns: its own search page lists hymn pages; the top few are read the same way as a pasted link.
+async function lyricsFromDivineHymns(term) {
+  const html = await getText(`${DIVINEHYMNS_URL}/?s=${encodeURIComponent(term)}`, 'text/html');
+  const host = new URL(DIVINEHYMNS_URL).host;
+  const links = [];
+  for (const m of html.matchAll(/<h[1-4][^>]*>\s*<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+    let u;
+    try { u = new URL(m[1], DIVINEHYMNS_URL); } catch { continue; }
+    if (u.host !== host || /^\/(category|tag|page\/\d|author|wp-|feed)/i.test(u.pathname) || u.pathname === '/') continue;
+    if (!links.some((l) => l.url === u.href)) links.push({ url: u.href, title: m[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim() });
+    if (links.length >= 3) break;
+  }
+  const out = [];
+  for (const l of links) {
+    try {
+      const p = await fetchPageText(l.url);
+      if (p.lyrics.length > 40) out.push({ title: (p.title || l.title).slice(0, 120), artist: '', album: '', host: p.host, lyrics: p.lyrics, source: 'DivineHymns' });
+    } catch { /* that page could not be read; the others may be fine */ }
+  }
+  return out;
+}
+
 async function searchLyrics(query) {
   const term = String(query ?? '').replace(/\s+/g, ' ').trim().slice(0, 100);
   if (term.length < 2) throw new HttpError(400, 'Type at least two letters of the hymn title');
-  let rows;
-  try {
-    const r = await fetch(`${LYRICS_URL}?q=${encodeURIComponent(term)}`, {
-      signal: AbortSignal.timeout(8000), headers: { 'user-agent': 'ChildrensChoirZD/1.0 (church choir app)' },
-    });
-    if (!r.ok) throw new Error(`status ${r.status}`);
-    rows = await r.json();
-  } catch {
-    throw new HttpError(502, 'Could not reach the online lyrics search right now. You can still type or paste the words.');
-  }
-  const clean = (v, n) => String(v ?? '').replace(/\r\n?/g, '\n').trim().slice(0, n);
+  const sources = [['DivineHymns', lyricsFromDivineHymns], ['Wikisource', lyricsFromWikisource], ['LRCLIB', lyricsFromLrclib]];
+  const done = await Promise.allSettled(sources.map(([, fn]) => fn(term)));
+  const status = done.map((d, i) => ({ name: sources[i][0], ok: d.status === 'fulfilled', count: d.status === 'fulfilled' ? d.value.length : 0 }));
+  if (!status.some((s) => s.ok)) throw new HttpError(502, 'Could not reach the online lyrics sources right now. You can still type or paste the words.');
   const seen = new Set();
   const results = [];
-  for (const x of Array.isArray(rows) ? rows : []) {
-    const lyrics = clean(x?.plainLyrics, 6000);
-    if (!lyrics) continue;
-    const key = `${clean(x.trackName, 120)}|${clean(x.artistName, 80)}`.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    results.push({ title: clean(x.trackName, 120), artist: clean(x.artistName, 80), album: clean(x.albumName, 80), lyrics });
-    if (results.length >= 8) break;
+  for (const d of done) {
+    if (d.status !== 'fulfilled') continue;
+    for (const x of d.value) {
+      const key = `${x.title}|${x.artist}|${x.source}`.toLowerCase();
+      if (seen.has(key) || results.filter((r) => r.source === x.source).length >= 4) continue;
+      seen.add(key);
+      results.push(x);
+    }
   }
-  return { query: term, results };
+  return { query: term, results: results.slice(0, 10), sources: status };
 }
 
 const sameHymn = (a, b) => a.category === b.category && a.title.toLowerCase() === b.title.toLowerCase();
@@ -983,7 +1058,7 @@ function createHymn(body) {
 
 // Paste many titles for one category. A line is "Title" or "Title | https://link".
 function bulkHymns(body) {
-  if (!HYMN_CATEGORIES.includes(body.category)) throw new HttpError(400, 'Choose a category first');
+  if (!hasHymnCat(body.category)) throw new HttpError(400, 'Choose a category first');
   const lines = String(body.text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   if (!lines.length) throw new HttpError(400, 'Paste at least one hymn title');
   if (lines.length > 300) throw new HttpError(400, 'Please add at most 300 hymns at a time');
@@ -1055,6 +1130,7 @@ async function recoverHymns(req) {
   let already = 0;
   for (const old of saved.hymns) {
     const h = newHymn();
+    if (old.category && typeof old.category === 'string' && !hasHymnCat(old.category) && old.category.length <= 40) hymnCats().push({ id: old.category, label: old.category }); // a category that existed in the backup comes back with its hymns
     try { applyHymn(h, { title: old.title, category: old.category, link: old.link ?? '', notes: old.notes ?? '', lyrics: old.lyrics ?? '' }); } catch { continue; }
     if (!h.title || !h.category) continue;
     if (store.db.hymns.some((x) => sameHymn(x, h))) { already += 1; continue; }
@@ -1352,6 +1428,7 @@ async function teacherApi(req, res, q, parts) {
   if (req.method === 'POST' && b === 'restore') return send(res, 200, await restoreBackup(req));
 
   const body = await readBody(req, (b === 'children' && action === 'photo') || (b === 'profile' && id === 'photo') ? 1_500_000 : 100_000);
+  if (b === 'hymn-categories') return send(res, req.method === 'POST' ? 201 : 200, hymnCategoryApi(req.method, id, body));
   if (req.method === 'PUT' && b === 'profile' && !id) return send(res, 200, updateTeacherProfile(body));
   if (req.method === 'POST' && b === 'profile' && id === 'photo') { await savePhoto(teacherProfile(), body.image, null); return send(res, 200, profileView()); }
   if (req.method === 'PUT' && b === 'mark') { mark(body); return send(res, 200, { ok: true }); }

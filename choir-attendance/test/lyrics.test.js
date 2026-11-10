@@ -14,6 +14,15 @@ const fake = http.createServer((req, res) => {
   }
   if (req.url.startsWith('/img')) { res.writeHead(200, { 'content-type': 'image/png' }); return res.end('x'); }
   if (mode === 'down') { res.writeHead(500); return res.end('no'); }
+  if (req.url.startsWith('/dh')) { // a pretend DivineHymns search page that links to the pretend hymn page
+    res.writeHead(200, { 'content-type': 'text/html' });
+    return res.end(`<html><body><h2 class="entry-title"><a href="http://${req.headers.host}/page">Amazing Grace</a></h2><h2><a href="http://${req.headers.host}/category/hymns">Hymns</a></h2></body></html>`);
+  }
+  if (req.url.startsWith('/wiki')) { // a pretend Wikisource: a search, then the text of the page found
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (req.url.includes('list=search')) return res.end(JSON.stringify({ query: { search: [{ title: 'Hymn/Amazing Grace (Wikisource)' }] } }));
+    return res.end(JSON.stringify({ query: { pages: { 7: { extract: 'Amazing grace! how sweet the sound,\nThat saved a wretch like me! (from the public domain text)' } } } }));
+  }
   const q = new URL(req.url, 'http://x').searchParams.get('q');
   res.writeHead(200, { 'content-type': 'application/json' });
   res.end(JSON.stringify([
@@ -25,6 +34,8 @@ const fake = http.createServer((req, res) => {
 await new Promise((ok) => fake.listen(0, ok));
 process.env.CHOIR_ALLOW_PRIVATE_FETCH = '1'; // the pretend site is on this machine
 process.env.CHOIR_LYRICS_URL = `http://localhost:${fake.address().port}/search`;
+process.env.CHOIR_WIKISOURCE_URL = `http://localhost:${fake.address().port}/wiki`;
+process.env.CHOIR_DIVINEHYMNS_URL = `http://localhost:${fake.address().port}/dh`;
 process.env.CHOIR_DATA = join(mkdtempSync(join(tmpdir(), 'choir-ly-')), 'db.json');
 delete process.env.CHOIR_PIN;
 const { server } = await import('../server.js');
@@ -32,13 +43,15 @@ let base;
 before(() => new Promise((ok) => server.listen(0, () => { base = `http://localhost:${server.address().port}`; ok(); })));
 after(() => { server.close(); fake.close(); });
 
-test('teacher can search lyrics online; results are cleaned and de-duplicated', async () => {
+test('one search looks in every source; results are cleaned, labelled and de-duplicated', async () => {
   const r = await fetch(`${base}/api/teacher/lyrics?q=amazing%20grace`);
   assert.equal(r.status, 200);
   const d = await r.json();
-  assert.equal(d.results.length, 1);
-  assert.equal(d.results[0].title, 'Amazing Grace');
-  assert.equal(d.results[0].lyrics, 'Amazing grace\nhow sweet the sound (amazing grace)');
+  assert.deepEqual(d.sources.map((x) => [x.name, x.ok, x.count]), [['DivineHymns', true, 1], ['Wikisource', true, 1], ['LRCLIB', true, 1]]);
+  assert.deepEqual(d.results.map((x) => x.source), ['DivineHymns', 'Wikisource', 'LRCLIB']);
+  assert.match(d.results[0].lyrics, /wretch like me & you/, 'the hymn page was read like a pasted link');
+  assert.equal(d.results[1].title, 'Amazing Grace (Wikisource)');
+  assert.equal(d.results[2].lyrics, 'Amazing grace\nhow sweet the sound (amazing grace)');
 });
 
 test('too-short search is refused, and an offline lyrics site gives a friendly error', async () => {
@@ -46,7 +59,7 @@ test('too-short search is refused, and an offline lyrics site gives a friendly e
   mode = 'down';
   const r = await fetch(`${base}/api/teacher/lyrics?q=amazing`);
   assert.equal(r.status, 502);
-  assert.match((await r.json()).error, /type or paste/);
+  assert.match((await r.json()).error, /type or paste/, 'when every source is down');
   mode = 'ok';
 });
 
@@ -109,7 +122,7 @@ test('missing hymns can be brought back from a data file, without duplicates', a
   const old = { hymns: [
     { id: 'aaaaaaaa', title: 'Already Here', category: 'Entrance' },
     { id: 'bbbbbbbb', title: 'Lost One', category: 'Gloria', lyrics: 'La la la', link: 'https://example.com/x' },
-    { id: 'cccccccc', title: 'Bad Category', category: 'Nope' },
+    { id: 'cccccccc', title: 'No Category' },
   ] };
   const r = await fetch(`${base}/api/teacher/hymns/recover`, { method: 'POST', body: JSON.stringify(old) });
   assert.equal(r.status, 200);
@@ -176,4 +189,26 @@ test('recent practices list who was present, absent and not marked', async () =>
   assert.deepEqual(s.absent, ['Rec Beta']);
   assert.ok(s.unmarked.includes('Rec Gamma'));
   assert.ok(r.sessions.every((x, i, arr) => i === 0 || arr[i - 1].date >= x.date), 'newest first');
+});
+
+test('the teacher can add, rename and remove hymn categories', async () => {
+  const j = async (path, method = 'GET', body) => { const r = await fetch(`${base}/api${path}`, { method, headers: body ? { 'content-type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined }); return { status: r.status, data: await r.json() }; };
+  const start = (await j('/hymns')).data.categories;
+  assert.equal(start[0].id, 'Entrance');
+  const add = await j('/teacher/hymn-categories', 'POST', { label: 'Marian hymns' });
+  assert.equal(add.status, 201);
+  assert.equal(add.data.categories.at(-1).label, 'Marian hymns');
+  assert.equal((await j('/teacher/hymn-categories', 'POST', { label: 'marian HYMNS' })).status, 409, 'no twins');
+  assert.equal((await j('/teacher/hymn-categories', 'POST', { label: '  ' })).status, 400);
+  const made = await j('/teacher/hymns', 'POST', { title: 'Immaculate Mary', category: 'Marian hymns' });
+  assert.equal(made.status, 201, 'a hymn can go in the new category');
+  assert.equal((await j('/hymns')).data.hymns.find((h) => h.title === 'Immaculate Mary').category, 'Marian hymns');
+  assert.equal((await j('/teacher/hymn-categories/Marian%20hymns', 'PATCH', { label: 'Mary' })).data.categories.find((c) => c.id === 'Marian hymns').label, 'Mary');
+  const busy = await j('/teacher/hymn-categories/Marian%20hymns', 'DELETE');
+  assert.equal(busy.status, 400);
+  assert.match(busy.data.error, /still has 1 hymn/);
+  await j(`/teacher/hymns/${made.data.id}`, 'DELETE');
+  assert.equal((await j('/teacher/hymn-categories/Marian%20hymns', 'DELETE')).data.categories.some((c) => c.id === 'Marian hymns'), false);
+  assert.equal((await j('/teacher/hymn-categories/Nope', 'DELETE')).status, 404);
+  assert.equal((await j('/teacher/hymns', 'POST', { title: 'X Hymn', category: 'Not a category' })).status, 400);
 });
