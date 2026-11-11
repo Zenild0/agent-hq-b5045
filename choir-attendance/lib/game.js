@@ -24,13 +24,18 @@ export function isPaid(kid, today = istDate()) {
   const until = kid.paidUntil || addDays(kid.paidOn || '1970-01-01', YEAR_DAYS); // older records: a year from the day it was unlocked
   return today < until;
 }
-// Everyone gets the full version of every training game free for a few days: 7 for choir members, 3 for guests.
+// Everyone gets the full version of every training game free for a few days: 7 days for choir members and guests alike.
 // The days start the first time the child opens the games (and are remembered on the child, so changing a rule later never moves an old trial).
-export const TRIAL_DAYS = { member: 7, guest: 3 };
+export const TRIAL_DAYS = { member: 7, guest: 7 };
 export function startTrial(game, childId, today, days) {
   const kid = (game.kids[childId] ??= emptyKid());
   if (!kid.trialStart) { kid.trialStart = today; kid.trialDays = days; return true; }
   return false;
+}
+// The teacher gives every child a fresh free trial starting today (children who already paid keep what they paid for).
+export function grantTrialToAll(game, childIds, today, days) {
+  for (const id of childIds) { const kid = (game.kids[id] ??= emptyKid()); kid.trialStart = today; kid.trialDays = days; }
+  return childIds.length;
 }
 export function trialOf(kid, today = istDate()) {
   if (!kid?.trialStart) return { started: false, active: false, daysLeft: 0, endsOn: '', days: 0 };

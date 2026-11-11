@@ -1,6 +1,6 @@
 // Training Games: the hub that holds every game, so new ones can be added over time.
 //   1. Vocal trainer (sing the note you hear)    2. Notation trainer (read the note on the staff)    3. Rhythm trainer (soon)
-// Everyone gets the full version of every game free for a few days (7 for choir members, 3 for guests),
+// Everyone gets the full version of every game free for a few days (7 days, for choir members and guests),
 // and one payment unlocks all the games. The server keeps the days; this screen only shows them.
 import { api, esc } from './common.js';
 import { RANGES, getRange, setRange } from './audio.js';

@@ -16,7 +16,7 @@ const j = async (path, { method = 'GET', body, code } = {}) => {
   return { status: res.status, data: await res.json().catch(() => null) };
 };
 
-test('every game is free for 7 days for members and 3 for guests, then paid; paying unlocks all games', async () => {
+test('every game is free for 7 days for members and guests, then paid; paying unlocks all games', async () => {
   await j('/api/teacher/settings', { method: 'PUT', body: { gameEnabled: true, staffEnabled: true } });
   const member = (await j('/api/teacher/children', { method: 'POST', body: { name: 'Trial Member' } })).data;
   await j('/api/teacher/occasions', { method: 'POST', body: { name: 'Trial Event', members: [], guests: 'Trial Guest' } });
@@ -30,8 +30,8 @@ test('every game is free for 7 days for members and 3 for guests, then paid; pay
   assert.equal(m.paid, false);
   assert.deepEqual(m.games, { vocals: true, notation: true, chords: false });
   const g = (await j('/api/me/access', { code: guest.code })).data;
-  assert.equal(g.trial.days, 3);
-  assert.equal(g.trial.daysLeft, 3);
+  assert.equal(g.trial.days, 7);
+  assert.equal(g.trial.daysLeft, 7);
   assert.equal(g.guest, true);
   // inside the trial the paid levels open
   const st = (await j('/api/game', { code: member.code })).data;
@@ -81,4 +81,18 @@ test('a guest sees only their own event: event board, event attendance, a schedu
   assert.notEqual(fresh, g1.code);
   assert.equal((await j('/api/me', { code: g1.code })).status, 401);
   assert.equal((await j('/api/me', { code: fresh })).status, 200);
+});
+
+test('the teacher can give every child a fresh 7 free days from today', async () => {
+  await j('/api/teacher/settings', { method: 'PUT', body: { gameEnabled: true } });
+  const kid = (await j('/api/teacher/children', { method: 'POST', body: { name: 'Fresh Trial' } })).data;
+  const first = (await j('/api/me/access', { code: kid.code })).data;
+  assert.equal(first.trial.daysLeft, 7);
+  const r = await j('/api/teacher/game-trials', { method: 'POST', body: { days: 7 } });
+  assert.equal(r.status, 200);
+  assert.ok(r.data.children >= 3);
+  const after = (await j('/api/me/access', { code: kid.code })).data;
+  assert.equal(after.trial.active, true);
+  assert.equal(after.trial.daysLeft, 7);
+  assert.equal((await j('/api/teacher/game-trials', { method: 'POST', body: { days: 999 } })).data.days, 30, 'capped at 30');
 });

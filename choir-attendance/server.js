@@ -11,7 +11,7 @@ import {
   compareNames, findOccasion, slug,
 } from './lib/logic.js';
 import { openStore, newCode } from './lib/store.js';
-import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, setPaid, resetWarmups, resetAllWarmups, isPaid, hasFull, trialOf, startTrial, TRIAL_DAYS, paidUntilOf, daysLeft, wasPaid, warmupsLeft, useWarmup, GameError, PaywallError } from './lib/game.js';
+import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, setPaid, resetWarmups, resetAllWarmups, grantTrialToAll, isPaid, hasFull, trialOf, startTrial, TRIAL_DAYS, paidUntilOf, daysLeft, wasPaid, warmupsLeft, useWarmup, GameError, PaywallError } from './lib/game.js';
 import { FREE_CHORDS } from './lib/freechords.js';
 import { isChord, chordsUsed, normaliseSheet, detectKey } from './public/chordpro.js';
 import { LEVELS, DAILY_COUNT, STAGES, stageSpec, isTimed } from './public/levels.js';
@@ -1467,6 +1467,13 @@ async function teacherApi(req, res, q, parts) {
     const cleared = lockedOutCount();
     failures.clear();
     return send(res, 200, { cleared });
+  }
+  if (req.method === 'POST' && b === 'game-trials') { // a fresh free trial for every child, starting today
+    const days = Math.min(30, Math.max(1, Math.round(Number(body.days) || TRIAL_DAYS.member)));
+    const ids = store.db.children.filter((c) => c.active).map((c) => c.id);
+    grantTrialToAll(store.db.game, ids, istDate(), days);
+    store.save();
+    return send(res, 200, { children: ids.length, days });
   }
   if (req.method === 'POST' && b === 'game-warmups') { // reset the free Warm-up sessions for everyone
     const n = resetAllWarmups(store.db.game);

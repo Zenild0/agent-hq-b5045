@@ -98,17 +98,24 @@ function subsPanelHtml(subs) {
 async function loadGamesHub() {
   $('#games').innerHTML = `
     <div class="card"><h2 style="margin:0">Training games</h2>
-      <div class="muted">Try each game yourself. Everyone gets every game free for 7 days (guests 3 days); one payment then unlocks all of them.</div></div>
+      <div class="muted">Try each game yourself. Everyone, guests included, gets every game free for 7 days; one payment then unlocks all of them.</div></div>
     <div class="tg-list">
       <button class="tg-card" data-game="vocals"><span class="tg-n">1</span><span class="grow"><b>Vocal trainer</b><span class="muted">Hear a note, sing it. Levels, daily challenge, badges.</span></span><span>›</span></button>
       <button class="tg-card" data-game="staffgame"><span class="tg-n">2</span><span class="grow"><b>Notation trainer</b><span class="muted">Learn to read music: 20 levels, treble and bass clef.</span></span><span>›</span></button>
       <button class="tg-card" data-game="chordbook"><span class="tg-n">4</span><span class="grow"><b>Chord Book</b><span class="muted">Add chord sheets for hymns and songs. Students search them, keep their own songs and build set lists.</span></span><span>›</span></button>
       <div class="tg-card soon"><span class="tg-n">3</span><span class="grow"><b>Rhythm trainer</b><span class="muted">Coming soon.</span></span></div>
     </div>
+    <div class="card"><b>Free trial</b>
+      <div class="muted">Each child's 7 free days start the first time they open the games. To give every child a fresh 7 days starting today, including children whose trial has ended, tap the button.</div>
+      <div class="row" style="margin-top:8px"><button class="btn" id="giveTrial">🎁 Give everyone 7 free days from today</button><span id="trialMsg" class="muted" aria-live="polite"></span></div></div>
     <div id="practiceBox"></div>
     <div id="subsBox"></div>`;
   $('#games').querySelectorAll('[data-game]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.game)));
   call('teacher/chord-requests').then((r) => { if (r.requests.length) $('#games').querySelector('[data-game="chordbook"] .muted').insertAdjacentHTML('beforeend', ` <b style="color:var(--brand)">· ${r.requests.length} song request${r.requests.length === 1 ? '' : 's'}</b>`); }).catch(() => {});
+  $('#giveTrial').addEventListener('click', () => {
+    if (!confirm('Give EVERY child (and guest) a fresh 7 days of all the games, starting today? Children who already paid keep their paid year.')) return;
+    run(async () => { const r = await call('teacher/game-trials', { method: 'POST', body: { days: 7 } }); $('#trialMsg').textContent = `✅ ${r.children} children now have ${r.days} free days from today.`; });
+  });
   call('teacher/vocals-subs').then((s) => { $('#subsBox').innerHTML = subsPanelHtml(s); }).catch(() => {});
   call('teacher/practice').then((r) => {
     $('#practiceBox').innerHTML = `
@@ -1225,7 +1232,7 @@ async function loadSettings() {
         <label class="chk"><input name="countSundayAbsences" type="checkbox"${s.countSundayAbsences ? ' checked' : ''}> Missing Sunday mass also counts as a leave</label>
         <p class="muted">Feast practices, feast masses and medical absences never count as leaves. Going over the leave limit never removes a child by itself; you decide.</p>`, true)}
       ${sec('Vocals and payment', 'The singing game, its price and how parents pay', `
-        <div class="muted" style="margin-bottom:4px"><b>Training games for parents.</b> Switch each game on when you are ready, one at a time. Everyone gets every game free for 7 days (guests 3 days); one payment then unlocks all the games.</div>
+        <div class="muted" style="margin-bottom:4px"><b>Training games for parents.</b> Switch each game on when you are ready, one at a time. Everyone, guests included, gets every game free for 7 days; one payment then unlocks all the games.</div>
         <label class="chk"><input name="gameEnabled" type="checkbox"${s.gameEnabled ? ' checked' : ''}> 🎤 Vocal trainer (game 1) is on for parents</label>
         <label class="chk"><input name="staffEnabled" type="checkbox"${s.staffEnabled ? ' checked' : ''}> 🎼 Notation trainer (game 2) is on for parents</label>
         <label class="chk"><input name="chordsEnabled" type="checkbox"${s.chordsEnabled ? ' checked' : ''}> 🎸 Chord Book (game 4) is on for parents</label>
