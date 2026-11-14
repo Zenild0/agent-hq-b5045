@@ -3,7 +3,7 @@
 // the total time spent. From level 5 each note has a countdown and the round runs front to back.
 // Every box has a fixed size, so nothing moves or flickers while a child sings.
 import { detectPitch, rms, acceptPitch, nextFloor, gateFor } from './pitch.js';
-import { NAMES, makeTracker, UNTIMED_CAP_MS, signedSemis } from './levels.js';
+import { NAMES, makeTracker, UNTIMED_CAP_MS, signedSemis, directionHint } from './levels.js';
 import { micMessage } from './audio.js';
 import { staffSvg } from './staff.js';
 import { paintTrail, TRAIL_MS } from './trail.js';
@@ -52,6 +52,7 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
   // The pitch trail: the last four seconds of the child's voice as a line. The green band is the note to hit; the line turns green while it is held.
   const trail = [], trailCtx = X('trail').getContext('2d');
   const drawTrail = (now, tol, holding) => paintTrail(trailCtx, X('trail').width, X('trail').height, trail, now, tol, holding);
+  const dirMsg = (d, tol) => { const h = directionHint(d, tol); return h ? `${h.arrow} ${h.text}` : null; };
   const clearTrail = () => { trail.length = 0; trailCtx.clearRect(0, 0, X('trail').width, X('trail').height); };
 
   const spentOn = (i, now) => notes[i].ms + (phase === 'listening' && i === idx ? now - startAt : 0);
@@ -246,11 +247,12 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
     if (t.done) return finishNote(true, now);
     if (cur.timed && left <= 0) return finishNote(false, now, true);
     if (!cur.timed && spentOn(idx, now) >= UNTIMED_CAP_MS) return finishNote(false, now);
+    { const f = floor > 0.02 && !cur.silent ? '🔊 This room is noisy. Headphones or a quieter spot will help.' : ' '; if (X('fine').textContent !== f) X('fine').textContent = f; }
     if (audio.ctx.currentTime < muteUntil) setMsg(paused ? '⏸ Sound paused' : '🎧 Listen…');
     else if (vol < gate) setMsg(cur.timed ? `Sing out loud, ${Math.ceil(left / 1000)} s left` : 'Sing out loud, take your time');
     else if (midi == null && t.hold > 0.05) setMsg(`Keep going, hold it… ${Math.max(1, Math.ceil((1 - t.hold) * cur.hold / 1000))}`);
     else if (midi == null) setMsg(cur.timed ? `Sing a steady "Ahh"… ${Math.ceil(left / 1000)} s` : 'Sing a steady "Ahh"… no rush');
-    else setMsg(t.hold > 0.05 ? `Hold it… ${Math.max(1, Math.ceil((1 - t.hold) * cur.hold / 1000))}` : t.warm > 0.66 ? 'Almost there!' : t.warm > 0.2 ? 'Getting warmer…' : 'Keep trying, slide your voice…');
+    else setMsg(t.hold > 0.05 ? `Hold it… ${Math.max(1, Math.ceil((1 - t.hold) * cur.hold / 1000))}` : t.warm > 0.66 ? 'Almost there!' : dirMsg(trail.at(-1)?.d, cur.tol / 100) ?? (t.warm > 0.2 ? 'Getting warmer…' : 'Keep trying, slide your voice…'));
   }
 
   X('go').addEventListener('click', go);

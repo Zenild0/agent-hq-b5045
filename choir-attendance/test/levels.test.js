@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { HOLD_NOTE_MS, HOLD_STEADY_MS, HOLD_TUNE_MS, LEVELS, buildDeck, makeTracker, centsTo, NAMES, stageSpec, titleFor, PIANO_KEYS, isTimed } from '../public/levels.js';
+import { directionHint, HOLD_NOTE_MS, HOLD_STEADY_MS, HOLD_TUNE_MS, LEVELS, buildDeck, makeTracker, centsTo, NAMES, stageSpec, titleFor, PIANO_KEYS, isTimed } from '../public/levels.js';
 
 const rng = (seed = 1) => () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 
@@ -186,4 +186,13 @@ test('a long hold forgives a breath or wobble of under half a second, a short no
   const gone = makeTracker(long);
   feedFor(gone, 0, 1500, 67); feedFor(gone, 1516, 2200, null); // 0.7 s of nothing is a real stop
   assert.ok(gone.feed(2216, 67).hold < 0.1);
+});
+
+test('the hint tells a child which way to move their voice', () => {
+  assert.equal(directionHint(0.1, 0.3), null, 'close enough: no hint');
+  assert.equal(directionHint(null), null);
+  assert.deepEqual(directionHint(-2), { arrow: '⬆', text: 'Sing higher' });
+  assert.deepEqual(directionHint(-0.8), { arrow: '⬆', text: 'A little higher' });
+  assert.deepEqual(directionHint(2.2), { arrow: '⬇', text: 'Sing lower' });
+  assert.deepEqual(directionHint(0.7), { arrow: '⬇', text: 'A little lower' });
 });

@@ -220,3 +220,11 @@ export function praiseFor(r, pick = (a) => a[Math.floor(Math.random() * a.length
   if (r.pass && r.hints === 0 && !perfect && r.won === r.count) extras.push('Every note, and no hints! 🙌');
   return { tier, title: pick(PRAISE[tier]), extras };
 }
+
+// Which way to move the voice: d is how far the voice is from the note, in semitones (positive = too high). Tells a child
+// "higher" or "lower" instead of just "keep trying". Null when the voice is close enough that no hint is needed.
+export function directionHint(d, tolSemis = 0.3) {
+  if (d == null || Math.abs(d) <= Math.max(tolSemis, 0.25)) return null;
+  const far = Math.abs(d) > 1.5;
+  return d < 0 ? { arrow: '⬆', text: far ? 'Sing higher' : 'A little higher' } : { arrow: '⬇', text: far ? 'Sing lower' : 'A little lower' };
+}
