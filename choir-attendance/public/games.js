@@ -56,7 +56,19 @@ export function mountGames(host, { code }) {
     view = 'hub';
     ctl?.destroy?.(); ctl = null;
     const g = access.games;
+    const v = xp.view();
+    const first = g.vocals ? 'vocals' : g.notation ? 'notation' : null;
+    const hero = first ? `<div class="kid-hero">
+        <div class="kid-top"><b>Ready to sing? 🎤</b><span class="kid-chip fire">🔥 ${v.streak}</span><span class="kid-chip">⚡ ${v.total} XP</span></div>
+        <button class="kid-sing" data-game="${first}" data-sing="1" style="--p:${v.goalShare}" aria-label="Start singing"><span class="kid-sing-in"><span class="kid-mic">🎤</span><b>SING</b><small>${v.goalMet ? 'Goal done! 🎉' : `Today's goal: ${Math.round(v.goalShare * 100)}%`}</small></span></button>
+        <div class="kid-hint">Tap to start. Hear a note, sing it and hold it.</div>
+        <div class="kid-missions">
+          ${g.vocals ? `<button class="kid-mission" data-game="vocals"><span>🔥</span><b>Warm up</b><small>2 minutes</small></button>` : ''}
+          <button class="kid-mission gold" data-game="${first}"><span>⏱</span><b>Hold notes</b><small>${v.week?.notes ? `${v.week.won} this week` : 'Try it!'}</small></button>
+          <button class="kid-mission" data-game="tips"><span>💧</span><b>Voice tip</b><small><span class="vt-dot" hidden>NEW</span>&nbsp;</small></button>
+        </div></div>` : '';
     root.innerHTML = `
+      ${hero}
       <div class="card"><h2 style="margin:0">Training games</h2>
         <div class="muted">Short, fun practice that makes you a better singer and music reader.</div>
         <div class="gm-note" style="margin-top:8px">🎧 Use headphones for the best results, so the phone's sound does not mix with your voice.</div></div>
@@ -77,16 +89,20 @@ export function mountGames(host, { code }) {
     paintTipDot();
   }
 
-  async function paintTipDot() { const t = await newestTip(code); const dot = root.querySelector('#tipDot'); if (dot && t?.isNew) dot.hidden = false; }
+  async function paintTipDot() { const t = await newestTip(code); if (t?.isNew) root.querySelectorAll('.vt-dot').forEach((d) => { d.hidden = false; }); }
 
-  async function open(which) {
+  async function open(which, { sing = false } = {}) {
     view = which;
     root.innerHTML = '<div class="empty">Loading…</div>';
     try {
       await loadAccess(); // refresh the trial days and payment status each time a game opens
       root.innerHTML = '<div class="games-bar"><button class="btn small" data-g="hub">‹ Training games</button></div><div id="gbox"></div>';
       const box = root.querySelector('#gbox');
-      if (which === 'vocals') { const m = await import('./game.js'); ctl = m.mountGame(box, { code, xp }); }
+      if (which === 'vocals') {
+        const m = await import('./game.js'); ctl = m.mountGame(box, { code, xp });
+        // The big SING button goes straight into the next lesson of the course, when it is there to press
+        if (sing) { let tries = 0; const t = setInterval(() => { const go = box.querySelector('[data-a="path"]'); if (go || ++tries > 30) { clearInterval(t); go?.click(); } }, 100); }
+      }
       else if (which === 'tips') { const m = await import('./voicetips.js'); ctl = m.mountVoiceTips(box, { code }); }
       else if (which === 'chords') { const m = await import('./chordbook.js'); ctl = m.mountChordBook(box, { code, access }); }
       else { const m = await import('./staffgame.js'); ctl = m.mountStaffGame(box, { access, xp }); }
@@ -97,7 +113,7 @@ export function mountGames(host, { code }) {
     const r = e.target.closest('[data-range]');
     if (r) { setRange(r.dataset.range); return hub(); }
     const g = e.target.closest('[data-game]');
-    if (g) return open(g.dataset.game);
+    if (g) return open(g.dataset.game, { sing: g.dataset.sing === '1' });
     if (e.target.closest('[data-g="hub"]')) return hub();
   });
 

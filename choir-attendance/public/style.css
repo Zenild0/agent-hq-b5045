@@ -325,7 +325,7 @@ details[open] > summary .chev { transform: rotate(180deg); }
 .pl-dots i { flex: 1; height: 10px; border-radius: 99px; background: var(--line); cursor: pointer; box-shadow: 0 0 0 4px transparent; }
 .pl-dots i.done { background: var(--ok); } .pl-dots i.miss { background: var(--bad); } .pl-dots i.now { background: var(--brand); }
 .pl-stats { display: flex; justify-content: space-between; font-weight: 800; height: 24px; }
-.pl-arena { height: 410px; display: grid; justify-items: center; align-content: start; gap: 10px; padding-top: 6px; overflow: hidden; }
+.pl-arena { height: 440px; display: grid; justify-items: center; align-content: start; gap: 10px; padding-top: 6px; overflow: hidden; }
 .pl-target { font: 800 1.9rem/1.1 var(--font-head); height: 1.2em; color: var(--brand-dark); text-align: center; max-width: 100%; white-space: nowrap; overflow: hidden; }
 .pl-how { font-weight: 800; height: 1.3em; color: var(--muted); text-align: center; }
 .pl-ring {
@@ -666,7 +666,7 @@ html[data-theme=dark] .staff .sn.on .head { fill: #C8FF3D; }
 .wu-staff > * { margin: 0 auto; flex: none; }
 .wu-meet { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
 .pl-target.staff { height: auto; white-space: normal; padding: 4px 0; }
-.pl-arena:has(.pl-target.staff) { height: 460px; }
+.pl-arena:has(.pl-target.staff) { height: 490px; }
 
 /* teacher Attendance and Children: card layout like Home */
 .att-list { padding: 0; margin: 8px 0; display: grid; gap: 8px; background: none; border: 0; box-shadow: none; }
@@ -848,3 +848,37 @@ dialog.consent::backdrop { background: rgba(10,7,32,.8); }
 .fee-note { margin-top: 8px; font-size: .85rem; }
 .fee-note summary { cursor: pointer; font-weight: 700; }
 .fee-note p { margin: 6px 0 0; line-height: 1.45; font-weight: 500; }
+
+/* Kids-first look for the training games: one big SING button, a pitch trail while singing, a celebration at the end. */
+.kid-hero { border-radius: 28px; padding: 16px 16px 18px; color: #F7F4FF; background: radial-gradient(120% 90% at 50% 0%, #3A1FA8 0%, #1B1150 55%, #120a38 100%); box-shadow: 0 10px 30px rgba(40, 20, 120, .28); display: grid; gap: 10px; justify-items: center; }
+.kid-top { width: 100%; display: flex; align-items: center; gap: 8px; font: 800 1.05rem var(--font-head); }
+.kid-top b { flex: 1; }
+.kid-chip { padding: 6px 12px; border-radius: 999px; background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .22); font: 800 .85rem var(--font-body, inherit); }
+.kid-chip.fire { background: rgba(255, 200, 61, .16); border-color: rgba(255, 200, 61, .5); color: #FFE14D; }
+.kid-sing { --p: 0; width: 210px; height: 210px; border-radius: 50%; border: 0; padding: 9px; cursor: pointer; color: #fff; background: conic-gradient(#FFE14D calc(var(--p) * 1turn), rgba(255, 255, 255, .14) 0); box-shadow: 0 0 40px rgba(177, 61, 245, .45); }
+.kid-sing:active { transform: scale(.97); }
+.kid-sing-in { width: 100%; height: 100%; border-radius: 50%; display: grid; place-content: center; text-align: center; gap: 2px; background: radial-gradient(circle at 50% 35%, #FF8AD1, #B13DF5 55%, #5B3DF5); border: 2px solid rgba(255, 255, 255, .35); }
+.kid-mic { font-size: 2.6rem; line-height: 1; }
+.kid-sing b { font: 800 1.7rem var(--font-head); letter-spacing: .06em; }
+.kid-sing small { font: 700 .78rem var(--font-body, inherit); opacity: .92; }
+.kid-hint { font-weight: 700; font-size: .85rem; color: #C9C2F0; text-align: center; }
+.kid-missions { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 10px; }
+.kid-mission { border: 1px solid rgba(255, 255, 255, .16); background: rgba(255, 255, 255, .1); color: #F7F4FF; border-radius: 20px; padding: 10px; display: grid; gap: 2px; justify-items: start; text-align: left; cursor: pointer; min-height: 84px; }
+.kid-mission span { font-size: 1.5rem; } .kid-mission b { font-size: .85rem; } .kid-mission small { font-weight: 700; font-size: .72rem; color: #C9C2F0; }
+.kid-mission.gold { background: linear-gradient(135deg, #FFC83D, #FF8A3D); color: #1B1150; border-color: transparent; }
+.kid-mission.gold small { color: #4a2a00; }
+.pl-trailbox { position: relative; width: 100%; max-width: 300px; }
+.pl-trail { width: 100%; height: 75px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); display: block; }
+.pl-trailtag { position: absolute; right: 8px; top: 4px; font: 800 .65rem var(--font-body, inherit); color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+.kid-result { border-radius: 26px; }
+.kid-stars { font-size: 2.2rem; letter-spacing: .15em; }
+.kid-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.kid-tile { border-radius: 18px; padding: 10px 6px; background: var(--card); border: 1px solid var(--line); display: grid; gap: 2px; }
+.kid-tile small { font: 800 .62rem var(--font-body, inherit); color: var(--muted); letter-spacing: .05em; }
+.kid-tile b { font: 800 1.35rem var(--font-head); }
+.kid-tile.gold { background: linear-gradient(135deg, #FFC83D, #FF8A3D); border-color: transparent; color: #1B1150; } .kid-tile.gold small { color: #4a2a00; }
+.kid-board { display: grid; gap: 4px; margin-top: 10px; }
+.kid-board small { font: 800 .7rem var(--font-body, inherit); color: var(--muted); letter-spacing: .06em; }
+.kid-row { display: flex; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 12px; }
+.kid-row.me { background: rgba(255, 200, 61, .22); }
+@media (prefers-reduced-motion: reduce) { .kid-sing:active { transform: none; } }

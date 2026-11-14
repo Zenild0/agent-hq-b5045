@@ -3,9 +3,10 @@
 // the total time spent. From level 5 each note has a countdown and the round runs front to back.
 // Every box has a fixed size, so nothing moves or flickers while a child sings.
 import { detectPitch, rms } from './pitch.js';
-import { NAMES, makeTracker, UNTIMED_CAP_MS } from './levels.js';
+import { NAMES, makeTracker, UNTIMED_CAP_MS, signedSemis } from './levels.js';
 import { micMessage } from './audio.js';
 import { staffSvg } from './staff.js';
+import { paintTrail, TRAIL_MS } from './trail.js';
 
 const GAP_MS = 550; // silence after a sound before listening (the microphone no longer cancels echo, so the room tail must die away first)
 
@@ -21,7 +22,8 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
       <div class="pl-target" data-x="target">&nbsp;</div>
       <div class="pl-how" data-x="how">&nbsp;</div>
       <div class="pl-ring" data-x="ring"><div><small data-x="ringLab">Ready</small><div class="pl-big" data-x="note">♪</div><div class="pl-sub" data-x="ringSub">&nbsp;</div></div></div>
-      <div><div class="pl-warm"><i data-x="cover"></i></div><div class="pl-warmlab"><span>cold</span><span>hot</span></div></div>
+      <div class="pl-trailbox"><canvas class="pl-trail" data-x="trail" width="560" height="150" aria-label="Your voice, drawn as a line. Keep it inside the green band."></canvas><span class="pl-trailtag">your voice</span></div>
+      <div hidden><i data-x="cover"></i></div>
       <div class="pl-msg" data-x="msg" aria-live="polite"></div>
     </div>
     <div class="pl-acts">
@@ -47,6 +49,10 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
   let idx = 0, phase = 'ready', streak = 0, tracker = null, cur = deck[0]; // phase: ready | playing | listening | reveal | done
   let startAt = 0, muteUntil = 0, lastMidi = null, lastAt = 0, recent = [], raf = 0, timer = null, paused = false; // muteUntil is on the audio clock, so Pause holds it too
   let errSum = 0, errN = 0, stepErrs = [], micReady = false, dead = false, starting = false;
+  // The pitch trail: the last four seconds of the child's voice as a line. The green band is the note to hit; the line turns green while it is held.
+  const trail = [], trailCtx = X('trail').getContext('2d');
+  const drawTrail = (now, tol, holding) => paintTrail(trailCtx, X('trail').width, X('trail').height, trail, now, tol, holding);
+  const clearTrail = () => { trail.length = 0; trailCtx.clearRect(0, 0, X('trail').width, X('trail').height); };
 
   const spentOn = (i, now) => notes[i].ms + (phase === 'listening' && i === idx ? now - startAt : 0);
   const totalMs = (now) => notes.reduce((n, _, i) => n + spentOn(i, now), 0);
@@ -122,7 +128,7 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
     timer = audio.after(ms, () => {
       if (cur.hideAfterPlay) { setText('target', '🧠 ?'); setMsg('🧠 Remember it…'); }
       timer = audio.after((cur.delayMs || 0) + GAP_MS, () => {
-        phase = 'listening'; recent = []; tracker = makeTracker(cur);
+        phase = 'listening'; recent = []; tracker = makeTracker(cur); clearTrail();
         startAt = performance.now(); // the clock starts when the sound (and any waiting time) is over
         render();
       }); // a short silence, so the speaker is not mistaken for the child's voice
@@ -219,12 +225,17 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
     if (phase !== 'listening') {
       setVar('ring', '--w', 0); setVar('ring', '--hold', 0);
       X('cover').style.transform = 'scaleX(1)';
+      if (trail.length) clearTrail();
       return;
     }
     const left = cur.timed ? Math.max(0, cur.limit * 1000 - (now - startAt)) : Infinity;
     const t = tracker.feed(now, midi);
     if (t.hold > 0) { errSum += t.cents; errN += 1; } else { errSum = errN = 0; }
     if (t.justAdvanced) { if (errN) stepErrs.push(errSum / errN); errSum = errN = 0; }
+    const tgt = cur.targets[Math.min(t.step, cur.targets.length - 1)];
+    trail.push({ t: now, d: midi == null ? null : signedSemis(midi, tgt) });
+    while (trail.length && now - trail[0].t > TRAIL_MS) trail.shift();
+    drawTrail(now, cur.tol / 100, t.hold > 0);
     setVar('ring', '--w', t.warm);
     X('cover').style.transform = `scaleX(${1 - t.warm})`;
     setVar('ring', '--hold', t.hold, 0.03);

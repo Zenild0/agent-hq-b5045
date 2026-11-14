@@ -142,7 +142,7 @@ export const SMOOTH_MS = 350;
 export const GRACE_MS = 150;
 export const LONG_GRACE_MS = 450; // a note held for 2 s or more forgives a longer dip: a breath, a wobble, a few unclear readings
 const graceFor = (hold) => (hold >= 2000 ? LONG_GRACE_MS : GRACE_MS);
-const signedSemis = (midi, pc) => ((((midi - pc) % 12) + 18) % 12) - 6; // -6..+6 semitones from the note, any octave
+export const signedSemis = (midi, pc) => ((((midi - pc) % 12) + 18) % 12) - 6; // -6..+6 semitones from the note, any octave
 
 export function makeTracker(ch) {
   let step = 0, hitAt = 0, needBreak = false, clearSince = 0, doneAt = 0, lastIn = 0;

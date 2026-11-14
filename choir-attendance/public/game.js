@@ -6,7 +6,7 @@ import { openAudio, micMessage, INSTRUMENTS, getInstrument, setInstrument } from
 import { createPlayer } from './player.js';
 import { mountWarmup } from './warmup.js';
 import { mountSingPath, pathProgress, UNITS } from './singpath.js';
-import { xpFor, roundStats, awardLine } from './xp.js';
+import { xpFor, roundStats, awardLine, accuracyOf } from './xp.js';
 import { LEVELS, STAGES, stageSpec, buildDeck, dailyDeck, titleFor, PIANO_KEYS, starsFor, praiseFor } from './levels.js';
 import { BADGES } from './badges.js';
 
@@ -272,13 +272,17 @@ export function mountGame(host, { code = '', preview = false, teacher = false, x
     });
     const nextStage = sc.pass && stage < 3 ? stage + 1 : 0;
     const earned = out?.already ? null : xp.award('level', { passed: sc.pass, stars: sc.stars, game: 'vocal', stats: roundStats(results) });
+    const accNow = wins.length ? accuracyOf(wins.reduce((s, r) => s + r.err, 0), wins.length, 1) : null;
+    const tiles = out?.already ? '' : `<div class="kid-tiles"><div class="kid-tile gold"><small>XP</small><b>+${earned?.gained ?? 0}</b></div><div class="kid-tile"><small>ACCURACY</small><b>${accNow != null ? `${accNow}%` : '–'}</b></div><div class="kid-tile"><small>NOTES HELD</small><b>${sc.won}/${results.length}</b></div></div>`;
     root.innerHTML = `
-      <div class="card gm-result">
+      <div class="card gm-result kid-result">
         ${praise ? `<div class="gm-praise gm-${praise.tier}">${esc(praise.title)}</div>` : ''}
         <h2 style="margin:0">${headline}</h2>
         <div class="gm-big">${sc.won} of ${results.length}</div>
         ${praise?.extras.length ? `<div class="gm-extras">${praise.extras.map((x) => `<div>${esc(x)}</div>`).join('')}</div>` : ''}
-        <div>${fmtMs(sc.ms)} ${stars(sc.stars)}</div>
+        <div class="kid-stars">${stars(sc.stars)}</div>
+        ${tiles}
+        <div class="muted">${fmtMs(sc.ms)}</div>
         ${earned && awardLine(earned) ? `<div class="gm-new">${esc(awardLine(earned))}</div>` : ''}
         ${out?.levelCleared ? `<div class="gm-new">A piano key just lit up!${nextLevel ? ` Next: ${esc(nextLevel.name)}` : ''}</div>` : ''}
         ${queued ? '<div class="muted">No signal: your score is saved on this phone and will be sent when you are online.</div>' : ''}
@@ -287,7 +291,22 @@ export function mountGame(host, { code = '', preview = false, teacher = false, x
         ${nextStage ? `<button class="btn primary" data-play="${nextStage}" data-lvl="${lvId}">▶ Next: Stage ${nextStage}</button>` : ''}
         ${kind !== 'daily' ? `<button class="btn${sc.pass ? '' : ' primary'}" data-play="${stage}" data-lvl="${lvId}">🔁 ${sc.pass ? 'Retry' : 'Try again'}</button>${sc.pass ? '' : '<button class="btn" data-a="warm">🔥 Warm up first</button>'}` : ''}
         <button class="btn" data-a="${kind === 'daily' ? 'home' : 'toLevel'}" data-lvl="${lvId}">Back</button>
-      </div>`;
+      </div>
+      <div id="kidBoard"></div>`;
+    showChoirBoard();
+  }
+
+  // "This week in the choir": the top three and you, when the teacher has the Training leaderboard on and this child has the full version.
+  async function showChoirBoard() {
+    try {
+      const d = await api('me/xp-board', { code });
+      const box = root.querySelector('#kidBoard');
+      if (!box || view !== 'result' || !d.enabled || d.locked || !d.week?.top?.length) return;
+      const mine = d.week.top.find((r) => r.isMe || r.id === state.me.id);
+      const rows = d.week.top.slice(0, 3).map((r) => `<div class="kid-row${r.id === state.me.id ? ' me' : ''}"><b>${r.rank}</b><span class="grow">${esc(r.name)}${r.id === state.me.id ? ' (you)' : ''}</span><b>${r.xp} XP</b></div>`).join('')
+        + (!mine && d.week.me ? `<div class="kid-row me"><b>${d.week.me.rank}</b><span class="grow">You</span><b>${d.week.me.xp ?? ''} XP</b></div>` : '');
+      box.innerHTML = `<div class="card kid-board"><small>THIS WEEK IN THE CHOIR</small>${rows}</div>`;
+    } catch { /* offline or off: the celebration stands without it */ }
   }
 
   async function back() {
