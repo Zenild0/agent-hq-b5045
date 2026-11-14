@@ -5,6 +5,7 @@
 import { api, esc } from './common.js';
 import { RANGES, getRange, setRange } from './audio.js';
 import { xpFor, xpCardHtml, badgesHtml } from './xp.js';
+import { newestTip } from './voicetips.js';
 
 const CACHE = 'choir-cache:games-access';
 const fmtDay = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
@@ -67,11 +68,15 @@ export function mountGames(host, { code }) {
         ${g.vocals ? `<button class="tg-card" data-game="vocals"><span class="tg-n">1</span><span class="grow"><b>Vocal trainer</b><span class="muted">Hear a note, then sing it. Levels from beginner to legend, a daily challenge and badges.</span></span><span>›</span></button>` : ''}
         ${g.notation ? `<button class="tg-card" data-game="notation"><span class="tg-n">2</span><span class="grow"><b>Notation trainer</b><span class="muted">Learn to read music. See a note on the staff and sing it. 20 levels, treble and bass clef.</span></span><span>›</span></button>` : ''}
         ${g.chords ? `<button class="tg-card" data-game="chords"><span class="tg-n">4</span><span class="grow"><b>Chord Book</b><span class="muted">Search chords for songs and hymns, keep your own songs and build set lists to play.</span></span><span>›</span></button>` : ''}
+        <button class="tg-card" data-game="tips"><span class="tg-n">💧</span><span class="grow"><b>Voice Care Corner <span class="vt-dot" id="tipDot" hidden>NEW</span></b><span class="muted">A new tip every Friday on keeping your voice healthy: what to drink, what to do and what to avoid. Free for everyone.</span></span><span>›</span></button>
         <div class="tg-card soon"><span class="tg-n">3</span><span class="grow"><b>Rhythm trainer</b><span class="muted">Clap and tap the beat. Coming soon.</span></span></div>
       </div>
       <details class="card set-sec"><summary><span class="grow"><b>My badges</b><span class="muted">${xp.view().badges.filter((b) => b.got).length} of ${xp.view().badges.length} earned</span></span><span class="chev" aria-hidden="true">▾</span></summary><div class="set-body">${badgesHtml(xp.view())}</div></details>
       ${!g.vocals && !g.notation && !g.chords ? '<div class="empty">Your teacher has not switched any game on yet.</div>' : ''}`;
+    paintTipDot();
   }
+
+  async function paintTipDot() { const t = await newestTip(code); const dot = root.querySelector('#tipDot'); if (dot && t?.isNew) dot.hidden = false; }
 
   async function open(which) {
     view = which;
@@ -81,6 +86,7 @@ export function mountGames(host, { code }) {
       root.innerHTML = '<div class="games-bar"><button class="btn small" data-g="hub">‹ Training games</button></div><div id="gbox"></div>';
       const box = root.querySelector('#gbox');
       if (which === 'vocals') { const m = await import('./game.js'); ctl = m.mountGame(box, { code, xp }); }
+      else if (which === 'tips') { const m = await import('./voicetips.js'); ctl = m.mountVoiceTips(box, { code }); }
       else if (which === 'chords') { const m = await import('./chordbook.js'); ctl = m.mountChordBook(box, { code, access }); }
       else { const m = await import('./staffgame.js'); ctl = m.mountStaffGame(box, { access, xp }); }
     } catch (e) { root.innerHTML = `<div class="card"><div class="alert bad">${esc(e.message)}</div><button class="btn" data-g="hub">‹ Back</button></div>`; }

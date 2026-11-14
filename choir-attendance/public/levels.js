@@ -10,6 +10,12 @@ export const FIRST_TIMED_LEVEL = 5;
 export const isTimed = (levelId) => levelId >= FIRST_TIMED_LEVEL;
 export const UNTIMED_CAP_MS = 600000; // a note never counts more than 10 minutes
 
+// How long a note must be held before it counts. A real singing note is held, not touched: 3 seconds for a single
+// note (4 for the steady-hold levels), 1.5 seconds for each note of a tune the child sings back.
+export const HOLD_NOTE_MS = 3000;
+export const HOLD_STEADY_MS = 4000;
+export const HOLD_TUNE_MS = 1500;
+
 export const NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
 const MAJOR_SCALE = [0, 2, 4, 5, 7, 9, 11];
 // Chord names as a musician writes them: flats for the keys that use flats, and "m" for minor (Cm, E♭m, F♯m).
@@ -21,18 +27,18 @@ export const chordTitle = (pc, quality) => `${chordSymbol(pc, quality)} · ${cho
 const INTERVALS = [{ n: 'major 3rd', s: 4 }, { n: '4th', s: 5 }, { n: '5th', s: 7 }, { n: '6th', s: 9 }];
 
 export const LEVELS = [
-  { id: 1, tier: 'Beginner', emoji: '🐣', name: 'Little Lark', how: 'Sing the first note of each chord, C to B in order.', tol: 45, hold: 500, count: 7 },
-  { id: 2, tier: 'Beginner', emoji: '🐦', name: 'Songbird', how: 'The same seven chords, but in a mixed-up order.', tol: 40, hold: 500, count: 7 },
-  { id: 3, tier: 'Beginner', emoji: '🎶', name: 'Chorister', how: 'All twelve notes, including the sharps. Ten chords.', tol: 35, hold: 500, count: 10 },
-  { id: 4, tier: 'Amateur', emoji: '🔮', name: 'Minor Magic', how: 'Major and sad minor chords. Sing the first note.', tol: 30, hold: 500, count: 10 },
-  { id: 5, tier: 'Amateur', emoji: '🎡', name: 'Third Wheel', how: 'Sing the THIRD note of the chord, not the first. Real harmony!', tol: 30, hold: 550, count: 8 },
-  { id: 6, tier: 'Amateur', emoji: '🎤', name: 'Harmony Hero', how: 'Sing the third or the fifth of the chord.', tol: 25, hold: 550, count: 8 },
-  { id: 7, tier: 'Pro', emoji: '🔁', name: 'Echo Master', how: 'Listen to a short tune, then sing it back note by note.', tol: 25, hold: 400, count: 6 },
-  { id: 8, tier: 'Pro', emoji: '🥷', name: 'Interval Ninja', how: 'Hear one note, then sing the jump you are asked for.', tol: 25, hold: 550, count: 8 },
-  { id: 9, tier: 'Pro', emoji: '🧠', name: 'Memory Lane', how: 'The chord plays, then silence. Sing it from memory.', tol: 20, hold: 600, count: 8 },
-  { id: 10, tier: 'Expert', emoji: '🙈', name: 'Blind Ear', how: 'Longer tunes, nothing on screen. Only your ears.', tol: 20, hold: 500, count: 6 },
-  { id: 11, tier: 'Expert', emoji: '⭐', name: 'Steady Star', how: 'Find the note and hold it dead steady for 3 seconds.', tol: 12, hold: 3000, count: 6 },
-  { id: 12, tier: 'Legend', emoji: '👑', name: 'Legend', how: 'A mix of everything, hidden, tiny margin. Only the best.', tol: 12, hold: 700, count: 10 },
+  { id: 1, tier: 'Beginner', emoji: '🐣', name: 'Little Lark', how: 'Sing the first note of each chord, C to B in order. Hold each note for 3 seconds.', tol: 45, hold: 3000, count: 7 },
+  { id: 2, tier: 'Beginner', emoji: '🐦', name: 'Songbird', how: 'The same seven chords, but in a mixed-up order.', tol: 40, hold: 3000, count: 7 },
+  { id: 3, tier: 'Beginner', emoji: '🎶', name: 'Chorister', how: 'All twelve notes, including the sharps. Ten chords.', tol: 35, hold: 3000, count: 10 },
+  { id: 4, tier: 'Amateur', emoji: '🔮', name: 'Minor Magic', how: 'Major and sad minor chords. Sing the first note.', tol: 30, hold: 3000, count: 10 },
+  { id: 5, tier: 'Amateur', emoji: '🎡', name: 'Third Wheel', how: 'Sing the THIRD note of the chord, not the first. Real harmony!', tol: 30, hold: 3000, count: 8 },
+  { id: 6, tier: 'Amateur', emoji: '🎤', name: 'Harmony Hero', how: 'Sing the third or the fifth of the chord.', tol: 25, hold: 3000, count: 8 },
+  { id: 7, tier: 'Pro', emoji: '🔁', name: 'Echo Master', how: 'Listen to a short tune, then sing it back note by note.', tol: 25, hold: 3000, count: 6 },
+  { id: 8, tier: 'Pro', emoji: '🥷', name: 'Interval Ninja', how: 'Hear one note, then sing the jump you are asked for.', tol: 25, hold: 3000, count: 8 },
+  { id: 9, tier: 'Pro', emoji: '🧠', name: 'Memory Lane', how: 'The chord plays, then silence. Sing it from memory.', tol: 20, hold: 3000, count: 8 },
+  { id: 10, tier: 'Expert', emoji: '🙈', name: 'Blind Ear', how: 'Longer tunes, nothing on screen. Only your ears.', tol: 20, hold: 3000, count: 6 },
+  { id: 11, tier: 'Expert', emoji: '⭐', name: 'Steady Star', how: 'Find the note and hold it dead steady for 4 seconds.', tol: 12, hold: 4000, count: 6 },
+  { id: 12, tier: 'Legend', emoji: '👑', name: 'Legend', how: 'A mix of everything, hidden, tiny margin. Only the best.', tol: 12, hold: 3000, count: 10 },
 ];
 
 const pick = (a, r) => a[Math.floor(r() * a.length)];
@@ -44,17 +50,17 @@ function make(kind, lv, r, { pc = Math.floor(r() * 12), quality = 'major', blind
   const base = { kind, tol: lv.tol, hold: lv.hold, blind, level: lv.id, timed: isTimed(lv.id) };
   const chord = { type: 'chord', root: rootMidi(pc), quality };
   const chordName = chordTitle(pc, quality);
-  if (kind === 'root') return { ...base, title: chordName, how: 'Sing the FIRST note', play: chord, targets: [pc], limit: 15 - Math.min(5, lv.id) };
+  if (kind === 'root') return { ...base, title: chordName, how: 'Sing the FIRST note', play: chord, targets: [pc], limit: 15 - Math.min(5, lv.id) + lv.hold / 1000 };
   if (kind === 'third' || kind === 'fifth') {
     const steps = kind === 'fifth' ? 7 : CHORDS[quality][1];
-    return { ...base, title: chordName, how: kind === 'fifth' ? 'Sing the FIFTH' : quality === 'minor' ? 'Sing the THIRD (a minor third)' : 'Sing the THIRD', play: chord, targets: [(pc + steps) % 12], limit: 14 };
+    return { ...base, title: chordName, how: kind === 'fifth' ? 'Sing the FIFTH' : quality === 'minor' ? 'Sing the THIRD (a minor third)' : 'Sing the THIRD', play: chord, targets: [(pc + steps) % 12], limit: 14 + lv.hold / 1000 };
   }
-  if (kind === 'hold') return { ...base, title: chordName, how: 'Sing it and HOLD it steady', play: chord, targets: [pc], limit: 14 };
-  if (kind === 'memory') return { ...base, title: chordName, how: 'Remember it, then sing the FIRST note', play: chord, targets: [pc], delayMs: 4000, hideAfterPlay: true, limit: 10 };
+  if (kind === 'hold') return { ...base, title: chordName, how: 'Sing it and HOLD it steady', play: chord, targets: [pc], limit: 14 + lv.hold / 1000 };
+  if (kind === 'memory') return { ...base, title: chordName, how: 'Remember it, then sing the FIRST note', play: chord, targets: [pc], delayMs: 4000, hideAfterPlay: true, limit: 10 + lv.hold / 1000 };
   if (kind === 'interval') {
     const iv = pick(INTERVALS, r), up = lv.id < 8 ? true : r() < 0.5;
     const target = ((pc + (up ? iv.s : -iv.s)) % 12 + 12) % 12;
-    return { ...base, title: `You hear ${NAMES[pc]}`, how: `Sing a ${iv.n} ${up ? 'above' : 'below'}`, play: { type: 'note', midi: rootMidi(pc) }, targets: [target], limit: 12 };
+    return { ...base, title: `You hear ${NAMES[pc]}`, how: `Sing a ${iv.n} ${up ? 'above' : 'below'}`, play: { type: 'note', midi: rootMidi(pc) }, targets: [target], limit: 12 + lv.hold / 1000 };
   }
   if (kind === 'echo') {
     const len = lv.id >= 10 ? 4 : 3;
@@ -66,7 +72,7 @@ function make(kind, lv, r, { pc = Math.floor(r() * 12), quality = 'major', blind
       if (n < 55) n += 12; if (n > 76) n -= 12;
       notes.push(n);
     }
-    return { ...base, title: blind ? '🙈 Blind' : 'Echo the tune', how: `${len} notes, in order`, play: { type: 'melody', notes }, targets: notes.map((m) => m % 12), limit: 8 + len * 4 };
+    return { ...base, title: blind ? '🙈 Blind' : 'Echo the tune', how: `${len} notes, in order`, play: { type: 'melody', notes }, targets: notes.map((m) => m % 12), hold: HOLD_TUNE_MS, limit: Math.round(8 + len * 4 + len * HOLD_TUNE_MS / 1000) };
   }
   throw new Error(`unknown kind ${kind}`);
 }
@@ -118,7 +124,7 @@ export function buildDeck(levelId, r = Math.random, stage = 3) {
     }
     default: throw new Error('unknown level');
   }
-  return deck.slice(0, spec.count).map((c) => (c.kind === 'hold' ? { ...c, hold: levelId === 12 ? 2000 : lv.hold } : c));
+  return deck.slice(0, spec.count).map((c) => (c.kind === 'hold' ? { ...c, hold: levelId === 12 ? HOLD_STEADY_MS : lv.hold, limit: c.limit + (levelId === 12 ? (HOLD_STEADY_MS - lv.hold) / 1000 : 0) } : c));
 }
 
 // Cents between a sung pitch (as a fractional MIDI number) and a note name, in any octave (0..600).

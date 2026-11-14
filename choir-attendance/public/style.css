@@ -821,3 +821,22 @@ body.cb-playing { overflow: hidden; }
 .cb-dtile b { font: 800 .95rem ui-monospace, Menlo, monospace; }
 .cb-dtile.flash { outline: 2px solid #e0357f; }
 .cb-nodia { width: 90px; height: 100px; display: grid; place-items: center; }
+
+/* leaderboard: the leaders of the week */
+.lead-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.lead-tile { display: grid; justify-items: center; gap: 1px; text-align: center; padding: 8px 4px; border: 1px solid var(--line); background: var(--card); border-radius: 14px; }
+.lead-tile span { font-size: 1.3rem; }
+.lead-tile small { font-size: .65rem; opacity: .75; }
+.lead-tile b { font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.xp-week { margin: 6px 0; font-size: .8rem; }
+
+/* Voice Care Corner */
+.vt-card { display: grid; gap: 6px; }
+.vt-big { border: 2px solid #e0357f; }
+.vt-title { margin: 2px 0 0; }
+.vt-body { margin: 0; line-height: 1.5; }
+.vt-try { padding: 8px 10px; border-radius: 12px; background: rgba(46,230,166,.14); }
+.vt-new, .vt-dot { color: #fff; background: #e0357f; border-radius: 999px; padding: 1px 7px; font-size: .65rem; font-weight: 800; }
+.vt-next { margin-top: 8px; padding: 8px 10px; border-radius: 12px; background: rgba(128,128,128,.14); }
+.vt-fine { margin: 14px 2px; font-size: .75rem; }
+.vt-date { font-size: .8rem; }

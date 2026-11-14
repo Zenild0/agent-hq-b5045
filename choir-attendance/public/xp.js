@@ -3,6 +3,19 @@
 export const LEADERBOARD_ON = false;
 export const DAILY_GOAL = 15;     // XP a day. Small on purpose: about one lesson or one short quiz.
 export const DAY_CAP = 150;       // XP counted per day, so nobody farms points
+// Practice numbers kept next to XP: time spent on notes, notes tried and matched, and how close the matched notes were.
+export const STAT_DAY_SECS = 3600; // an hour a day at most is counted
+export function roundStats(results = []) {
+  let secs = 0, won = 0, errSum = 0, errN = 0;
+  for (const r of results) {
+    secs += Math.min(120, Math.max(0, (Number(r?.ms) || 0) / 1000));
+    if (r?.won) { won += 1; if (r.err != null) { errSum += Number(r.err) || 0; errN += 1; } }
+  }
+  return { secs: Math.round(secs), notes: results.length, won, errSum: Math.round(errSum), errN };
+}
+// Accuracy as a percentage: the average distance from the note in cents, turned into 100 (spot on) down to 0 (50 cents off).
+export const accuracyOf = (errSum, errN, min = 1) => (errN >= min ? Math.max(0, Math.min(100, Math.round(100 - (errSum / errN) * 2))) : null);
+export const addStats = (a = {}, b = {}) => ({ secs: Math.min(STAT_DAY_SECS, (a.secs || 0) + (b.secs || 0)), notes: (a.notes || 0) + (b.notes || 0), won: (a.won || 0) + (b.won || 0), errSum: (a.errSum || 0) + (b.errSum || 0), errN: (a.errN || 0) + (b.errN || 0) });
 export const TITLES = [[0, 'Newcomer'], [60, 'Beginner'], [200, 'Chorister'], [500, 'Singer'], [1000, 'Soloist'], [2000, 'Maestro']];
 
 const dayMs = 86400000;
@@ -34,7 +47,7 @@ export const BADGES = [
   { id: 'explorer', emoji: '🧭', name: 'Explorer', desc: 'Try both training games.' },
 ];
 
-const blank = () => ({ pending: {}, total: 0, byDay: {}, streak: { current: 0, best: 0, last: '', freeze: { week: '', used: false } }, badges: {}, done: {}, counts: { review: 0 }, games: {} });
+const blank = () => ({ stats: {}, pendingStats: {}, pending: {}, total: 0, byDay: {}, streak: { current: 0, best: 0, last: '', freeze: { week: '', used: false } }, badges: {}, done: {}, counts: { review: 0 }, games: {} });
 
 // store: { load(): object|null, save(object) }. today(): 'YYYY-MM-DD'.
 export function makeXp(store, today = istToday) {
@@ -73,6 +86,13 @@ export function makeXp(store, today = istToday) {
     else if (kind === 'quiz') gain = d.passed ? 20 + 5 * (d.stars ?? 0) : 3 + (d.won ?? 0);
     else if (kind === 'level') gain = d.passed ? 15 + 5 * (d.stars ?? 0) : 3;
     gain += d.review ?? 0; // a point for every revision note you got right
+    if (d.stats && d.stats.notes) {
+      s.stats = s.stats || {}; s.pendingStats = s.pendingStats || {};
+      s.stats[t] = addStats(s.stats[t], d.stats);
+      s.pendingStats[t] = addStats(s.pendingStats[t], d.stats);
+      for (const k of Object.keys(s.stats)) if (daysBetween(k, t) > 60) delete s.stats[k];
+      for (const k of Object.keys(s.pendingStats)) if (daysBetween(k, t) > 14) delete s.pendingStats[k];
+    }
     const used = s.byDay[t] ?? 0;
     gain = Math.max(0, Math.min(gain, DAY_CAP - used));
     const before = s.total;
@@ -109,11 +129,16 @@ export function makeXp(store, today = istToday) {
       streak: liveStreak(), best: s.streak.best, atRisk: liveStreak() > 0 && s.streak.last !== t, freezeLeft: freezeAvailable(t),
       title: titleFor(s.total), next: nt ? { title: nt[1], need: nt[0] - s.total } : null,
       badges: BADGES.map((b) => ({ ...b, got: Boolean(s.badges[b.id]) })),
+      week: (() => {
+        const wk = weekKey(t); const a = { secs: 0, notes: 0, won: 0, errSum: 0, errN: 0 };
+        for (const [d, v] of Object.entries(s.stats || {})) if (weekKey(d) === wk) for (const k of Object.keys(a)) a[k] += v[k] || 0;
+        return { ...a, minutes: Math.round(a.secs / 60), accuracy: accuracyOf(a.errSum, a.errN, 3) };
+      })(),
     };
   };
   // What to tell the server (only used while the leaderboard is switched on): XP per day not yet sent, plus the streak.
-  const report = (units = 0) => ({ days: { ...(s.pending || {}) }, streak: liveStreak(), best: s.streak.best, units });
-  return { award, view, report, hasPending: () => Object.keys(s.pending || {}).length > 0, clearPending() { s.pending = {}; persist(); }, reset() { s = blank(); persist(); } };
+  const report = (units = 0) => ({ days: { ...(s.pending || {}) }, stats: { ...(s.pendingStats || {}) }, streak: liveStreak(), best: s.streak.best, units });
+  return { award, view, report, hasPending: () => Object.keys(s.pending || {}).length > 0 || Object.keys(s.pendingStats || {}).length > 0, clearPending() { s.pending = {}; s.pendingStats = {}; persist(); }, reset() { s = blank(); persist(); } };
 }
 
 // The real one for a person on this phone (each child code has its own).
@@ -130,6 +155,7 @@ export function xpCardHtml(v) {
   return `
     <div class="card xp-card">
       <div class="xp-top"><span class="xp-chip fire" title="Day streak">🔥 ${v.streak} day${v.streak === 1 ? '' : 's'}</span><span class="xp-chip">⚡ ${v.total} XP</span><span class="xp-chip title">${v.title}</span></div>
+      ${v.week && v.week.notes ? `<div class="xp-week muted">This week: ⏱ ${v.week.minutes < 1 ? `${v.week.secs} sec` : `${v.week.minutes} min`} singing · 🎵 ${v.week.won} of ${v.week.notes} notes held${v.week.accuracy != null ? ` · 🎯 ${v.week.accuracy}% accurate` : ''}</div>` : ''}
       <div class="xp-goal"><div class="xp-ring" style="--p:${v.goalShare}"><span>${Math.min(v.today, v.goal)}/${v.goal}</span></div>
         <div class="grow"><b>${v.goalMet ? 'Daily goal done!' : `Daily goal: ${v.goal} XP`}</b>
           <div class="muted">${v.goalMet ? 'Come back tomorrow to keep your streak.' : v.atRisk ? `Earn ${v.goal - v.today} more XP today to keep your ${v.streak}-day streak.` : `Earn ${v.goal - v.today} more XP to start a streak.`}${v.next ? ` ${v.next.need} XP to ${v.next.title}.` : ''}</div>

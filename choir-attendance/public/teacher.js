@@ -108,9 +108,11 @@ async function loadGamesHub() {
     <div class="card"><b>Free trial</b>
       <div class="muted">Each child's 7 free days start the first time they open the games. To give every child a fresh 7 days starting today, including children whose trial has ended, tap the button.</div>
       <div class="row" style="margin-top:8px"><button class="btn" id="giveTrial">🎁 Give everyone 7 free days from today</button><span id="trialMsg" class="muted" aria-live="polite"></span></div></div>
+    <div id="tipsBox"></div>
     <div id="practiceBox"></div>
     <div id="subsBox"></div>`;
   $('#games').querySelectorAll('[data-game]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.game)));
+  loadTipsBox();
   call('teacher/chord-requests').then((r) => { if (r.requests.length) $('#games').querySelector('[data-game="chordbook"] .muted').insertAdjacentHTML('beforeend', ` <b style="color:var(--brand)">· ${r.requests.length} song request${r.requests.length === 1 ? '' : 's'}</b>`); }).catch(() => {});
   $('#giveTrial').addEventListener('click', () => {
     if (!confirm('Give EVERY child (and guest) a fresh 7 days of all the games, starting today? Children who already paid keep their paid year.')) return;
@@ -118,12 +120,19 @@ async function loadGamesHub() {
   });
   call('teacher/vocals-subs').then((s) => { $('#subsBox').innerHTML = subsPanelHtml(s); }).catch(() => {});
   call('teacher/practice').then((r) => {
+    const L = r.leaders || {};
+    const tile = (icon, label, x, fmt) => `<div class="lead-tile"><span>${icon}</span><small>${label}</small><b>${x ? esc(x.name.split(' ')[0]) : '–'}</b><small>${x ? fmt(x.value) : ''}</small></div>`;
+    const mins = (m) => `${m} min`;
     $('#practiceBox').innerHTML = `
       <div class="card">
-        <h3 style="margin:0">Practice report</h3>
-        <div class="muted" style="margin-bottom:8px">${r.enabled ? 'Who has been practising this week.' : 'Practice is only recorded here while the Training XP leaderboard is switched on (More → Settings). Until then each child\'s XP stays on their phone.'}</div>
-        ${r.enabled ? `<div class="trio" style="margin:0 0 8px"><div class="tile t1"><small>Practised this week</small><b>${r.practised}/${r.total}</b></div><div class="tile t2"><small>Longest streak</small><b>${r.bestStreak}</b><small>days</small></div><div class="tile t3"><small>Quiet 7+ days</small><b>${r.quiet.length}</b></div></div>
-        ${r.rows.filter((x) => x.week > 0).map((x) => `<div class="row between sched-row"><span><b>${esc(x.name)}</b>${x.paid ? '' : ' <span class="badge info">trial</span>'}<div class="muted">${x.units} units · 🔥 ${x.streak}</div></span><b>${x.week} XP</b></div>`).join('') || '<div class="muted">Nobody has earned XP this week yet.</div>'}
+        <h3 style="margin:0">Practice dashboard</h3>
+        <div class="muted" style="margin-bottom:8px">${r.enabled ? 'Who is practising this week, and how well. Accuracy is how close to the note a child sang while holding it (100% is spot on).' : 'Practice is only recorded here while the Training leaderboard is switched on (More → Settings). Until then each child\'s XP stays on their phone.'}</div>
+        ${r.enabled ? `
+        <div class="lead-strip">${tile('🏆', 'Top XP', L.xp, (v) => `${v} XP`)}${tile('🎯', 'Most accurate', L.accuracy, (v) => `${v}%`)}${tile('⏱', 'Most practice', L.time, mins)}${tile('🔥', 'Best streak', L.streak, (v) => `${v} days`)}</div>
+        <div class="trio" style="margin:8px 0"><div class="tile t1"><small>Practised this week</small><b>${r.practised}/${r.total}</b></div><div class="tile t2"><small>Time sung</small><b>${r.totalMinutes}</b><small>minutes</small></div><div class="tile t3"><small>Quiet 7+ days</small><b>${r.quiet.length}</b></div></div>
+        <div class="matrix-wrap"><table class="matrix"><thead><tr><th>Child</th><th>XP</th><th>Time</th><th>Notes</th><th>Accuracy</th><th>🔥</th></tr></thead><tbody>
+        ${r.rows.filter((x) => x.week > 0 || x.notes > 0).map((x, i) => `<tr><td><button class="link" data-open="${esc(x.id)}">${i < 3 ? ['🥇', '🥈', '🥉'][i] + ' ' : ''}${esc(x.name)}</button>${x.paid ? '' : ' <span class="badge info">trial</span>'}</td><td><b>${x.week}</b></td><td>${x.minutes} min</td><td>${x.notes ? `${x.won}/${x.notes}` : '–'}</td><td>${x.accuracy != null ? `${x.accuracy}%` : '–'}</td><td>${x.streak}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Nobody has practised this week yet.</td></tr>'}
+        </tbody></table></div>
         ${r.quiet.length ? `<div class="muted" style="margin-top:8px"><b>Not practised for a week:</b> ${esc(r.quiet.slice(0, 12).join(', '))}${r.quiet.length > 12 ? '…' : ''}</div>` : ''}` : ''}
       </div>`;
   }).catch(() => {});
@@ -264,6 +273,41 @@ function openChordEditor(song, r, preset = {}) {
     await call(`teacher/chords/${song.id}`, { method: 'DELETE' });
     dlg.close(); await loadChordBook();
   }));
+}
+
+// ---- Voice Care Corner: a new tip every Friday at 6 pm; the teacher can add their own ----
+const tipDate = (iso) => new Date(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' });
+async function loadTipsBox() {
+  const d = await call('teacher/voice-tips').catch(() => null);
+  if (!d || !$('#tipsBox')) return;
+  $('#tipsBox').innerHTML = `
+    <div class="card"><div class="row between"><div><h3 style="margin:0">💧 Voice Care Corner</h3>
+      <div class="muted">A new tip appears for every child on Friday at 6 pm. ${d.published} published so far${d.remaining ? `, ${d.remaining} more are ready to come` : ''}.</div></div>
+      <button class="btn small primary" id="addTip">＋ Add a tip</button></div>
+      ${d.next ? `<div class="vt-next">⏳ Next tip: <b>${esc(tipDate(d.next))}, 6 pm</b></div>` : ''}
+      ${d.upcoming.length ? `<div class="muted" style="margin-top:6px"><b>Coming up:</b> ${d.upcoming.slice(0, 3).map((t) => `${esc(tipDate(t.at))}: ${esc(t.emoji)} ${esc(t.title)}`).join(' · ')}</div>` : ''}
+      ${d.own.length ? `<h4 style="margin:10px 0 4px">Your own tips</h4>${d.own.map((t) => `<div class="row between" style="border-top:1px solid var(--line);padding:6px 0"><span>${esc(t.emoji)} <b>${esc(t.title)}</b> <span class="muted">${t.live ? 'published' : `goes live ${esc(tipDate(t.at))}, 6 pm`}</span></span><button class="ibtn" data-deltip="${esc(t.id)}" title="Delete this tip" aria-label="Delete ${esc(t.title)}">✕</button></div>`).join('')}` : ''}
+    </div>`;
+  $('#addTip').addEventListener('click', openAddTip);
+  $('#tipsBox').querySelectorAll('[data-deltip]').forEach((b) => b.addEventListener('click', () => run(async () => { if (confirm('Delete this tip?')) { await call(`teacher/voice-tips/${b.dataset.deltip}`, { method: 'DELETE' }); await loadTipsBox(); } })));
+}
+function openAddTip() {
+  $('#dlgBody').innerHTML = `
+    <div class="row between"><h2 style="margin:0">Add a voice tip</h2><button class="btn small" id="close" aria-label="Close">✕</button></div>
+    <p class="muted">Share a tip, a recipe, a quote or a link. Keep it kind and simple. Children see it in the Voice Care Corner.</p>
+    <form id="tipForm">
+      <div class="row" style="gap:8px"><label class="field" style="width:80px">Emoji<input name="emoji" maxlength="4" placeholder="💧"></label><label class="field grow">Title<input name="title" required maxlength="80" placeholder="e.g. Warm water before practice"></label></div>
+      <label class="field">Tip<textarea name="body" rows="5" required maxlength="700" placeholder="A few words for the children…"></textarea></label>
+      <label class="field">Link (optional)<input name="link" type="url" maxlength="300" placeholder="https://…"></label>
+      <label class="field">When<select name="when"><option value="friday">Next Friday at 6 pm</option><option value="now">Right now</option></select></label>
+      <div class="row"><button class="btn primary">Publish</button><span id="tipMsg" class="muted" aria-live="polite"></span></div>
+    </form>`;
+  if (!dlg.open) dlg.showModal();
+  $('#close').addEventListener('click', () => dlg.close());
+  $('#tipForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try { await call('teacher/voice-tips', { method: 'POST', body: Object.fromEntries(new FormData(e.target)) }); dlg.close(); await loadTipsBox(); } catch (err) { $('#tipMsg').textContent = `⚠️ ${err.message}`; }
+  });
 }
 
 let staffTest = null;

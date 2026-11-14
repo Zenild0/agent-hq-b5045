@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeXp, weekKey, DAILY_GOAL, DAY_CAP, titleFor, LEADERBOARD_ON } from '../public/xp.js';
+import { roundStats, accuracyOf, makeXp, weekKey, DAILY_GOAL, DAY_CAP, titleFor, LEADERBOARD_ON } from '../public/xp.js';
 
 const make = (start = '2026-10-05') => { // a Monday
   let day = start, data = null;
@@ -84,4 +84,20 @@ test('it survives broken saved data', () => {
   const x = makeXp({ load: () => { throw new Error('bad json'); }, save: () => {} }, () => '2026-10-05');
   assert.equal(x.view().total, 0);
   assert.equal(x.award('lesson', { unit: 1 }).gained, 10);
+});
+
+test('practice time and accuracy are added up per day and sent to the server once', () => {
+  const { x } = make();
+  const r = [{ won: true, ms: 4000, err: 10 }, { won: true, ms: 6000, err: 20 }, { won: false, ms: 8000 }];
+  assert.deepEqual(roundStats(r), { secs: 18, notes: 3, won: 2, errSum: 30, errN: 2 });
+  assert.equal(accuracyOf(30, 2), 70, 'an average of 15 cents off is 70%');
+  assert.equal(accuracyOf(0, 0), null);
+  x.award('quiz', { passed: true, stars: 2, stats: roundStats(r) });
+  x.award('practice', { won: 2, stats: roundStats(r) });
+  const v = x.view();
+  assert.deepEqual([v.week.secs, v.week.notes, v.week.won, v.week.minutes, v.week.accuracy], [36, 6, 4, 1, 70]);
+  assert.equal(x.report().stats['2026-10-05'].notes, 6);
+  x.clearPending();
+  assert.deepEqual(x.report().stats, {});
+  assert.equal(x.view().week.notes, 6, 'the phone keeps its own numbers after they are sent');
 });

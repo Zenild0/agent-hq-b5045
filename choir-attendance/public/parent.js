@@ -170,25 +170,42 @@ function paintRankTabs() {
   $('#xpBoard').hidden = rankKind !== 'xp';
   if (rankKind === 'xp') drawXpBoard();
 }
+let xpMetric = 'xp';
+const METRICS = [
+  ['xp', '⚡ XP', (r) => `${r.xp} XP`],
+  ['accuracy', '🎯 Accuracy', (r) => `${r.accuracy}%`],
+  ['time', '⏱ Time', (r) => (r.minutes < 1 ? `${r.secs} sec` : `${r.minutes} min`)],
+  ['streak', '🔥 Streak', (r) => `${r.streak} day${r.streak === 1 ? '' : 's'}`],
+];
 async function drawXpBoard() {
   const box = $('#xpBoard');
   box.innerHTML = '<div class="empty">Loading…</div>';
   try {
     const d = await api('me/xp-board', { code });
     if (!d.enabled) { box.innerHTML = '<div class="card muted">The Training XP leaderboard is not switched on right now.</div>'; return; }
-    if (d.locked) { box.innerHTML = `<div class="card"><h3 style="margin:0">Training XP leaderboard</h3><p class="muted">This board is for children with the full version of the training games (₹${esc(d.price ?? 500)} a year). Every child gets a free trial first. Your own XP and streak are always yours, in Training games.</p></div>`; return; }
-    const rows = (k) => d[k].top.map((r) => `<div class="ev-row${r.id === me.id ? ' me' : ''}"><span class="ev-rank">${r.rank}</span>${avatarHtml(r, 'sm')}<span class="grow">${esc(r.name)}${r.id === me.id ? ' (you)' : ''}<div class="muted" style="font-size:.75rem">${esc(r.title)}${r.streak ? ` · 🔥 ${r.streak} day${r.streak === 1 ? '' : 's'}` : ''}${r.units ? ` · ${r.units} units` : ''}</div></span><b>${r.xp} XP</b></div>`).join('') + (d[k].me ? `<div class="muted" style="text-align:center">You are number ${d[k].me.rank} with ${d[k].me.xp} XP</div>` : '');
+    if (d.locked) { box.innerHTML = `<div class="card"><h3 style="margin:0">Training leaderboard</h3><p class="muted">This board is for children with the full version of the training games (₹${esc(d.price ?? 500)} a year). Every child gets a free trial first. Your own XP and streak are always yours, in Training games.</p></div>`; return; }
     const k = xpRange === 'all' ? 'all' : 'week';
+    const m = METRICS.find((x) => x[0] === xpMetric) || METRICS[0];
+    const board = xpMetric === 'xp' ? d[k] : d.metrics[k][xpMetric];
+    const line = (r) => `${esc(r.title ?? '')}${r.title ? ' · ' : ''}${r.notes ? `${r.won} of ${r.notes} notes held` : ''}${r.accuracy != null && xpMetric !== 'accuracy' ? ` · 🎯 ${r.accuracy}%` : ''}${r.streak && xpMetric !== 'streak' ? ` · 🔥 ${r.streak}` : ''}`;
+    const rows = board.top.map((r) => `<div class="ev-row${r.id === me.id ? ' me' : ''}"><span class="ev-rank">${r.rank}</span>${avatarHtml(r, 'sm')}<span class="grow">${esc(r.name)}${r.id === me.id ? ' (you)' : ''}<div class="muted" style="font-size:.75rem">${line(r)}</div></span><b>${m[2](r)}</b></div>`).join('')
+      + (board.me ? `<div class="muted" style="text-align:center">You are number ${board.me.rank}</div>` : '');
+    const lead = (key, icon, label, fmt) => { const r = (d.metrics[k][key]?.top ?? [])[0] ?? (key === 'xp' ? d[k].top[0] : null); return r ? `<div class="lead-tile"><span>${icon}</span><small>${label}</small><b>${esc(r.name.split(' ')[0])}</b><small>${fmt(r)}</small></div>` : ''; };
     box.innerHTML = `
       <div class="card ev-card">
-        <div class="row between"><h2 style="margin:0">Training XP</h2></div>
-        <div class="muted">Children with the full version. Practice earns XP in every training game. The weekly board restarts on Monday.</div>
-        <div class="row" style="margin:8px 0"><button class="pill${k === 'week' ? ' on' : ''}" data-xr="week">This week</button><button class="pill${k === 'all' ? ' on' : ''}" data-xr="all">All time</button></div>
-        <div class="ev-board">${d[k].top.length ? rows(k) : '<div class="muted">Nobody has earned XP yet. Be the first!</div>'}</div>
+        <div class="row between"><h2 style="margin:0">Training leaderboard</h2></div>
+        <div class="muted">Children with the full version. Practice earns XP, time and accuracy in every training game. The weekly board restarts on Monday.</div>
+        <div class="row" style="margin:8px 0"><button class="pill${k === 'week' ? ' on' : ''}" data-xr="week">This week</button><button class="pill${k === 'all' ? ' on' : ''}" data-xr="all">Last 10 weeks</button></div>
+        <div class="lead-strip">${lead('xp', '🏆', 'Top XP', (r) => `${r.xp} XP`)}${lead('accuracy', '🎯', 'Most accurate', (r) => `${r.accuracy}%`)}${lead('time', '⏱', 'Most practice', (r) => m0(r))}${lead('streak', '🔥', 'Longest streak', (r) => `${r.streak} days`)}</div>
+        <div class="cb-chips" role="tablist" style="margin:10px 0">${METRICS.map(([id, label]) => `<button data-xm="${id}" class="${xpMetric === id ? 'on' : ''}">${label}</button>`).join('')}</div>
+        <div class="ev-board">${board.top.length ? rows : `<div class="muted">${xpMetric === 'accuracy' ? 'Accuracy shows once a child has held at least 5 notes.' : 'Nobody here yet. Be the first!'}</div>`}</div>
+        ${xpMetric === 'accuracy' ? '<div class="muted" style="font-size:.75rem;margin-top:6px">Accuracy is how close to the note you sang while holding it: 100% is spot on.</div>' : ''}
       </div>`;
     box.querySelectorAll('[data-xr]').forEach((b) => b.addEventListener('click', () => { xpRange = b.dataset.xr; drawXpBoard(); }));
+    box.querySelectorAll('[data-xm]').forEach((b) => b.addEventListener('click', () => { xpMetric = b.dataset.xm; drawXpBoard(); }));
   } catch (e) { box.innerHTML = `<div class="alert bad">${esc(e.message)}</div>`; }
 }
+const m0 = (r) => (r.minutes < 1 ? `${r.secs} sec` : `${r.minutes} min`);
 
 function paintHomeCode(error = '') {
   const box = $('#homeCode');

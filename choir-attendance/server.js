@@ -13,12 +13,13 @@ import {
 import { openStore, newCode } from './lib/store.js';
 import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, setPaid, resetWarmups, resetAllWarmups, grantTrialToAll, isPaid, hasFull, trialOf, startTrial, TRIAL_DAYS, paidUntilOf, daysLeft, wasPaid, warmupsLeft, useWarmup, GameError, PaywallError } from './lib/game.js';
 import { FREE_CHORDS } from './lib/freechords.js';
+import { VOICE_TIPS, tipsAt, releaseAt, nextFridayEvening } from './lib/voicetips.js';
 import { isChord, chordsUsed, normaliseSheet, detectKey } from './public/chordpro.js';
 import { LEVELS, DAILY_COUNT, STAGES, stageSpec, isTimed } from './public/levels.js';
 import { istNow, isDate, isTime, toMinutes, scheduleDays, nextPractice, shiftDate, rulesOf } from './lib/schedule.js';
 import { createTar, readTar } from './lib/tar.js';
 import { fetchPageText, PageError } from './lib/webpage.js';
-import { emptyXp, recordXp, weekXpOf, buildBoard } from './lib/xpboard.js';
+import { emptyXp, recordXp, weekXpOf, buildBoard, statsOf } from './lib/xpboard.js';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const PUBLIC = resolve(here, 'public');
@@ -348,10 +349,15 @@ function practiceReport() {
   const today = istDate();
   const rows = db.children.filter((c) => c.active && !c.guest).map((c) => {
     const x = xpOf(c.id);
-    return { id: c.id, name: c.name, week: weekXpOf(x, today), total: x?.total ?? 0, streak: x?.streak ?? 0, units: x?.units ?? 0, last: x?.updated ?? '', paid: isPaid(db.game.kids[c.id], today) };
+    const w = statsOf(x, today, 'week');
+    return { id: c.id, name: c.name, photo: photoUrl(c), head: headUrl(c), week: weekXpOf(x, today), total: x?.total ?? 0, streak: x?.streak ?? 0, units: x?.units ?? 0, last: x?.updated ?? '', paid: isPaid(db.game.kids[c.id], today), minutes: w.minutes, secs: w.secs, notes: w.notes, won: w.won, accuracy: w.accuracy, hitRate: w.hitRate };
   }).sort((a, b) => b.week - a.week || b.total - a.total || a.name.localeCompare(b.name));
   const quiet = rows.filter((r) => !r.last || (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${r.last}T00:00:00Z`)) / 86400000 >= 7);
-  return { enabled: Boolean(db.settings.trainingBoardEnabled), practised: rows.filter((r) => r.week > 0).length, total: rows.length, bestStreak: Math.max(0, ...rows.map((r) => r.streak)), rows: rows.slice(0, 30), quiet: quiet.map((r) => r.name) };
+  const best = (key, ok = () => true) => { const c = rows.filter((r) => r[key] > 0 && ok(r)).sort((a, b) => b[key] - a[key] || a.name.localeCompare(b.name))[0]; return c ? { id: c.id, name: c.name, value: c[key] } : null; };
+  // "doing very well": the leaders of the week in each measure (accuracy counts once a child has tried 10 notes)
+  const leaders = { xp: best('week'), accuracy: best('accuracy', (r) => r.notes >= 10), time: best('minutes'), streak: best('streak') };
+  const totalMinutes = rows.reduce((a, r) => a + r.minutes, 0);
+  return { enabled: Boolean(db.settings.trainingBoardEnabled), practised: rows.filter((r) => r.week > 0).length, total: rows.length, bestStreak: Math.max(0, ...rows.map((r) => r.streak)), totalMinutes, leaders, rows: rows.slice(0, 40), quiet: quiet.map((r) => r.name) };
 }
 
 function gameOn() { if (!store.db.settings.gameEnabled) throw new HttpError(403, 'The Vocals game is switched off right now'); }
@@ -742,6 +748,40 @@ function guestToEvent(guestId, eventId) {
   occ.members.push(guest.id);
   store.save();
   return { ok: true };
+}
+
+// ---- Voice Care Corner: weekly tips on looking after a young voice (open to every child, no payment) ----
+
+const WEEK_MS = 7 * 86400000;
+function voiceTipsFor() {
+  const now = Date.now();
+  const r = tipsAt(now, store.db.voiceTips);
+  return {
+    tips: r.tips.map((t) => ({ id: t.id, emoji: t.emoji, tag: t.tag, title: t.title, body: t.body, challenge: t.challenge, link: t.link ?? '', linkLabel: t.linkLabel ?? '', at: new Date(t.at || Date.parse('2026-11-14')).toISOString(), isNew: t.at > 0 && now - t.at < WEEK_MS, custom: t.custom })),
+    next: r.next ? new Date(r.next).toISOString() : null,
+    remaining: r.remaining,
+  };
+}
+
+function voiceTipsForTeacher() {
+  const now = Date.now();
+  const base = voiceTipsFor();
+  const upcoming = VOICE_TIPS.map((t, i) => ({ id: t.id, emoji: t.emoji, title: t.title, at: releaseAt(i) })).filter((t) => t.at > now).slice(0, 5).map((t) => ({ ...t, at: new Date(t.at).toISOString() }));
+  const own = store.db.voiceTips.slice().sort((a, b) => b.publishAt - a.publishAt).map((t) => ({ id: t.id, emoji: t.emoji, title: t.title, body: t.body, link: t.link || '', at: new Date(t.publishAt).toISOString(), live: t.publishAt <= now }));
+  return { published: base.tips.length, remaining: base.remaining, next: base.next, upcoming, own };
+}
+
+function addVoiceTip(body) {
+  const title = text(body.title, 80, 'Title');
+  const msg = text(body.body, 700, 'Tip');
+  if (!title || !msg) throw new HttpError(400, 'Give the tip a title and a few words');
+  const link = text(body.link ?? '', 300, 'Link');
+  if (link && !/^https?:\/\/[^\s]+$/i.test(link)) throw new HttpError(400, 'The link must start with http:// or https://');
+  if (store.db.voiceTips.length >= 100) throw new HttpError(400, 'That is plenty of tips for now');
+  const tip = { id: `t-${randomUUID().slice(0, 8)}`, emoji: text(body.emoji ?? '', 4, 'Emoji') || '💬', title, body: msg, link, publishAt: body.when === 'friday' ? nextFridayEvening() : Date.now() };
+  store.db.voiceTips.push(tip);
+  store.save();
+  return voiceTipsForTeacher();
 }
 
 // ---- Chord Book: chord sheets the teacher adds; students keep their own library and set lists on their phone ----
@@ -1409,6 +1449,7 @@ async function teacherApi(req, res, q, parts) {
     }
     if (b === 'guests') return send(res, 200, guestsView());
     if (b === 'free-chords') return send(res, 200, { songs: freeChordList() });
+    if (b === 'voice-tips') return send(res, 200, voiceTipsForTeacher());
     if (b === 'chord-requests') return send(res, 200, { requests: chordRequestList() });
     if (b === 'chords') return send(res, 200, { songs: store.db.chords.slice().sort((a, b) => a.title.localeCompare(b.title)).map((c) => ({ ...chordSummary(c), body: c.body })), hymns: store.db.hymns.map((h) => ({ id: h.id, title: h.title })) });
     if (b === 'occasion-practices') return send(res, 200, { practices: upcomingOccasionPractices() });
@@ -1434,6 +1475,10 @@ async function teacherApi(req, res, q, parts) {
   if (req.method === 'PUT' && b === 'mark') { mark(body); return send(res, 200, { ok: true }); }
   if (req.method === 'POST' && b === 'mark-all-present') { markAllPresent(body); return send(res, 200, { ok: true }); }
   if (req.method === 'POST' && b === 'bulk-children') return send(res, 201, bulkAdd(body));
+  if (b === 'voice-tips') {
+    if (req.method === 'POST' && !id) return send(res, 201, addVoiceTip(body));
+    if (req.method === 'DELETE' && id) { store.db.voiceTips = store.db.voiceTips.filter((t) => t.id !== id); store.save(); return send(res, 200, voiceTipsForTeacher()); }
+  }
   if (req.method === 'DELETE' && b === 'chord-requests' && id) { store.db.chordRequests = store.db.chordRequests.filter((r) => r.id !== id); store.save(); return send(res, 200, { requests: chordRequestList() }); }
   if (req.method === 'POST' && b === 'free-chords') {
     if (id === 'all') { // save every sheet that is not in the Chord Book yet
@@ -1558,6 +1603,7 @@ async function api(req, res, url) {
     }
     if (req.method === 'GET' && b === 'access') return send(res, 200, { ...accessFor(child), board: Boolean(store.db.settings.trainingBoardEnabled) });
     if (req.method === 'GET' && b === 'xp-board') return send(res, 200, xpBoardFor(child));
+    if (req.method === 'GET' && b === 'voice-tips') return send(res, 200, voiceTipsFor());
     if (req.method === 'POST' && b === 'chords' && parts[2] === 'request') return send(res, 200, requestChord(child, await readBody(req, 2_000)));
     if (req.method === 'GET' && b === 'chords') return send(res, 200, parts[2] ? chordSong(child, parts[2]) : chordLibrary(child));
     if (req.method === 'POST' && b === 'xp') return send(res, 200, xpReport(child, await readBody(req, 5_000)));

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LEVELS, buildDeck, makeTracker, centsTo, NAMES, stageSpec, titleFor, PIANO_KEYS, isTimed } from '../public/levels.js';
+import { HOLD_NOTE_MS, HOLD_STEADY_MS, HOLD_TUNE_MS, LEVELS, buildDeck, makeTracker, centsTo, NAMES, stageSpec, titleFor, PIANO_KEYS, isTimed } from '../public/levels.js';
 
 const rng = (seed = 1) => () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 
@@ -150,4 +150,29 @@ test('praise is earned: none for a round that was not passed, and it grows with 
   assert.ok(ex.some((x) => x.includes('personal best')) && ex.some((x) => x.includes('No. 1')));
   assert.ok(praiseFor({ ...base, rank: 3 }, first).extras.some((x) => x.includes('No. 3')));
   assert.equal(praiseFor({ ...base, rank: 5 }, first).extras.length, 0);
+});
+
+test('a single note must be held for three seconds, a steady hold for four, and each note of a tune for 1.5 seconds', () => {
+  assert.deepEqual([HOLD_NOTE_MS, HOLD_STEADY_MS, HOLD_TUNE_MS], [3000, 4000, 1500]);
+  for (const lv of LEVELS) for (const stage of [1, 2, 3]) {
+    for (const c of buildDeck(lv.id, rng(lv.id * 7 + stage), stage)) {
+      if (c.kind === 'echo') assert.equal(c.hold, HOLD_TUNE_MS, `level ${lv.id}: tune notes`);
+      else assert.ok(c.hold >= HOLD_NOTE_MS, `level ${lv.id} ${c.kind}: hold is ${c.hold}`);
+      if (c.kind === 'hold') assert.ok(c.hold >= (lv.id === 12 || lv.id === 11 ? HOLD_STEADY_MS : HOLD_NOTE_MS));
+      // the countdown leaves time to find the note as well as hold it
+      assert.ok(c.limit * 1000 >= c.targets.length * c.hold + 5000, `level ${lv.id} ${c.kind}: limit ${c.limit}s is too short for holding`);
+      assert.ok(c.limit * 1000 <= 40000, 'the server only accepts limits up to 40 seconds');
+    }
+  }
+});
+
+test('holding a note for 2.9 seconds is not enough, 3 seconds is', () => {
+  const ch = buildDeck(1, rng(3), 3)[0];
+  let tr = makeTracker(ch);
+  const n = ch.targets[0] + 60;
+  assert.equal(feedFor(tr, 0, 2900, n).done, false);
+  assert.ok(feedFor(tr, 2916, 3100, n).done, 'done once three seconds have passed');
+  tr = makeTracker(ch);
+  feedFor(tr, 0, 2000, n);
+  assert.ok(feedFor(tr, 2016, 2400, n + 1).hold < 0.2, 'drifting a whole semitone off starts the three seconds again');
 });

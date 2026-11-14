@@ -236,7 +236,7 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
     if (audio.ctx.currentTime < muteUntil) setMsg(paused ? '⏸ Sound paused' : '🎧 Listen…');
     else if (vol < 0.01) setMsg(cur.timed ? `Sing out loud, ${Math.ceil(left / 1000)} s left` : 'Sing out loud, take your time');
     else if (midi == null) setMsg(cur.timed ? `Sing a steady "Ahh"… ${Math.ceil(left / 1000)} s` : 'Sing a steady "Ahh"… no rush');
-    else setMsg(t.hold > 0.1 ? 'Hold it!' : t.warm > 0.66 ? 'Almost there!' : t.warm > 0.2 ? 'Getting warmer…' : 'Keep trying, slide your voice…');
+    else setMsg(t.hold > 0.05 ? `Hold it… ${Math.max(1, Math.ceil((1 - t.hold) * cur.hold / 1000))}` : t.warm > 0.66 ? 'Almost there!' : t.warm > 0.2 ? 'Getting warmer…' : 'Keep trying, slide your voice…');
   }
 
   X('go').addEventListener('click', go);

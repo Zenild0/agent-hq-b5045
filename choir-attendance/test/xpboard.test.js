@@ -67,3 +67,29 @@ test('the teacher sees a practice report with who is practising and who has gone
   assert.ok(r.quiet.includes('Off Child'), 'a child who never practised is listed as quiet');
   assert.ok(r.bestStreak >= 5);
 });
+
+test('time, notes and accuracy are recorded with limits, and the board ranks them as well as XP', async () => {
+  const mk = async (name) => { const c = (await j('/api/teacher/children', { method: 'POST', body: { name } })).data; await j(`/api/teacher/children/${c.id}/game`, { method: 'PUT', body: { paid: true } }); return c; };
+  const ana = await mk('Ana Sings'), raj = await mk('Raj Sings');
+  await j('/api/teacher/settings', { method: 'PUT', body: { trainingBoardEnabled: true } });
+  const post = (c, body) => j('/api/me/xp', { method: 'POST', code: c.code, body });
+  await post(ana, { days: { [day()]: 30 }, stats: { [day()]: { secs: 600, notes: 20, won: 18, errSum: 180, errN: 18 } } }); // 10 cents off on average
+  await post(raj, { days: { [day()]: 80 }, stats: { [day()]: { secs: 300, notes: 12, won: 10, errSum: 400, errN: 10 } } }); // 40 cents off
+  await post(raj, { stats: { [day()]: { secs: 99999, notes: 9999, won: 9999, errSum: 99999999, errN: 9999 } } }); // nonsense is clamped
+  await post(raj, { stats: { [day(40)]: { secs: 50, notes: 5, won: 5, errSum: 5, errN: 5 } } }); // too old, ignored
+  const b = (await j('/api/me/xp-board', { code: ana.code })).data;
+  const names = b.week.top.map((r) => r.name);
+  assert.ok(names.indexOf('Raj Sings') < names.indexOf('Ana Sings'), 'XP ranks Raj above Ana');
+  const acc = b.metrics.week.accuracy.top;
+  assert.equal(acc[0].name, 'Ana Sings', 'but Ana is the most accurate');
+  assert.equal(acc[0].accuracy, 80);
+  const time = b.metrics.week.time.top;
+  assert.equal(time[0].name, 'Raj Sings');
+  assert.equal(time[0].secs, 3600, 'a made-up number is cut down to an hour a day');
+  assert.equal(time.find((r) => r.name === 'Ana Sings').secs, 600);
+  const rep = (await j('/api/teacher/practice')).data;
+  assert.equal(rep.leaders.accuracy.name, 'Ana Sings');
+  assert.ok(rep.totalMinutes >= 70);
+  const row = rep.rows.find((r) => r.name === 'Ana Sings');
+  assert.deepEqual([row.minutes, row.notes, row.won, row.accuracy], [10, 20, 18, 80]);
+});

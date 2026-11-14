@@ -7,7 +7,7 @@ import { createPlayer } from './player.js';
 import { mountWarmup } from './warmup.js';
 import { spell, staffSvg } from './staff.js';
 import { shuffle } from './levels.js';
-import { xpFor, awardLine } from './xp.js';
+import { xpFor, roundStats, awardLine } from './xp.js';
 
 export const FREE_NOTATION_LEVELS = 2;
 
@@ -80,7 +80,7 @@ export function staffDeck(levelId, rng = Math.random) {
     const clef = lv.clef === 'grand' ? (midi < 60 ? 'bass' : midi > 60 ? 'treble' : rng() < 0.5 ? 'bass' : 'treble') : lv.clef;
     const s = spell(midi, flats, clef);
     return {
-      kind: 'staff', level: lv.id, timed: false, blind: false, silent: true, tol: lv.tol, hold: 500, limit: 20,
+      kind: 'staff', level: lv.id, timed: false, blind: false, silent: true, tol: lv.tol, hold: 3000, limit: 20,
       title: 'Read the note', how: review ? 'Review · sing this note' : 'Sing this note', review, staff: [midi], staffFlats: flats, clef,
       noteName: s.full, play: { type: 'piano', midi }, targets: [pcOf(midi)],
     };
@@ -197,7 +197,7 @@ export function mountStaffGame(host, { access = null, xp: xpIn = null } = {}) {
     const was = best[levelId]?.stars ?? 0;
     if (passed && n > was) { best[levelId] = { stars: n, on: new Date().toISOString().slice(0, 10) }; writeBest(best); }
     const next = STAFF_LEVELS.find((l) => l.id === levelId + 1);
-    const earned = xp.award('quiz', { passed, stars: n, won, reading: true, game: 'notation' });
+    const earned = xp.award('quiz', { passed, stars: n, won, reading: true, game: 'notation', stats: roundStats(results) });
     const msg = n === 3 ? 'Brilliant! You read them like a pro.' : n === 2 ? 'Well done! Your reading is getting strong.' : passed ? 'Good work. Keep practising.' : 'Good try. Review the lesson, then go again.';
     root.innerHTML = `
       <div class="card gm-result">

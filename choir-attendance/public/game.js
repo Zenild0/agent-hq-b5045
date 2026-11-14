@@ -6,7 +6,7 @@ import { openAudio, micMessage, INSTRUMENTS, getInstrument, setInstrument } from
 import { createPlayer } from './player.js';
 import { mountWarmup } from './warmup.js';
 import { mountSingPath, pathProgress, UNITS } from './singpath.js';
-import { xpFor, awardLine } from './xp.js';
+import { xpFor, roundStats, awardLine } from './xp.js';
 import { LEVELS, STAGES, stageSpec, buildDeck, dailyDeck, titleFor, PIANO_KEYS, starsFor, praiseFor } from './levels.js';
 import { BADGES } from './badges.js';
 
@@ -270,7 +270,7 @@ export function mountGame(host, { code = '', preview = false, teacher = false, x
       personalBest: Boolean(out?.personalBest), rank,
     });
     const nextStage = sc.pass && stage < 3 ? stage + 1 : 0;
-    const earned = out?.already ? null : xp.award('level', { passed: sc.pass, stars: sc.stars, game: 'vocal' });
+    const earned = out?.already ? null : xp.award('level', { passed: sc.pass, stars: sc.stars, game: 'vocal', stats: roundStats(results) });
     root.innerHTML = `
       <div class="card gm-result">
         ${praise ? `<div class="gm-praise gm-${praise.tier}">${esc(praise.title)}</div>` : ''}

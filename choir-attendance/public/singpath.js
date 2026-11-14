@@ -8,7 +8,7 @@ import { createPlayer } from './player.js';
 import { staffSvg, spell } from './staff.js';
 import { NAMES, shuffle } from './levels.js';
 import { staffDeck, STAFF_LEVELS } from './staffgame.js';
-import { xpFor, xpCardHtml, awardLine } from './xp.js';
+import { xpFor, xpCardHtml, roundStats, awardLine } from './xp.js';
 
 export const FREE_UNITS = 2;
 // The course is shown in chapters so the path feels like a journey.
@@ -35,7 +35,7 @@ const interval = (r, semis, dir = 1, wording = IV_NAME[Math.abs(semis)], lo = 60
 const INTERVAL_LESSON_FIND = 'Hear the first note, count the letters up (or down) in your head, and aim for that note. Do not rush: listen, breathe, then sing.';
 export const UNITS = [
   {
-    id: 1, name: 'Match a note', goal: 'Hear a note and sing the same note.', tol: 45, hold: 450, count: 6,
+    id: 1, name: 'Match a note', goal: 'Hear a note and sing the same note.', tol: 45, hold: 3000, count: 6,
     fact: 'Singers warm up by matching one note over and over. It trains the ear and the voice to agree.',
     lessons: [
       { title: 'Your voice is an instrument', text: 'Stand tall, drop your shoulders and breathe low into your tummy. Sing a soft, open "Ahh". You do not need a big voice, just a steady one.' },
@@ -45,16 +45,16 @@ export const UNITS = [
     drill: (r) => { const m = startNote(r, 60, 67); return base({ title: `You hear ${NAMES[pcOf(m)]}`, how: 'Sing the same note', play: { type: 'note', midi: m }, targets: [pcOf(m)] }); },
   },
   {
-    id: 2, name: 'Hold it steady', goal: 'Keep a note steady for a couple of seconds.', tol: 40, hold: 1500, count: 5,
+    id: 2, name: 'Hold it steady', goal: 'Keep a note steady for three seconds, then four.', tol: 40, hold: 3000, count: 5,
     fact: 'Long, steady notes build breath control. Choir singers practise them at every rehearsal.',
     lessons: [
       { title: 'A steady note', text: 'Good singers do not wobble off the note. Breathe in slowly, then let the air out evenly, like slowly blowing on soup. Your tummy gently supports the sound.' },
       { title: 'Watch the ring', text: 'When you find the note, the ring starts to fill. Hold the note until it is full. If it drops, listen again and slide your voice gently until it comes back.', demo: { notes: [64], label: 'E. Hold it for two seconds.' } },
     ],
-    drill: (r, strict) => { const m = startNote(r, 60, 67); return base({ title: `You hear ${NAMES[pcOf(m)]}`, how: 'Sing it and HOLD it steady', play: { type: 'note', midi: m }, targets: [pcOf(m)], hold: strict ? 2000 : 1500 }); },
+    drill: (r, strict) => { const m = startNote(r, 60, 67); return base({ title: `You hear ${NAMES[pcOf(m)]}`, how: 'Sing it and HOLD it steady', play: { type: 'note', midi: m }, targets: [pcOf(m)], hold: strict ? 4000 : 3000 }); },
   },
   {
-    id: 3, name: 'The black keys', goal: 'Match sharps and flats by ear.', tol: 40, hold: 450, count: 7,
+    id: 3, name: 'The black keys', goal: 'Match sharps and flats by ear.', tol: 40, hold: 3000, count: 7,
     fact: 'The piano has twelve different notes in every octave. Your voice can sing all of them, and even the notes in between.',
     lessons: [
       { title: 'Between the white keys', text: 'Between most white keys there is a black key. It is half a step away. C-sharp (C♯) is just above C; D-flat (D♭) is the same note, written another way.', demo: { notes: [60, 61, 62], label: 'C, C♯, D: three keys in a row.' } },
@@ -63,7 +63,7 @@ export const UNITS = [
     drill: (r) => { const m = startNote(r, 60, 71); return base({ title: `You hear ${NAMES[pcOf(m)]}`, how: 'Sing the same note', play: { type: 'note', midi: m }, targets: [pcOf(m)] }); },
   },
   {
-    id: 4, name: 'Steps: whole steps', goal: 'Sing a 2nd above (a whole step).', tol: 40, hold: 450, count: 7, semis: [2],
+    id: 4, name: 'Steps: whole steps', goal: 'Sing a 2nd above (a whole step).', tol: 40, hold: 3000, count: 7, semis: [2],
     fact: 'The steps of a scale are the building blocks of nearly every tune you know.',
     lessons: [
       { title: 'What is an interval?', text: 'An interval is the distance between two notes. We name it by counting the letters, starting with the first note as 1.' },
@@ -73,7 +73,7 @@ export const UNITS = [
     drill: (r) => interval(r, 2, 1, 'a 2nd'),
   },
   {
-    id: 5, name: 'Steps: half steps', goal: 'Sing a half step above, the smallest step.', tol: 38, hold: 450, count: 7, semis: [1],
+    id: 5, name: 'Steps: half steps', goal: 'Sing a half step above, the smallest step.', tol: 38, hold: 3000, count: 7, semis: [1],
     fact: 'A half step is the smallest distance in most Western music. Two half steps make a whole step.',
     lessons: [
       { title: 'The smallest step', text: 'A half step is one piano key up, with nothing in between. From E to F, and from B to C, there is no black key, so those are half steps too.', demo: { notes: [64, 65], label: 'E to F: a half step.' } },
@@ -82,7 +82,7 @@ export const UNITS = [
     drill: (r) => interval(r, 1, 1, 'a half step'),
   },
   {
-    id: 6, name: 'Steps down', goal: 'Sing the next note below.', tol: 38, hold: 450, count: 7, semis: [1, 2], dir: -1,
+    id: 6, name: 'Steps down', goal: 'Sing the next note below.', tol: 38, hold: 3000, count: 7, semis: [1, 2], dir: -1,
     fact: 'Going down is often harder than going up, because the breath relaxes. Keep your support.',
     lessons: [
       { title: 'Down is the mirror of up', text: 'A step down from D is C. The same steps work in reverse. Keep the air flowing as the pitch gets lower, so the note does not droop flat.', demo: { notes: [62, 60], label: 'D down to C.' } },
@@ -91,7 +91,7 @@ export const UNITS = [
     drill: (r) => interval(r, pick([1, 2], r), -1, undefined, 62, 69),
   },
   {
-    id: 7, name: 'Skips: thirds', goal: 'Skip one note: sing a 3rd.', tol: 36, hold: 450, count: 7, semis: [3, 4],
+    id: 7, name: 'Skips: thirds', goal: 'Skip one note: sing a 3rd.', tol: 36, hold: 3000, count: 7, semis: [3, 4],
     fact: 'A major 3rd versus a minor 3rd is the difference between a happy chord and a sad one.',
     lessons: [
       { title: 'What is a 3rd?', text: 'Skip a note! From C count C (1), D (2), E (3). A 3rd is a small jump up. It is the interval that makes chords sound happy or sad.', demo: { notes: [60, 64], label: 'C up to E: a major 3rd.' } },
@@ -101,7 +101,7 @@ export const UNITS = [
     drill: (r) => (r() < 0.5 ? interval(r, 4, 1, 'a major 3rd') : interval(r, 3, 1, 'a minor 3rd')),
   },
   {
-    id: 8, name: 'Fourths', goal: 'Sing a 4th above.', tol: 34, hold: 500, count: 7, semis: [5],
+    id: 8, name: 'Fourths', goal: 'Sing a 4th above.', tol: 34, hold: 3000, count: 7, semis: [5],
     fact: 'A 4th is the sound of many hymn openings. Once you can hear it, you can find the next note faster.',
     lessons: [
       { title: 'What is a 4th?', text: 'Count four letters: C (1), D (2), E (3), F (4). A 4th is five semitones. It is a strong, open jump up. Count it on your fingers: 1, 2, 3, 4.', demo: { notes: [60, 65], label: 'C up to F: a 4th.' } },
@@ -111,7 +111,7 @@ export const UNITS = [
     drill: (r) => interval(r, 5, 1, 'a 4th'),
   },
   {
-    id: 9, name: 'Fifths', goal: 'Sing a 5th above.', tol: 34, hold: 500, count: 7, semis: [7],
+    id: 9, name: 'Fifths', goal: 'Sing a 5th above.', tol: 34, hold: 3000, count: 7, semis: [7],
     fact: 'The 5th is the most stable interval after the octave. Choirs tune their chords from it.',
     lessons: [
       { title: 'What is a 5th?', text: 'Count five letters: C (1), D (2), E (3), F (4), G (5). A 5th is seven semitones. It is a big, strong, hollow-sounding jump that feels very stable.', demo: { notes: [60, 67], label: 'C up to G: a 5th.' } },
@@ -120,7 +120,7 @@ export const UNITS = [
     drill: (r) => interval(r, 7, 1, 'a 5th'),
   },
   {
-    id: 10, name: 'Mix it up', goal: 'Tell 2nds, 3rds, 4ths and 5ths apart.', tol: 32, hold: 500, count: 8, semis: [2, 3, 4, 5, 7],
+    id: 10, name: 'Mix it up', goal: 'Tell 2nds, 3rds, 4ths and 5ths apart.', tol: 32, hold: 3000, count: 8, semis: [2, 3, 4, 5, 7],
     fact: 'Musicians call this "ear training". A few minutes a day makes it second nature.',
     lessons: [
       { title: 'Four jumps, one method', text: 'Now they all come up together: 2nd (a step), 3rd (a skip), 4th (an open jump), 5th (a big jump). Count the letters, or remember the song that starts with that jump.' },
@@ -129,7 +129,7 @@ export const UNITS = [
     drill: (r) => interval(r, pick([2, 3, 4, 5, 7], r), 1),
   },
   {
-    id: 11, name: 'Sixths', goal: 'Sing a 6th above.', tol: 32, hold: 500, count: 7, semis: [9],
+    id: 11, name: 'Sixths', goal: 'Sing a 6th above.', tol: 32, hold: 3000, count: 7, semis: [9],
     fact: 'A 6th is a warm, wide jump. Many lullabies and love songs begin with one.',
     lessons: [
       { title: 'A 6th', text: 'C up to A is a 6th: C D E F G A, six letters. It is nine semitones, a warm, wide jump. "My Bonnie lies over the ocean" starts with a 6th ("My Bon-"): C up to A.', demo: { notes: [60, 69], label: 'C up to A: a 6th.' } },
@@ -138,7 +138,7 @@ export const UNITS = [
     drill: (r) => interval(r, 9, 1, 'a 6th'),
   },
   {
-    id: 12, name: 'Octaves', goal: 'Sing the same note an octave higher.', tol: 32, hold: 500, count: 6, semis: [12],
+    id: 12, name: 'Octaves', goal: 'Sing the same note an octave higher.', tol: 32, hold: 3000, count: 6, semis: [12],
     fact: 'Singing in octaves is how a mixed choir sings the same note together: children, women and men.',
     lessons: [
       { title: 'The octave', text: 'An octave is the same note, higher or lower: eight letters (C to the next C). The two notes sound almost like one. "Somewhere over the rainbow" starts with an octave.', demo: { notes: [60, 72], label: 'C to C: an octave.' } },
@@ -147,7 +147,7 @@ export const UNITS = [
     drill: (r) => interval(r, 12, 1, 'an octave', 55, 62),
   },
   {
-    id: 13, name: 'Going down: 3rds to 5ths', goal: 'Sing bigger jumps downward.', tol: 32, hold: 500, count: 8, semis: [3, 4, 5, 7], dir: -1,
+    id: 13, name: 'Going down: 3rds to 5ths', goal: 'Sing bigger jumps downward.', tol: 32, hold: 3000, count: 8, semis: [3, 4, 5, 7], dir: -1,
     fact: 'Descending jumps teach control: the voice must stay supported all the way down.',
     lessons: [
       { title: 'The same jumps, going down', text: 'A 4th below C is G (count down: C 1, B 2, A 3, G 4). The same intervals work in reverse. Aim your voice down gently, with the same breath.', demo: { notes: [67, 60], label: 'G down to C: a 5th below.' } },
@@ -156,7 +156,7 @@ export const UNITS = [
     drill: (r) => interval(r, pick([3, 4, 5, 7], r), -1, undefined, 64, 71),
   },
   {
-    id: 14, name: 'Do, re, mi, fa, sol', goal: 'Sing the first five notes of the major scale by name.', tol: 32, hold: 500, count: 8, semis: [2, 4, 5, 7],
+    id: 14, name: 'Do, re, mi, fa, sol', goal: 'Sing the first five notes of the major scale by name.', tol: 32, hold: 3000, count: 8, semis: [2, 4, 5, 7],
     fact: 'Do-Re-Mi comes from an old hymn to St John, where each line began one note higher.',
     lessons: [
       { title: 'The scale', text: 'A scale is a ladder of notes: Do Re Mi Fa Sol La Ti Do. In C major these are the white keys C D E F G A B C. The first five are Do, Re, Mi, Fa, Sol.', demo: { notes: [60, 62, 64, 65, 67], label: 'Do, re, mi, fa, sol.' } },
@@ -165,7 +165,7 @@ export const UNITS = [
     drill: (r) => { const s = startNote(r, 60, 66); const d = 1 + Math.floor(r() * 4); return base({ title: `Do is ${NAMES[pcOf(s)]}`, how: `Sing ${SOLFA[d]}`, play: { type: 'note', midi: s }, targets: [pcOf(s + MAJOR[d])], start: s, semis: MAJOR[d] }); },
   },
   {
-    id: 15, name: 'The whole scale', goal: 'Sing every note of the major scale by name.', tol: 30, hold: 500, count: 8, semis: [2, 4, 5, 7, 9, 11, 12],
+    id: 15, name: 'The whole scale', goal: 'Sing every note of the major scale by name.', tol: 30, hold: 3000, count: 8, semis: [2, 4, 5, 7, 9, 11, 12],
     fact: 'Major scales share one pattern: whole, whole, half, whole, whole, whole, half.',
     lessons: [
       { title: 'Do re mi fa sol la ti do', text: 'Now the whole ladder, including La (a 6th), Ti (a 7th, just below the top) and the high Do (an octave). Sing the scale in your head up and down before you answer.', demo: { notes: MAJOR.map((s) => 60 + s), label: 'The major scale, one key at a time.' } },
@@ -174,7 +174,7 @@ export const UNITS = [
     drill: (r) => { const s = startNote(r, 60, 66); const d = 1 + Math.floor(r() * 7); return base({ title: `Do is ${NAMES[pcOf(s)]}`, how: `Sing ${SOLFA[d]}`, play: { type: 'note', midi: s }, targets: [pcOf(s + MAJOR[d])], start: s, semis: MAJOR[d] }); },
   },
   {
-    id: 16, name: 'Do, mi, sol: the chord', goal: 'Sing the notes of a major chord.', tol: 30, hold: 500, count: 8, semis: [0, 4, 7], chord: 'major',
+    id: 16, name: 'Do, mi, sol: the chord', goal: 'Sing the notes of a major chord.', tol: 30, hold: 3000, count: 8, semis: [0, 4, 7], chord: 'major',
     fact: 'When you can sing Do, Mi and Sol, you can sing every note of a major chord.',
     lessons: [
       { title: 'A chord is notes together', text: 'Stack Do, Mi and Sol (1, 3 and 5) and you get a major chord. Singing the notes one at a time is called an arpeggio.', demo: { notes: [60, 64, 67, 72], label: 'The C major chord, one note at a time.' } },
@@ -183,7 +183,7 @@ export const UNITS = [
     drill: (r) => { const s = startNote(r, 60, 66); const which = pick([['first note', 0], ['3rd', 4], ['5th', 7]], r); return base({ title: `${NAMES[pcOf(s)]} major`, how: `Sing the ${which[0]}`, play: { type: 'chord', root: s, quality: 'major' }, targets: [pcOf(s + which[1])], start: s, semis: which[1] }); },
   },
   {
-    id: 17, name: 'Minor feeling', goal: 'Hear and sing the sad (minor) sound.', tol: 30, hold: 500, count: 8, semis: [0, 3, 7], chord: 'minor',
+    id: 17, name: 'Minor feeling', goal: 'Hear and sing the sad (minor) sound.', tol: 30, hold: 3000, count: 8, semis: [0, 3, 7], chord: 'minor',
     fact: 'Minor keys feel sad because the 3rd is lowered by one semitone. That tiny change turns the mood.',
     lessons: [
       { title: 'Major and minor', text: 'A major chord sounds bright and happy. A minor chord sounds darker. The only difference is the middle note: the 3rd is one piano key lower in minor.', demo: { notes: [60, 64, 67], label: 'C major: bright.' } },
@@ -192,7 +192,7 @@ export const UNITS = [
     drill: (r) => { const s = startNote(r, 60, 66); const which = pick([['first note', 0], ['minor 3rd', 3], ['5th', 7]], r); return base({ title: `${NAMES[pcOf(s)]} minor`, how: `Sing the ${which[0]}`, play: { type: 'chord', root: s, quality: 'minor' }, targets: [pcOf(s + which[1])], start: s, semis: which[1] }); },
   },
   {
-    id: 18, name: 'Echo tunes', goal: 'Remember a short tune and sing it back.', tol: 30, hold: 400, count: 6, echo: 3,
+    id: 18, name: 'Echo tunes', goal: 'Remember a short tune and sing it back.', tol: 30, hold: 1500, count: 6, echo: 3,
     fact: 'Remembering tunes by ear is how hymns and folk songs have been passed on for centuries.',
     lessons: [
       { title: 'Listen, remember, sing', text: 'You will hear three notes. Hold them in your head, then sing them in order. Hum the tune once silently, then sing it. Music is memory!', demo: { notes: [60, 62, 64], label: 'A little tune: up, up.' } },
@@ -201,7 +201,7 @@ export const UNITS = [
     drill: (r) => echoTune(r, 3),
   },
   {
-    id: 19, name: 'Longer echoes', goal: 'Remember four notes with bigger jumps.', tol: 30, hold: 400, count: 6, echo: 4,
+    id: 19, name: 'Longer echoes', goal: 'Remember four notes with bigger jumps.', tol: 30, hold: 1500, count: 6, echo: 4,
     fact: 'Most people can hold about seven things in mind at once. A good singer groups notes into small phrases.',
     lessons: [
       { title: 'Four notes', text: 'Try to hear the tune in two halves: two notes, then two more. Singing the first half in your head while the second half plays helps you remember.', demo: { notes: [60, 64, 62, 67], label: 'Up a 3rd, down a step, up a 4th.' } },
@@ -210,13 +210,13 @@ export const UNITS = [
     drill: (r) => echoTune(r, 4, [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5]),
   },
   {
-    id: 20, name: 'Steady star', goal: 'Find a note by interval and hold it steady.', tol: 28, hold: 1500, count: 6, semis: [2, 3, 4, 5, 7], anyDir: true,
+    id: 20, name: 'Steady star', goal: 'Find a note by interval and hold it steady.', tol: 28, hold: 3000, count: 6, semis: [2, 3, 4, 5, 7], anyDir: true,
     fact: 'Holding a pitch after finding it is what turns "singing the right note" into "singing in tune".',
     lessons: [
       { title: 'Find it, then hold it', text: 'This puts everything together. Work out the jump, sing the note, and then keep it steady until the ring is full and the note is held for a moment.' },
       { title: 'Steady breath', text: 'Breathe low, let the air out evenly, and do not push. A calm, steady sound is also an in-tune sound.', demo: { notes: [60, 67], label: 'C up to G, then hold it.' } },
     ],
-    drill: (r, strict) => { const c = interval(r, pick([2, 3, 4, 5, 7], r), r() < 0.7 ? 1 : -1, undefined, 60, 67); return { ...c, how: `${c.how}, and hold`, hold: strict ? 2000 : 1500 }; },
+    drill: (r, strict) => { const c = interval(r, pick([2, 3, 4, 5, 7], r), r() < 0.7 ? 1 : -1, undefined, 60, 67); return { ...c, how: `${c.how}, and hold`, hold: strict ? 4000 : 3000 }; },
   },
   ...readingUnits(),
 ];
@@ -235,7 +235,7 @@ function readingUnits() {
     const lv = STAFF_LEVELS.find((l) => l.id === lvId);
     const notes = [...new Set(lv.pool)].sort((a, b) => a - b).slice(0, 8);
     return {
-      id: 21 + k, name, goal: `Look at a note on the staff and sing it. ${lv.how}`, tol: Math.min(45, lv.tol), hold: 500, count: lv.count, reading: lvId,
+      id: 21 + k, name, goal: `Look at a note on the staff and sing it. ${lv.how}`, tol: Math.min(45, lv.tol), hold: 3000, count: lv.count, reading: lvId,
       fact: 'Reading music is a skill, like reading words. The more you practise, the faster the notes turn into sounds in your head.',
       lessons: [
         { title: 'Reading and singing', text: `${lv.how} ${lv.tip} Look at the note on the staff, work out its name, and sing it. You will not hear the note first this time, but you can press "Hear the note" if you need help.`, demo: { notes, label: 'These are the notes of this unit. Tap Hear it to listen.' } },
@@ -360,7 +360,7 @@ export function mountSingPath(host, { full = true, xp: xpIn = null, onExit } = {
   function practiceDone(u, results) {
     view = 'result';
     const won = results.filter((r) => r.won).length;
-    const a = xp.award('practice', { won, game: 'course' });
+    const a = xp.award('practice', { won, game: 'course', stats: roundStats(results) });
     root.innerHTML = `
       <div class="card gm-result"><div class="gm-praise gm-try">Nice practice!</div>
         ${awardLine(a) ? `<div class="gm-new">${awardLine(a)}</div>` : ''}
@@ -379,7 +379,7 @@ export function mountSingPath(host, { full = true, xp: xpIn = null, onExit } = {
     if (passed && n > (p[u.id].stars ?? 0)) { p[u.id].stars = n; p[u.id].on = new Date().toISOString().slice(0, 10); }
     write(p);
     const revRight = results.filter((r, i) => r.won && deckUsed[i]?.review).length;
-    const a = xp.award('quiz', { passed, stars: n, won, review: revRight, reading: Boolean(u.reading), game: 'course' });
+    const a = xp.award('quiz', { passed, stars: n, won, review: revRight, reading: Boolean(u.reading), game: 'course', stats: roundStats(results) });
     const next = UNITS.find((x) => x.id === u.id + 1);
     root.innerHTML = `
       <div class="card gm-result"><div class="gm-praise ${passed ? '' : 'gm-try'}">${n === 3 ? 'Perfect! You have got this.' : passed ? 'Well done! Unit complete.' : 'Good try. Review the lesson, practise, then try again.'}</div>
