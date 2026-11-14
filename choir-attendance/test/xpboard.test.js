@@ -45,7 +45,7 @@ test('switched on: only paid children are ranked, the daily cap and date rules h
   assert.equal(board.enabled, true);
   assert.equal(board.locked, false);
   const names = board.all.top.map((r) => r.name);
-  assert.deepEqual(names, ['Maya Paid', 'Ben Paid'], 'ranked by XP; the unpaid child and the guest are not on it');
+  assert.deepEqual(names, ['Maya P.', 'Ben P.'], 'ranked by XP, shown as first name and initial; the unpaid child and the guest are not on it');
   assert.equal(board.all.top[0].rank, 1);
   assert.equal(board.all.top[0].streak, 5);
   assert.ok(!('contact' in board.all.top[0]) && !('code' in board.all.top[0]));
@@ -53,7 +53,8 @@ test('switched on: only paid children are ranked, the daily cap and date rules h
   assert.equal(board.all.total, 2);
   // an unpaid child sees only a locked card, no names
   const locked = (await j('/api/me/xp-board', { code: cara.code })).data;
-  assert.deepEqual(Object.keys(locked).sort(), ['enabled', 'locked', 'price']);
+  assert.deepEqual(Object.keys(locked).sort(), ['enabled', 'locked', 'note', 'price']);
+  assert.match(locked.note, /server/, 'the unpaid card says why there is a fee');
   // junk is refused
   assert.equal((await post(maya, { days: 'x' })).status, 200);
   assert.equal((await j('/api/me/xp-board', { code: 'NOPE' })).status, 401);
@@ -79,14 +80,14 @@ test('time, notes and accuracy are recorded with limits, and the board ranks the
   await post(raj, { stats: { [day(40)]: { secs: 50, notes: 5, won: 5, errSum: 5, errN: 5 } } }); // too old, ignored
   const b = (await j('/api/me/xp-board', { code: ana.code })).data;
   const names = b.week.top.map((r) => r.name);
-  assert.ok(names.indexOf('Raj Sings') < names.indexOf('Ana Sings'), 'XP ranks Raj above Ana');
+  assert.ok(names.indexOf('Raj S.') < names.indexOf('Ana S.'), 'XP ranks Raj above Ana');
   const acc = b.metrics.week.accuracy.top;
-  assert.equal(acc[0].name, 'Ana Sings', 'but Ana is the most accurate');
+  assert.equal(acc[0].name, 'Ana S.', 'but Ana is the most accurate');
   assert.equal(acc[0].accuracy, 80);
   const time = b.metrics.week.time.top;
-  assert.equal(time[0].name, 'Raj Sings');
+  assert.equal(time[0].name, 'Raj S.');
   assert.equal(time[0].secs, 3600, 'a made-up number is cut down to an hour a day');
-  assert.equal(time.find((r) => r.name === 'Ana Sings').secs, 600);
+  assert.equal(time.find((r) => r.name === 'Ana S.').secs, 600);
   const rep = (await j('/api/teacher/practice')).data;
   assert.equal(rep.leaders.accuracy.name, 'Ana Sings');
   assert.ok(rep.totalMinutes >= 70);

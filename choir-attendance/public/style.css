@@ -844,3 +844,7 @@ body.cb-playing { overflow: hidden; }
 dialog.consent { max-width: 460px; width: calc(100vw - 24px); border: 0; border-radius: 22px; padding: 18px; background: var(--card); color: var(--ink); }
 dialog.consent::backdrop { background: rgba(10,7,32,.8); }
 .cs-box { margin: 8px 0; padding: 10px 12px; border-radius: 14px; background: rgba(128,128,128,.12); font-size: .9rem; line-height: 1.45; }
+
+.fee-note { margin-top: 8px; font-size: .85rem; }
+.fee-note summary { cursor: pointer; font-weight: 700; }
+.fee-note p { margin: 6px 0 0; line-height: 1.45; font-weight: 500; }

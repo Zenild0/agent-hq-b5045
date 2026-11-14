@@ -41,6 +41,7 @@ export const DEFAULT_SETTINGS = {
   latePointsFactor: 1, // share of the points a "Late" present earns (1 = full; the remark penalty below applies on top)
   remarkPenalty: 0.5, // points taken off a session that has one OR MORE negative remarks (charged once, never per remark)
   remarkBonus: 0.25, // points added for EACH positive remark (Well behaved, Helped others)
+  feeNote: 'The yearly amount is not to earn money. It only helps pay for the server and the website address that keep this app running, so every child in the choir can keep using it.', // shown beside the price
   gamePrice: 500, // rupees: the full singing game (Level 2 onwards, daily challenge, weekly boards); Warm-up and Level 1 are free
   gamePayMobile: '',
   gameUpi: '',
@@ -333,4 +334,13 @@ export function occasions(db, season) {
       children,
     };
   }).sort((a, b) => (a.sessions[0]?.date ?? '9999').localeCompare(b.sessions[0]?.date ?? '9999') || a.event.localeCompare(b.event));
+}
+
+// What other children and parents see on a leaderboard: the first name and the first letter of the last name ("Maya P.").
+// The teacher still sees the full name everywhere.
+export function shortName(name) {
+  const parts = String(name ?? '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return parts[0] ?? '';
+  const last = parts.at(-1);
+  return `${parts[0]} ${[...last][0].toUpperCase()}.`;
 }

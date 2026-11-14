@@ -183,7 +183,7 @@ async function drawXpBoard() {
   try {
     const d = await api('me/xp-board', { code });
     if (!d.enabled) { box.innerHTML = '<div class="card muted">The Training XP leaderboard is not switched on right now.</div>'; return; }
-    if (d.locked) { box.innerHTML = `<div class="card"><h3 style="margin:0">Training leaderboard</h3><p class="muted">This board is for children with the full version of the training games (₹${esc(d.price ?? 500)} a year). Every child gets a free trial first. Your own XP and streak are always yours, in Training games.</p></div>`; return; }
+    if (d.locked) { box.innerHTML = `<div class="card"><h3 style="margin:0">Training leaderboard</h3><p class="muted">This board is for children with the full version of the training games (₹${esc(d.price ?? 500)} a year). Every child gets a free trial first. Your own XP and streak are always yours, in Training games.</p>${feeNoteHtml(d.note)}</div>`; return; }
     const k = xpRange === 'all' ? 'all' : 'week';
     const m = METRICS.find((x) => x[0] === xpMetric) || METRICS[0];
     const board = xpMetric === 'xp' ? d[k] : d.metrics[k][xpMetric];

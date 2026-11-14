@@ -2,7 +2,7 @@
 //   1. Vocal trainer (sing the note you hear)    2. Notation trainer (read the note on the staff)    3. Rhythm trainer (soon)
 // Everyone gets the full version of every game free for a few days (7 days, for choir members and guests),
 // and one payment unlocks all the games. The server keeps the days; this screen only shows them.
-import { api, esc } from './common.js';
+import { api, esc, feeNoteHtml } from './common.js';
 import { RANGES, getRange, setRange } from './audio.js';
 import { xpFor, xpCardHtml, badgesHtml } from './xp.js';
 import { newestTip } from './voicetips.js';
@@ -42,12 +42,13 @@ export function mountGames(host, { code }) {
   const banner = () => {
     const a = access;
     if (a.paid) return `<div class="alert ok"><b>Full version active</b> · every training game is open until ${fmtDay(a.paidUntil)}.</div>`;
-    if (a.trial.active) return `<div class="alert ok">🎁 <b>Free trial: ${a.trial.daysLeft} day${a.trial.daysLeft === 1 ? '' : 's'} left.</b> Every level of every game is open. After that, one payment unlocks all the games.</div>`;
+    if (a.trial.active) return `<div class="alert ok">🎁 <b>Free trial: ${a.trial.daysLeft} day${a.trial.daysLeft === 1 ? '' : 's'} left.</b> Every level of every game is open. After that, one payment unlocks all the games.${feeNoteHtml(a.pay?.note ?? a.feeNote)}</div>`;
     const pay = a.pay;
     return `<div class="card gm-unlock">
       <h3 style="margin:0">${a.trial.started ? 'Your free trial has ended' : 'Free to try'} · unlock all games for ₹${esc(pay?.price ?? 500)} a year</h3>
       <div class="muted">One payment opens every level of every training game, now and as new ones arrive. The first levels stay free.</div>
       ${pay?.mobile || pay?.upi ? `<div class="gm-pay">Pay your choir teacher${pay.mobile ? ` on <b>${esc(pay.mobile)}</b>` : ''}${pay.upi ? ` (UPI: <b>${esc(pay.upi)}</b>)` : ''}. They will unlock it for you.</div>` : '<div class="muted">Ask your choir teacher how to pay.</div>'}
+      ${feeNoteHtml(pay?.note)}
     </div>`;
   };
 

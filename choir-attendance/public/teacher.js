@@ -1290,6 +1290,7 @@ async function loadSettings() {
         <label class="field">Price for one year (₹)<input name="gamePrice" type="number" min="0" step="1" value="${s.gamePrice ?? 500}"></label>
         <label class="field">Mobile number to pay (UPI or phone)<input name="gamePayMobile" type="tel" maxlength="20" value="${esc(s.gamePayMobile ?? '')}"></label>
         <label class="field">UPI ID (optional, like name@bank)<input name="gameUpi" maxlength="60" value="${esc(s.gameUpi ?? '')}"></label>
+        <label class="field">"Why is there a fee?" (shown to parents and children beside the price)<textarea name="feeNote" rows="3" maxlength="400">${esc(s.feeNote ?? '')}</textarea></label>
         <div class="muted"><a href="/voice-test.html" target="_blank" rel="noopener">🎤 Open the test version of Vocals</a> (every level open, nothing saved on the server, parents never see it)</div>
         <div class="row" style="margin:6px 0"><button type="button" class="btn small" id="warmResetAll">🔥 Give everyone 3 free Warm-up sessions again</button><span class="muted" id="warmResetMsg" aria-live="polite"></span></div>`)}
       ${sec('Website and choir year', 'The link you share and when the year starts', `
@@ -1351,6 +1352,7 @@ async function loadSettings() {
       body.gamePrice = f.get('gamePrice');
       body.gamePayMobile = f.get('gamePayMobile') || '';
       body.gameUpi = f.get('gameUpi') || '';
+      body.feeNote = f.get('feeNote') || '';
       body.firstSeason = f.get('firstSeason') || null;
       body.publicUrl = f.get('publicUrl') || '';
       await call('teacher/settings', { method: 'PUT', body });

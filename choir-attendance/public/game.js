@@ -1,7 +1,7 @@
 // The singing game inside the parent app: a journey up the piano, levels with three stages each,
 // daily challenge, weekly boards, badges and a warm-up room.
 // Loaded only when the game opens, so a problem here can never stop the rest of the app.
-import { api, esc } from './common.js';
+import { api, esc, feeNoteHtml } from './common.js';
 import { openAudio, micMessage, INSTRUMENTS, getInstrument, setInstrument } from './audio.js';
 import { createPlayer } from './player.js';
 import { mountWarmup } from './warmup.js';
@@ -130,6 +130,7 @@ export function mountGame(host, { code = '', preview = false, teacher = false, x
               <a class="btn small primary" href="${esc(upiLink)}">Open my UPI app</a>` : ''}
             <div><b>Please send ${esc(kid) || "your child's name"}'s name</b> with the payment (as the payment note, or by message), so your child can be unlocked.</div>
           </div>` : '<div class="muted">Please ask your choir teacher how to pay.</div>'}
+        ${feeNoteHtml(p.note)}
         <div class="muted">After you pay, your choir teacher will ${renew ? 'renew' : 'unlock'} the full game for your child (one year each time).</div>
       </div>`;
   }

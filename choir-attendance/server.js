@@ -5,7 +5,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  REMARKS, isValidRemark, STATUSES, EXCUSE_REASONS, TYPES, EVENTS, OCCASION_TYPES, isValidDate, defaultType, seasonOf, seasonRange,
+  REMARKS, isValidRemark, shortName, STATUSES, EXCUSE_REASONS, TYPES, EVENTS, OCCASION_TYPES, isValidDate, defaultType, seasonOf, seasonRange,
   seasonLabel, prizeInfo, firstSeason, childStats, scoreboard, monthRange, monthLabel, pointsFor,
   isLeave, remarkDeduction, remarkBonus, sessionKey, photoUrl, headUrl, monthlyAchievers, yearlyAchievers, occasions, seasonsWithData,
   compareNames, findOccasion, slug,
@@ -191,7 +191,7 @@ function eventViewsFor(child) {
     const rows = occ.members.map((id) => db.children.find((c) => c.id === id)).filter(Boolean).map((c) => {
       let points = 0, present = 0;
       for (const sess of sessions) { const e = sess.entries[c.id]; if (e?.status === 'present') present += 1; points += pointsFor(e, sess.type, db.settings); }
-      return { id: c.id, name: c.name, photo: photoUrl(c), head: headUrl(c), points, present };
+      return { id: c.id, name: shortName(c.name), photo: photoUrl(c), head: headUrl(c), points, present };
     }).sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
     let rank = 0;
     rows.forEach((r, i) => { if (!(i && rows[i - 1].points === r.points)) rank += 1; r.rank = rank; });
@@ -306,6 +306,9 @@ function gameAccess(id) {
   return { gamePaid: isPaid(kid, today), gamePaidUntil: paidUntilOf(kid), gameExpired: wasPaid(kid) && !isPaid(kid, today), warmupLeft: warmupsLeft(kid, today) ?? 3 };
 }
 // What a signed-in child (or guest) can use: the free trial, or the paid year. Opening the games starts the trial.
+// How to pay, and why there is a fee. Shown to a child or parent when the games are not unlocked.
+const payInfo = () => ({ price: store.db.settings.gamePrice, mobile: store.db.settings.gamePayMobile, upi: store.db.settings.gameUpi, note: store.db.settings.feeNote });
+
 function accessFor(child) {
   const { db } = store;
   const today = istDate();
@@ -317,7 +320,7 @@ function accessFor(child) {
   return {
     full: hasFull(kid, today), paid, paidUntil: paidUntilOf(kid), expired: wasPaid(kid) && !paid,
     trial: trialOf(kid, today), guest: Boolean(child.guest),
-    pay: !paid || left <= 30 ? { price: db.settings.gamePrice, mobile: db.settings.gamePayMobile, upi: db.settings.gameUpi } : null,
+    pay: !paid || left <= 30 ? payInfo() : null,
     games: { vocals: Boolean(db.settings.gameEnabled), notation: Boolean(db.settings.staffEnabled), chords: Boolean(db.settings.chordsEnabled) },
   };
 }
@@ -330,9 +333,9 @@ function xpBoardFor(child) {
   const enabled = Boolean(db.settings.trainingBoardEnabled);
   const paid = isPaid(db.game.kids[child.id], today);
   if (!enabled) return { enabled: false };
-  if (!paid) return { enabled: true, locked: true, price: db.settings.gamePrice };
+  if (!paid) return { enabled: true, locked: true, price: db.settings.gamePrice, note: db.settings.feeNote };
   const rows = db.children.filter((c) => c.active && !c.guest && isPaid(db.game.kids[c.id], today));
-  return { enabled: true, locked: false, ...buildBoard(xpOf, rows, today, child.id, (c) => ({ id: c.id, name: c.name, photo: photoUrl(c), head: headUrl(c) })) };
+  return { enabled: true, locked: false, ...buildBoard(xpOf, rows, today, child.id, (c) => ({ id: c.id, name: shortName(c.name), photo: photoUrl(c), head: headUrl(c) })) };
 }
 function xpReport(child, body) {
   const { db } = store;
@@ -370,7 +373,7 @@ function gameThrottle(id) {
 }
 const gameChildren = () => store.db.children.filter((c) => c.active);
 const boardOut = (rows, meId) => {
-  const top = rows.slice(0, 10).map((r) => ({ id: r.id, name: r.name, photo: photoUrl(store.db.children.find((c) => c.id === r.id)), head: headUrl(store.db.children.find((c) => c.id === r.id)), won: r.won, ms: r.ms, rank: r.rank, stars: r.stars }));
+  const top = rows.slice(0, 10).map((r) => ({ id: r.id, name: shortName(r.name), photo: photoUrl(store.db.children.find((c) => c.id === r.id)), head: headUrl(store.db.children.find((c) => c.id === r.id)), won: r.won, ms: r.ms, rank: r.rank, stars: r.stars }));
   const mine = rows.find((r) => r.id === meId);
   return { top, me: mine && !top.some((t) => t.id === meId) ? { rank: mine.rank, won: mine.won, ms: mine.ms } : null, total: rows.length };
 };
@@ -393,7 +396,7 @@ function gameState(child, q) {
     paidUntil: paidUntilOf(kid), // empty if never unlocked; a past date means the year has ended
     expired: wasPaid(kid) && !subscribed,
     renewSoon: subscribed && left <= 30, // within 30 days of the end: the renew card shows
-    pay: !subscribed || left <= 30 ? { price: db.settings.gamePrice, mobile: db.settings.gamePayMobile, upi: db.settings.gameUpi } : null,
+    pay: !subscribed || left <= 30 ? payInfo() : null,
     levels: LEVELS.map(({ id, tier, name, how, tol, hold, count }) => ({ id, tier, name, how, tol, hold, count, timed: isTimed(id), stages: STAGES.map((st) => stageSpec(id, st.stage)) })),
     me: { id: child.id, name: child.name, paid, cleared: kid.cleared, stages: kid.stages ?? {}, best: kid.best, top: kid.top ?? {}, badges: kid.badges, maxPlayable: maxPlayable(kid), dailyStreak: dailyStreak(kid, today) },
     // the daily challenge and the weekly boards are part of the full game
@@ -431,7 +434,8 @@ function publicOverview(q) {
   const range = seasonRange(season);
   const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(q.get('month') || '') ? q.get('month') : today().slice(0, 7);
   const mr = monthRange(month);
-  const strip = (rows) => rows.map(({ id, name, photo, head, points, rank }) => ({ id, name, photo, head, points, rank }));
+  const strip = (rows) => rows.map(({ id, name, photo, head, points, rank }) => ({ id, name: shortName(name), photo, head, points, rank }));
+  const shortWinners = (list) => list.map((m) => ({ ...m, winners: m.winners.map((w) => ({ ...w, name: shortName(w.name) })) }));
   return {
     season, seasonLabel: seasonLabel(season), seasons: seasonsWithData(db, today()),
     settings: { satPoints: db.settings.satPoints, sunPoints: db.settings.sunPoints, feastPoints: db.settings.feastPoints, practicePoints: db.settings.practicePoints, remarkPenalty: db.settings.remarkPenalty, remarkBonus: db.settings.remarkBonus, gameEnabled: Boolean(db.settings.gameEnabled), staffEnabled: Boolean(db.settings.staffEnabled), chordsEnabled: Boolean(db.settings.chordsEnabled), trainingBoardEnabled: Boolean(db.settings.trainingBoardEnabled) },
@@ -439,8 +443,8 @@ function publicOverview(q) {
     month, monthLabel: monthLabel(month),
     monthBoard: strip(scoreboard(db, season, mr.start, mr.end, { hideOut: true })),
     yearBoard: strip(scoreboard(db, season, range.start, range.end, { hideOut: true })),
-    monthly: monthlyAchievers(db, season, today()),
-    yearly: yearlyAchievers(db, today()),
+    monthly: shortWinners(monthlyAchievers(db, season, today())),
+    yearly: shortWinners(yearlyAchievers(db, today())),
   };
 }
 
@@ -581,6 +585,7 @@ function updateSettings(body) {
   if ('staffEnabled' in body) s.staffEnabled = Boolean(body.staffEnabled);
   if ('chordsEnabled' in body) s.chordsEnabled = Boolean(body.chordsEnabled);
   if ('trainingBoardEnabled' in body) s.trainingBoardEnabled = Boolean(body.trainingBoardEnabled);
+  if ('feeNote' in body) s.feeNote = text(body.feeNote ?? '', 400, 'Why there is a fee');
   if ('gamePrice' in body) s.gamePrice = Math.round(num(body.gamePrice, 0, 100000));
   if ('gamePayMobile' in body) s.gamePayMobile = phone(body.gamePayMobile ?? '', 'Payment number');
   if ('gameUpi' in body) {
@@ -858,7 +863,7 @@ function chordLibrary(child) {
   if (!db.settings.chordsEnabled) throw new HttpError(403, 'The Chord Book is switched off right now');
   const acc = accessFor(child);
   const list = db.chords.slice().sort((a, b) => a.title.localeCompare(b.title));
-  if (!acc.full) return { locked: true, count: list.length, trial: acc.trial, expired: acc.expired, pay: acc.pay ?? { price: db.settings.gamePrice, mobile: db.settings.gamePayMobile, upi: db.settings.gameUpi } };
+  if (!acc.full) return { locked: true, count: list.length, trial: acc.trial, expired: acc.expired, pay: acc.pay ?? payInfo() };
   return { locked: false, requested: db.chordRequests.filter((r) => r.by.includes(child.id)).map((r) => r.title), trial: acc.trial, paid: acc.paid, categories: [...new Set(list.map((c) => c.category).filter(Boolean))].sort(), songs: list.map(chordSummary) };
 }
 

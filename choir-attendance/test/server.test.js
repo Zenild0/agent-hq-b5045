@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DEFAULT_SETTINGS } from '../lib/logic.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'choir-'));
 process.env.CHOIR_DATA = join(dir, 'db.json');
@@ -88,9 +89,9 @@ test('back-dated and feast attendance feed the leaderboard and occasions', async
   assert.equal(occ.events[0].event, 'Christmas');
   assert.equal(occ.events[0].children.find((c) => c.name === 'Anna Dias').attended, 1);
   const pub = (await j('/api/public?season=2026')).data;
-  assert.equal(pub.yearBoard[0].name, 'Anna Dias');
+  assert.equal(pub.yearBoard[0].name, 'Anna D.', 'the public board shows a first name and an initial');
   assert.equal(pub.yearBoard[0].points, 2);
-  assert.equal(pub.yearly[0].winners[0].name, 'Anna Dias');
+  assert.equal(pub.yearly[0].winners[0].name, 'Anna D.');
   assert.ok(!('prize' in pub));
 });
 
@@ -107,16 +108,16 @@ test('medical absence keeps a reason and is never a leave; going over the limit 
   assert.equal(detail.stats.leaves, 6);
   const sess = (await j('/api/teacher/session?date=2026-10-03&type=saturday')).data;
   assert.deepEqual(sess.pending.map((p) => p.name), ['Ben Fernandes']);
-  assert.ok((await j('/api/public?season=2026')).data.yearBoard.some((r) => r.name === 'Ben Fernandes'), 'still on the leaderboard');
+  assert.ok((await j('/api/public?season=2026')).data.yearBoard.some((r) => r.name === 'Ben F.'), 'still on the leaderboard');
   // teacher decides
   const keep = await j(`/api/teacher/children/${ben.id}/decision`, { method: 'PUT', body: { season: 2026, status: 'keep' } });
   assert.equal(keep.data.decision.status, 'keep');
   assert.equal((await j('/api/teacher/session?date=2026-10-03&type=saturday')).data.pending.length, 0);
   await j(`/api/teacher/children/${ben.id}/decision`, { method: 'PUT', body: { season: 2026, status: 'out' } });
-  assert.ok(!(await j('/api/public?season=2026')).data.yearBoard.some((r) => r.name === 'Ben Fernandes'), 'hidden only after the teacher says so');
+  assert.ok(!(await j('/api/public?season=2026')).data.yearBoard.some((r) => r.name === 'Ben F.'), 'hidden only after the teacher says so');
   assert.equal((await j(`/api/teacher/children/${ben.id}/decision`, { method: 'PUT', body: { status: 'banana' } })).status, 400);
   await j(`/api/teacher/children/${ben.id}/decision`, { method: 'PUT', body: { season: 2026, status: null } });
-  assert.ok((await j('/api/public?season=2026')).data.yearBoard.some((r) => r.name === 'Ben Fernandes'));
+  assert.ok((await j('/api/public?season=2026')).data.yearBoard.some((r) => r.name === 'Ben F.'));
 });
 
 test('teacher can add many children at once; duplicates and bad lines are skipped', async () => {
@@ -187,7 +188,7 @@ test('guests: added with an occasion, marked only there, kept off the main list,
   assert.equal((await mark(gita.id, { remarks: ['Well behaved'] })).status, 200);
   assert.equal((await mark(ben.id)).status, 400); // Ben was not picked for Easter
   assert.equal((await j('/api/teacher/mark', { method: 'PUT', body: { date: '2027-03-20', type: 'saturday', event: '', childId: gita.id, status: 'present' } })).status, 400);
-  assert.ok(!(await j('/api/public?season=2026')).data.yearBoard.some((x) => x.name === 'Gita Guest'));
+  assert.ok(!(await j('/api/public?season=2026')).data.yearBoard.some((x) => x.name === 'Gita G.'));
   const occ = (await j('/api/teacher/occasions?season=2026')).data.events.find((x) => x.event === 'Easter');
   assert.equal(occ.children.find((c) => c.name === 'Gita Guest').good, 1);
   // cannot drop someone who already has attendance; can drop a guest with none
@@ -196,7 +197,7 @@ test('guests: added with an occasion, marked only there, kept off the main list,
   // promote to the main group
   await j(`/api/teacher/children/${gita.id}`, { method: 'PATCH', body: { guest: false } });
   assert.ok((await j('/api/teacher/session?date=2027-03-20&type=saturday')).data.children.some((c) => c.name === 'Gita Guest'));
-  assert.ok((await j('/api/public?season=2026')).data.yearBoard.some((x) => x.name === 'Gita Guest'));
+  assert.ok((await j('/api/public?season=2026')).data.yearBoard.some((x) => x.name === 'Gita G.'));
 });
 
 test('one shared link: parents enter a short code (any case, with or without a dash)', async () => {
@@ -474,7 +475,7 @@ test('singing game: off by default, unlocks level by level, one daily try, board
   assert.equal((await game('/daily', { method: 'POST', code: anna.code, body: { results: round(6) } })).status, 403, 'daily is paid');
   const free = (await game('?level=1', { code: anna.code })).data;
   assert.deepEqual([free.paid, free.daily, free.weekly.board], [false, null, null]);
-  assert.deepEqual(free.pay, { price: 500, mobile: '', upi: '' });
+  assert.deepEqual(free.pay, { price: 500, mobile: '', upi: '', note: DEFAULT_SETTINGS.feeNote });
   assert.equal((await j('/api/teacher/settings', { method: 'PUT', body: { gamePayMobile: '98200 11111', gameUpi: 'choir@upi', gamePrice: 500 } })).status, 200);
   assert.equal((await j('/api/teacher/settings', { method: 'PUT', body: { gameUpi: 'not a upi id' } })).status, 400);
   assert.equal((await game('', { code: anna.code })).data.pay.upi, 'choir@upi');
@@ -489,7 +490,7 @@ test('singing game: off by default, unlocks level by level, one daily try, board
   const gb = await game('?level=1', { code: ben.code });
   assert.equal(gb.status, 200, JSON.stringify(gb.data));
   const board = gb.data.weekly.board;
-  assert.deepEqual(board.top.map((r) => [r.name, r.rank]), [['Anna Dias', 1], ['Ben Fernandes', 2]]);
+  assert.deepEqual(board.top.map((r) => [r.name, r.rank]), [['Anna D.', 1], ['Ben F.', 2]]);
   const text = JSON.stringify(board);
   for (const secret of ['Rose Lane', 'SECRET STREET', '98200', anna.code, ben.code]) assert.ok(!text.includes(secret), `leaked ${secret}`);
   const d1 = await game('/daily', { method: 'POST', code: anna.code, body: { results: round(6, 4) } });
@@ -497,7 +498,7 @@ test('singing game: off by default, unlocks level by level, one daily try, board
   const d2 = await game('/daily', { method: 'POST', code: anna.code, body: { results: round(6, 6) } });
   assert.equal(d2.data.already, true);
   assert.equal(d2.data.state.daily.mine.won, 4);
-  assert.equal(d2.data.state.daily.board.top[0].name, 'Anna Dias');
+  assert.equal(d2.data.state.daily.board.top[0].name, 'Anna D.');
   assert.equal(d2.data.state.daily.count, 6);
   await j('/api/teacher/settings', { method: 'PUT', body: { gameEnabled: false } });
   assert.equal((await game('', { code: anna.code })).status, 403);

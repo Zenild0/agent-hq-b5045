@@ -295,3 +295,6 @@ export function waLink(phone, text) {
   }
   return `https://wa.me/${d.length >= 8 ? d : ''}?text=${encodeURIComponent(text)}`;
 }
+
+// "Why is there a fee?" in the teacher's own words (edited in Settings), shown wherever a price is shown.
+export const feeNoteHtml = (note) => (note ? `<details class="fee-note"><summary>Why is there a fee?</summary><p>${esc(note)}</p></details>` : '');

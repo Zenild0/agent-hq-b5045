@@ -106,3 +106,16 @@ test('a parent says yes once in the app, the teacher can record or remove it, an
   const wrong = await fetch(`${base}/api/me/consent`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-code': 'NOPE' }, body: JSON.stringify({ agree: true }) });
   assert.equal(wrong.status, 401);
 });
+
+test('children and parents see a first name and an initial, the teacher sees the full name, and the fee note can be edited', async () => {
+  const { shortName } = await import('../lib/logic.js');
+  assert.equal(shortName('Maya Paid'), 'Maya P.');
+  assert.equal(shortName('  anna   maria  dsouza '), 'anna D.');
+  assert.equal(shortName('Zoe'), 'Zoe');
+  assert.equal(shortName(''), '');
+  const kid = (await j('/api/teacher/children', { method: 'POST', body: { name: 'Short Namer' } })).data;
+  assert.equal((await j('/api/teacher/children')).data.children.find((c) => c.id === kid.id).name, 'Short Namer', 'the teacher keeps the full name');
+  const s = (await j('/api/teacher/settings', { method: 'PUT', body: { feeNote: 'To run the server.' } })).data;
+  assert.equal(s.feeNote ?? (await j('/api/public')).data.settings.feeNote, 'To run the server.');
+  assert.equal((await j('/api/teacher/settings', { method: 'PUT', body: { feeNote: 'x'.repeat(500) } })).status, 400);
+});

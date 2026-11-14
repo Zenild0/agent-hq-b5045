@@ -1,7 +1,7 @@
 // Chord Book: search the teacher's chord sheets, keep your own songs, build set lists for an occasion and play them.
 // The teacher adds sheets to the library. A student's songs and set lists live on this phone (no account, no audio),
 // and the sheets of "My songs" are saved here too, so they open at practice even without a signal.
-import { api, esc } from './common.js';
+import { api, esc, feeNoteHtml } from './common.js';
 import { parseSheet, transposeChord, keyAfter, preferFlats, isChord, chordShape, chordSvg } from './chordpro.js';
 
 const SPEEDS = [0, 10, 18, 28, 42, 60]; // pixels a second; 0 is off
@@ -133,7 +133,7 @@ export function mountChordBook(host, { code, access }) {
     const pay = locked.pay;
     return `<div class="card gm-unlock"><h3 style="margin:0">${locked.trial?.started ? 'Your free trial has ended' : 'Free to try'} · unlock the Chord Book for ₹${esc(pay?.price ?? 500)} a year</h3>
       <div class="muted">${locked.count} song${locked.count === 1 ? '' : 's'} with chords are waiting. The same payment unlocks every training game too.</div>
-      ${pay?.mobile || pay?.upi ? `<div class="gm-pay">Pay your choir teacher${pay.mobile ? ` on <b>${esc(pay.mobile)}</b>` : ''}${pay.upi ? ` (UPI: <b>${esc(pay.upi)}</b>)` : ''}. They will unlock it for you.</div>` : '<div class="muted">Ask your choir teacher how to pay.</div>'}</div>
+      ${pay?.mobile || pay?.upi ? `<div class="gm-pay">Pay your choir teacher${pay.mobile ? ` on <b>${esc(pay.mobile)}</b>` : ''}${pay.upi ? ` (UPI: <b>${esc(pay.upi)}</b>)` : ''}. They will unlock it for you.</div>` : '<div class="muted">Ask your choir teacher how to pay.</div>'}${feeNoteHtml(pay?.note)}</div>
       ${mine().length ? '<div class="muted" style="margin:8px 0">Your saved songs are still on this phone:</div>' : ''}`;
   }
 
