@@ -840,3 +840,7 @@ body.cb-playing { overflow: hidden; }
 .vt-next { margin-top: 8px; padding: 8px 10px; border-radius: 12px; background: rgba(128,128,128,.14); }
 .vt-fine { margin: 14px 2px; font-size: .75rem; }
 .vt-date { font-size: .8rem; }
+
+dialog.consent { max-width: 460px; width: calc(100vw - 24px); border: 0; border-radius: 22px; padding: 18px; background: var(--card); color: var(--ink); }
+dialog.consent::backdrop { background: rgba(10,7,32,.8); }
+.cs-box { margin: 8px 0; padding: 10px 12px; border-radius: 14px; background: rgba(128,128,128,.12); font-size: .9rem; line-height: 1.45; }

@@ -377,12 +377,40 @@ async function loadMe() {
     childView();
     drawHome();
     drawBoard();
+    if (!me.consent) askConsent();
   } catch (e) {
     me = null;
     if (e.status === 401) store.set('choir-code', '');
     code = '';
     codeForm(e.message);
   }
+}
+
+// A parent or guardian says yes once, on the child's phone, before the child's own pages open.
+function askConsent() {
+  if (document.getElementById('consentDlg')) return;
+  const first = esc((me.name || 'your child').split(' ')[0]);
+  const d = document.createElement('dialog');
+  d.id = 'consentDlg'; d.className = 'consent';
+  d.innerHTML = `
+    <h2 style="margin:0">👋 A quick check for a grown-up</h2>
+    <p>${first} is a child, so the choir asks a parent or guardian to say yes before ${first} uses this app.</p>
+    <div class="cs-box"><b>What the app keeps</b><br>${first}'s name, class, photo (only if you add one), attendance, the teacher's remarks, points, and practice scores (time, accuracy, XP). Phone numbers and address only if you give them to the teacher.</div>
+    <div class="cs-box"><b>Who can see it</b><br>The choir teacher. Other choir members can see ${first}'s name, photo and points on the leaderboards.</div>
+    <div class="cs-box"><b>What it never does</b><br>No ads. No tracking. Nothing is sold. ${first}'s voice is only listened to live to check the note. It is <b>never recorded or saved</b>.</div>
+    <p class="muted" style="margin:6px 0">You can ask the teacher at any time to show, fix or delete ${first}'s information.</p>
+    <label class="chk"><input type="checkbox" id="csTick"> I am ${first}'s parent or guardian, and I agree.</label>
+    <div class="row" style="margin-top:10px"><button class="btn primary" id="csGo" disabled>Continue</button><button class="btn" id="csNo">Not now</button></div>
+    <div class="muted" id="csMsg" aria-live="polite"></div>`;
+  document.body.appendChild(d);
+  d.addEventListener('cancel', (e) => e.preventDefault()); // it cannot be dismissed with the Escape key
+  d.showModal();
+  d.querySelector('#csTick').addEventListener('change', (e) => { d.querySelector('#csGo').disabled = !e.target.checked; });
+  d.querySelector('#csGo').addEventListener('click', async () => {
+    try { const r = await api('me/consent', { method: 'POST', code, body: { agree: true } }); me.consent = r.consent; d.close(); d.remove(); }
+    catch (err) { d.querySelector('#csMsg').textContent = `⚠️ ${err.message}`; }
+  });
+  d.querySelector('#csNo').addEventListener('click', () => { store.set('choir-code', ''); location.reload(); }); // signs out; the public pages still work
 }
 
 function childView(msg = '') {

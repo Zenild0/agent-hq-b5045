@@ -225,7 +225,7 @@ function childDetail(child, season, { teacher = false } = {}) {
   const monthBoard = scoreboard(db, season, mr.start, mr.end, { hideOut: true });
   return {
     ...profileOf(child), season, seasonLabel: seasonLabel(season), settings: db.settings,
-    stats: childStats(db, child.id, season), history, occasionPractices: upcomingOccasionPractices(child.id), guest: Boolean(child.guest), showSchedule: Boolean(child.showSchedule),
+    stats: childStats(db, child.id, season), history, occasionPractices: upcomingOccasionPractices(child.id), guest: Boolean(child.guest), showSchedule: Boolean(child.showSchedule), consent: child.consent ?? null,
     ...(child.guest ? { events: eventViewsFor(child) } : {}),
     ...(teacher ? { remarkLog: remarkLogFor(child), ...gameAccess(child.id) } : {}),
     yearRank: yearBoard.find((r) => r.id === child.id)?.rank ?? null, yearRanked: yearBoard.length,
@@ -643,7 +643,7 @@ function createChildren(text, { standard = '', joinedYear = null, guest = false 
   return { added, skipped };
 }
 
-const childOut = (c) => ({ ...profileOf(c), code: c.code, active: c.active, guest: Boolean(c.guest), gamePaid: isPaid(store.db.game.kids[c.id], istDate()) });
+const childOut = (c) => ({ ...profileOf(c), code: c.code, active: c.active, guest: Boolean(c.guest), consent: Boolean(c.consent), gamePaid: isPaid(store.db.game.kids[c.id], istDate()) });
 
 // Teacher-chosen code (e.g. 1001 or CC01): 3-8 letters/digits, unique.
 function customCode(value, child) {
@@ -1548,6 +1548,7 @@ async function teacherApi(req, res, q, parts) {
     if (req.method === 'PATCH' && id && !action) {
       applyProfile(child, body, { teacher: true });
       if ('active' in body) child.active = Boolean(body.active);
+      if ('consent' in body) child.consent = body.consent ? { on: today(), by: 'teacher', v: 1 } : null; // the teacher can record a paper form, or take it back
       if (body.guest === false) child.guest = false; // promote a guest to the main group
       if ('code' in body) child.code = customCode(body.code, child);
       store.save();
@@ -1607,6 +1608,13 @@ async function api(req, res, url) {
     if (req.method === 'POST' && b === 'chords' && parts[2] === 'request') return send(res, 200, requestChord(child, await readBody(req, 2_000)));
     if (req.method === 'GET' && b === 'chords') return send(res, 200, parts[2] ? chordSong(child, parts[2]) : chordLibrary(child));
     if (req.method === 'POST' && b === 'xp') return send(res, 200, xpReport(child, await readBody(req, 5_000)));
+    if (req.method === 'POST' && b === 'consent') { // a parent or guardian says yes, once, on this phone
+      const body = await readBody(req, 2_000);
+      if (body.agree !== true) throw new HttpError(400, 'Please tick the box to agree');
+      child.consent = { on: today(), by: 'app', v: 1 };
+      store.save();
+      return send(res, 200, { consent: child.consent });
+    }
     if (req.method === 'PUT' && b === 'schedule') { // a guest chooses whether to see the main choir's practice times
       const body = await readBody(req);
       child.showSchedule = Boolean(body.show);

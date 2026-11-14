@@ -84,3 +84,25 @@ test('an occasion keeps its own list of practice dates and times, separate from 
   const left = (await j(`/api/teacher/occasions/${ev.id}/practices`, { method: 'DELETE', body: { pid: first.id } })).data.practices;
   assert.equal(left.length, 2);
 });
+
+test('a parent says yes once in the app, the teacher can record or remove it, and the badge follows', async () => {
+  const kid = (await j('/api/teacher/children', { method: 'POST', body: { name: 'Consent Kid' } })).data;
+  const me = async () => (await fetch(`${base}/api/me`, { headers: { 'x-code': kid.code } }).then((r) => r.json()));
+  assert.equal((await me()).consent, null, 'nothing is agreed by default');
+  const row = async () => (await j('/api/teacher/children')).data.children.find((c) => c.id === kid.id);
+  assert.equal((await row()).consent, false);
+  const post = (body) => fetch(`${base}/api/me/consent`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-code': kid.code }, body: JSON.stringify(body) });
+  assert.equal((await post({})).status, 400, 'the box must be ticked');
+  assert.equal((await post({ agree: 'yes' })).status, 400, 'only a real yes counts');
+  assert.equal((await post({ agree: true })).status, 200);
+  const c = (await me()).consent;
+  assert.equal(c.by, 'app');
+  assert.match(c.on, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal((await row()).consent, true);
+  assert.equal((await j(`/api/teacher/children/${kid.id}`, { method: 'PATCH', body: { consent: false } })).data.consent, false);
+  assert.equal((await me()).consent, null);
+  await j(`/api/teacher/children/${kid.id}`, { method: 'PATCH', body: { consent: true } });
+  assert.equal((await me()).consent.by, 'teacher', 'a paper form recorded by the teacher');
+  const wrong = await fetch(`${base}/api/me/consent`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-code': 'NOPE' }, body: JSON.stringify({ agree: true }) });
+  assert.equal(wrong.status, 401);
+});

@@ -887,6 +887,7 @@ async function loadChildren() {
       <div class="grow"><button class="link">${esc(c.name)}</button>
         <div class="muted">${c.standard ? `Std ${esc(c.standard)}` : 'No standard yet'}${c.joinedYear ? ` · joined ${c.joinedYear}` : ''}</div></div>
       ${c.active ? '' : '<span class="badge">left choir</span>'}
+      ${c.consent ? '' : '<span class="badge warn" title="A parent has not yet said yes in the app">no consent</span>'}
       ${c.gamePaid ? '<span class="badge ok" title="Full Vocals game unlocked">🎤 unlocked</span>' : ''}
       ${c.guest ? `<button class="btn small" data-promote="${esc(c.id)}">⬆ Move to main group</button>` : ''}
     </div>`;
@@ -1128,6 +1129,9 @@ async function openChild(id) {
           <button class="btn small danger" id="newCode">Make a new code</button></div>
         <div class="muted">Only you can see this code. Give it privately to this child's parent. Make a new code if it was shared by mistake.</div>
       </div>
+      <h3 style="margin-top:20px">Parent consent</h3>
+      <div class="card row between" style="margin-top:6px"><span>${d.consent ? `✅ Given on ${esc(fmtDate(d.consent.on))} (${d.consent.by === 'teacher' ? 'paper form, recorded by you' : 'in the app'})` : '⚠️ Not given yet. The parent is asked the first time the child opens the app.'}</span>
+        <button class="btn small" id="consentBtn">${d.consent ? 'Remove' : 'Mark as given'}</button></div>
       <h3 style="margin-top:20px">Vocals game</h3>
       <div class="card row between" style="margin-top:6px">
         <span>${d.gamePaid ? `✅ Full game unlocked until ${esc(fmtDate(d.gamePaidUntil))}` : d.gameExpired ? `⌛ The year ended on ${esc(fmtDate(d.gamePaidUntil))}. Renew when they pay again` : '🔒 Free version only (Level 1 and 3 Warm-up sessions)'}</span>
@@ -1145,6 +1149,7 @@ async function openChild(id) {
   if (!dlg.open) dlg.showModal();
   $('#close').addEventListener('click', () => dlg.close());
   const gameSet = (paid) => run(async () => { await call(`teacher/children/${id}/game`, { method: 'PUT', body: { paid } }); await openChild(id); });
+  $('#consentBtn')?.addEventListener('click', () => run(async () => { await call(`teacher/children/${id}`, { method: 'PATCH', body: { consent: !d.consent } }); await openChild(id); }));
   $('#gameUnlock')?.addEventListener('click', () => gameSet(true));
   $('#gameLock')?.addEventListener('click', () => gameSet(false));
   $('#warmReset')?.addEventListener('click', () => run(async () => { await call(`teacher/children/${id}/game`, { method: 'PUT', body: { resetWarmups: true } }); await openChild(id); }));
