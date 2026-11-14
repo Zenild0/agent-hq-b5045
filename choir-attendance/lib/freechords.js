@@ -3,7 +3,9 @@
 // and edit them afterwards. The chords are simple, common ones: check them against your own hymn book.
 const S = (id, title, key, category, body, kind = 'hymn') => ({ id, title, key, kind, category, body: body.trim() });
 
-export const FREE_CHORDS = [
+import { MORE_CHORDS } from './freechords2.js';
+
+const BASE_CHORDS = [
   S('amazing-grace', 'Amazing Grace', 'G', 'Recessional', `
 {Verse 1}
 [G]Amazing grace, how [G7]sweet the [C]sound,
@@ -541,3 +543,5 @@ With a [G]moo-moo here, and a [C]moo-moo there,
 [G]Here a moo, there a moo, [D]everywhere a moo-moo,
 [G]Old MacDonald had a farm, E-I-E-I-[D]O. [G]`, 'song'),
 ];
+
+export const FREE_CHORDS = [...BASE_CHORDS, ...MORE_CHORDS];
