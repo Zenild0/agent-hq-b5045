@@ -174,5 +174,16 @@ test('holding a note for 2.9 seconds is not enough, 3 seconds is', () => {
   assert.ok(feedFor(tr, 2916, 3100, n).done, 'done once three seconds have passed');
   tr = makeTracker(ch);
   feedFor(tr, 0, 2000, n);
-  assert.ok(feedFor(tr, 2016, 2400, n + 1).hold < 0.2, 'drifting a whole semitone off starts the three seconds again');
+  assert.ok(feedFor(tr, 2016, 2700, n + 1).hold < 0.2, 'drifting a whole semitone off for more than half a second starts the three seconds again');
+});
+
+test('a long hold forgives a breath or wobble of under half a second, a short note does not', () => {
+  const long = { targets: [7], tol: 20, hold: 3000 };
+  const tr = makeTracker(long);
+  feedFor(tr, 0, 1500, 67); feedFor(tr, 1516, 1900, null); // a 0.4 s dip in the middle of a 3 s hold
+  assert.ok(tr.feed(1916, 67).hold > 0.5, 'the hold carries on');
+  assert.equal(feedFor(tr, 1932, 3300, 67).done, true);
+  const gone = makeTracker(long);
+  feedFor(gone, 0, 1500, 67); feedFor(gone, 1516, 2200, null); // 0.7 s of nothing is a real stop
+  assert.ok(gone.feed(2216, 67).hold < 0.1);
 });

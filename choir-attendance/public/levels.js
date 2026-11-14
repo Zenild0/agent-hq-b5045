@@ -137,9 +137,11 @@ export function centsTo(midiFloat, pc) {
 // A note counts when it has been held in range for `hold` ms. Repeated notes need a short break between them.
 // Two things keep it fair to real voices (which wobble: a natural vibrato is about 20 cents each way):
 //  - it judges the MIDDLE pitch over the last third of a second, i.e. the centre of the wobble, not each single instant;
-//  - a short drop-out (a breath, a consonant, one unclear frame) of up to 150 ms does not restart the hold.
+//  - a short drop-out (a breath, a consonant, one unclear frame) of up to 150 ms (450 ms on a long hold) does not restart the hold.
 export const SMOOTH_MS = 350;
 export const GRACE_MS = 150;
+export const LONG_GRACE_MS = 450; // a note held for 2 s or more forgives a longer dip: a breath, a wobble, a few unclear readings
+const graceFor = (hold) => (hold >= 2000 ? LONG_GRACE_MS : GRACE_MS);
 const signedSemis = (midi, pc) => ((((midi - pc) % 12) + 18) % 12) - 6; // -6..+6 semitones from the note, any octave
 
 export function makeTracker(ch) {
@@ -170,7 +172,7 @@ export function makeTracker(ch) {
             if (step >= ch.targets.length) doneAt = now;
             else { needBreak = ch.targets[step] === ch.targets[step - 1]; hitAt = 0; clearSince = 0; win = []; lastIn = 0; }
           }
-        } else if (!hitAt || now - lastIn > GRACE_MS) hitAt = 0; // only a real miss restarts the hold
+        } else if (!hitAt || now - lastIn > graceFor(ch.hold)) hitAt = 0; // only a real miss restarts the hold
       }
       const warm = cents === Infinity ? 0 : Math.max(0, 1 - cents / 150);
       return { step, steps: ch.targets.length, hold: hitAt ? Math.min(1, (now - hitAt) / ch.hold) : 0, warm, done: Boolean(doneAt), justAdvanced, cents };
