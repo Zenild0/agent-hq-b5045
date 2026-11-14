@@ -113,7 +113,7 @@ export function mountChordBook(host, { code, access }) {
   const row = (s, inMine) => `
     <div class="cb-row" data-song="${esc(s.id)}">
       <span class="cb-key">${esc(s.key || '–')}</span>
-      <span class="grow"><b>${esc(s.title)}</b><span class="cb-chs">${esc((s.chords || chordsOf(s, 0, 0).slice(0, 8)).join('  '))}</span></span>
+      <span class="grow"><b>${esc(s.title)}</b>${s.rel && Date.now() - s.rel < 7 * 86400000 ? ' <span class="vt-dot">NEW</span>' : ''}<span class="cb-chs">${esc((s.chords || chordsOf(s, 0, 0).slice(0, 8)).join('  '))}</span></span>
       ${inMine === null ? '' : inMine ? '<button class="btn small cb-in" data-act="open" aria-label="Open">✓ Added</button>' : `<button class="btn small primary" data-act="add" data-id="${esc(s.id)}">＋ Add</button>`}
     </div>`;
   const wasAsked = (t) => (lib?.requested || []).some((x) => x.toLowerCase() === t.toLowerCase());

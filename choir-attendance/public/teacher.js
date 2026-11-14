@@ -155,14 +155,27 @@ const sheetPreview = (body) => parseSheet(normaliseSheet(body)).map((l) => (l.ki
 
 let chordTab = 'mine'; // mine | free
 async function loadChordBook() {
-  const [r, pub, free, reqs] = await Promise.all([call('teacher/chords'), call('public'), call('teacher/free-chords'), call('teacher/chord-requests')]);
+  const [r, pub, free, reqs, sq] = await Promise.all([call('teacher/chords'), call('public'), call('teacher/free-chords'), call('teacher/chord-requests'), call('teacher/song-queue')]);
   const on = pub.settings?.chordsEnabled;
   const todo = free.songs.filter((f) => !f.inLibrary).length;
   const headTop = `
     <div class="card"><div class="row between"><div><h2 style="margin:0">Chord Book</h2><div class="muted">${r.songs.length} song${r.songs.length === 1 ? '' : 's'} in the library. Students search these, add them to their own songs and build set lists.</div></div>
       <button class="btn primary" id="addChord">＋ Add song</button></div>
       <div class="alert ${on ? 'ok' : 'warn'}" style="margin-top:10px">${on ? 'Switched on for parents. It is part of the paid version, with the same free trial as the games.' : 'Switched off for parents. Add your songs first, then switch it on in More → Settings.'}</div></div>`;
-  const head = headTop;
+  const nextTxt = sq.next ? new Date(sq.next).toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : '';
+  const queueCard = `
+    <details class="card" id="sqCard"${sq.waiting || sq.on ? ' open' : ''}><summary><b>Songbook release</b><span class="muted"> · ${sq.waiting} waiting · ${sq.released} released${sq.on ? ` · next ${esc(nextTxt)}` : ''}</span></summary>
+      <div class="muted" style="margin:6px 0">Load your whole songbook once. The songs are then released to the students <b>${sq.perWeek} a week</b>, every Friday at 6 pm, in the order you load them. New ones are marked <b>NEW</b> for a week.</div>
+      <div class="muted" style="margin-bottom:8px">How: export your songs from your song app as ChordPro or text (one file with many songs is fine, or many files; several files are queued oldest first). Choose the file(s) below or paste the text. Songs with no chords are skipped. Use only songs you are allowed to share with the choir.</div>
+      <label class="field">Files<input type="file" id="sqFiles" multiple accept=".txt,.cho,.crd,.chordpro,.chopro,.pro,.md,text/plain"></label>
+      <label class="field">…or paste songs<textarea id="sqText" rows="4" placeholder="{title: Amazing Grace}&#10;{key: G}&#10;[G]Amazing [C]grace…&#10;{new_song}&#10;{title: Next song}…"></textarea></label>
+      <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn" id="sqAdd">＋ Add to queue</button>
+        ${sq.on ? '<button class="btn" id="sqPause">⏸ Pause weekly release</button>' : `<button class="btn primary" id="sqStart"${sq.waiting ? '' : ' disabled'}>▶ Start: first ${sq.perWeek} now, then every Friday</button>`}
+        <button class="btn" id="sqNow"${sq.waiting ? '' : ' disabled'}>Release ${sq.perWeek} now</button>${sq.waiting ? '<button class="btn" id="sqClear">Clear queue</button>' : ''}</div>
+      <div id="sqMsg" class="muted" aria-live="polite" style="margin-top:6px"></div>
+      ${sq.waiting ? `<div class="muted" style="margin-top:8px">Next in line:</div>${sq.queue.map((q, i) => `<div class="row between" style="border-top:1px solid var(--line);padding:4px 0"><span>${i + 1}. ${esc(q.title)}${q.key ? ` <span class="muted">(${esc(q.key)})</span>` : ''}</span><button class="ibtn" data-sq-del="${esc(q.id)}" aria-label="Remove ${esc(q.title)} from the queue">✕</button></div>`).join('')}${sq.waiting > sq.queue.length ? `<div class="muted">…and ${sq.waiting - sq.queue.length} more</div>` : ''}` : ''}
+    </details>`;
+  const head = headTop + queueCard;
   const tabsHtml = `<div class="cb-tabs" role="tablist"><button role="tab" data-ctab="mine" class="${chordTab === 'mine' ? 'on' : ''}">My library · ${r.songs.length}</button><button role="tab" data-ctab="free" class="${chordTab === 'free' ? 'on' : ''}">Free library · ${free.songs.length}</button></div>`;
   const mineHtml = `
     <div id="chordList">${r.songs.map((s) => `
@@ -187,6 +200,25 @@ async function loadChordBook() {
     <div id="allRes" hidden></div><div id="cbTabsBox">${tabsHtml}${chordTab === 'mine' ? mineHtml : freeHtml}</div>`;
   $('#chordbook').querySelectorAll('[data-ctab]').forEach((b) => b.addEventListener('click', () => { chordTab = b.dataset.ctab; run(loadChordBook); }));
   $('#addChord').addEventListener('click', () => openChordEditor(null, r));
+  const sqMsg = (t) => { $('#sqMsg').textContent = t; };
+  $('#sqAdd').addEventListener('click', () => run(async () => {
+    const files = [...($('#sqFiles').files ?? [])].sort((x, y) => x.lastModified - y.lastModified);
+    const texts = [];
+    for (const f of files) texts.push(await f.text());
+    if ($('#sqText').value.trim()) texts.push($('#sqText').value);
+    if (!texts.length) { sqMsg('Choose a file or paste some songs first.'); return; }
+    let added = 0, dup = 0; const skipped = [];
+    for (const text of texts) { const q = await call('teacher/song-queue', { method: 'POST', body: { text } }); added += q.added; dup += q.duplicates; skipped.push(...q.skipped); }
+    flash(`${added} song${added === 1 ? '' : 's'} queued`, 'ok');
+    await loadChordBook();
+    $('#sqCard').open = true;
+    $('#sqMsg').textContent = `${added} queued${dup ? `, ${dup} already there` : ''}${skipped.length ? `. Skipped ${skipped.length}: ${skipped.slice(0, 5).map((s) => `${s.title} (${s.reason})`).join('; ')}${skipped.length > 5 ? '…' : ''}` : ''}.`;
+  }));
+  $('#sqStart')?.addEventListener('click', () => run(async () => { const s = await call('teacher/song-queue/start', { method: 'POST', body: { perWeek: sq.perWeek } }); flash(`${s.first} songs released. The next batch comes on Friday at 6 pm.`, 'ok'); await loadChordBook(); }));
+  $('#sqPause')?.addEventListener('click', () => run(async () => { await call('teacher/song-queue/pause', { method: 'POST', body: {} }); await loadChordBook(); }));
+  $('#sqNow')?.addEventListener('click', () => run(async () => { const s = await call('teacher/song-queue/release', { method: 'POST', body: {} }); flash(`${s.first} songs released`, 'ok'); await loadChordBook(); }));
+  $('#sqClear')?.addEventListener('click', () => run(async () => { if (!confirm('Remove every song still waiting in the queue? Songs already released stay in the Chord Book.')) return; await call('teacher/song-queue/all', { method: 'DELETE' }); await loadChordBook(); }));
+  $('#chordbook').querySelectorAll('[data-sq-del]').forEach((b) => b.addEventListener('click', () => run(async () => { await call(`teacher/song-queue/${b.dataset.sqDel}`, { method: 'DELETE' }); await loadChordBook(); })));
   // one search box for everything: your own songs, the free library, and a way to add what is not found
   $('#allQ').addEventListener('input', (e) => {
     const raw = e.target.value.trim(), q = raw.toLowerCase();

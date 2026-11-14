@@ -14,6 +14,7 @@ import { openStore, newCode } from './lib/store.js';
 import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, setPaid, resetWarmups, resetAllWarmups, grantTrialToAll, isPaid, hasFull, trialOf, startTrial, TRIAL_DAYS, paidUntilOf, daysLeft, wasPaid, warmupsLeft, useWarmup, GameError, PaywallError } from './lib/game.js';
 import { FREE_CHORDS } from './lib/freechords.js';
 import { VOICE_TIPS, tipsAt, releaseAt, nextFridayEvening } from './lib/voicetips.js';
+import { parseSongs } from './lib/songimport.js';
 import { isChord, chordsUsed, normaliseSheet, detectKey } from './public/chordpro.js';
 import { LEVELS, DAILY_COUNT, STAGES, stageSpec, isTimed } from './public/levels.js';
 import { istNow, isDate, isTime, toMinutes, scheduleDays, nextPractice, shiftDate, rulesOf } from './lib/schedule.js';
@@ -792,7 +793,7 @@ function addVoiceTip(body) {
 // ---- Chord Book: chord sheets the teacher adds; students keep their own library and set lists on their phone ----
 
 const CHORD_KINDS = ['hymn', 'song'];
-const chordSummary = (c) => ({ id: c.id, title: c.title, key: c.key, kind: c.kind, category: c.category, hymnId: c.hymnId || '', chords: chordsUsed(c.body).slice(0, 8), v: c.updated });
+const chordSummary = (c) => ({ id: c.id, title: c.title, key: c.key, kind: c.kind, category: c.category, hymnId: c.hymnId || '', chords: chordsUsed(c.body).slice(0, 8), v: c.updated, rel: c.releasedAt || 0 });
 
 function applyChord(c, body) {
   if ('title' in body) c.title = text(body.title, 80, 'Title');
@@ -848,6 +849,70 @@ function saveChord(c, body) {
   return { ...chordSummary(item), body: item.body };
 }
 
+// ---- the song queue: a whole songbook is loaded once, then released to the Chord Book a few songs every Friday evening ----
+const WEEK = 7 * 86400000;
+function releaseBatch(n, now = Date.now()) {
+  const { db } = store; let done = 0;
+  while (done < n && db.chordQueue.length) {
+    const q = db.chordQueue.shift();
+    if (db.chords.some((c) => c.kind === 'song' && c.title.toLowerCase() === q.title.toLowerCase())) continue; // already there by hand
+    db.chords.push({ id: randomUUID().slice(0, 8), title: q.title, key: q.key || detectKey(q.body), kind: 'song', category: q.category || '', hymnId: '', body: q.body, updated: now, addedOn: today(), releasedAt: now });
+    db.chordRequests = db.chordRequests.filter((r) => r.key !== titleKey(q.title)); // a requested song is answered the moment it is released
+    done += 1;
+  }
+  db.songDrip.released += done;
+  return done;
+}
+// Runs whenever the Chord Book is opened and once an hour: releases every batch that has come due.
+function dripTick(now = Date.now()) {
+  const d = store.db.songDrip;
+  if (!d.on) return;
+  let changed = false;
+  while (d.next && now >= d.next && store.db.chordQueue.length) { releaseBatch(d.perWeek, d.next); d.next += WEEK; changed = true; }
+  if (!store.db.chordQueue.length && now >= d.next) { d.next = nextFridayEvening(now); changed = true; } // nothing waiting: look again next Friday
+  if (changed) store.save();
+}
+export const songDrip = { tick: (now) => dripTick(now) }; // exported so a test can move the clock
+setInterval(() => { try { dripTick(); } catch { /* try again next hour */ } }, 3_600_000).unref();
+
+const queueView = () => {
+  const { db } = store, d = db.songDrip;
+  return { on: d.on, perWeek: d.perWeek, next: d.on && d.next ? new Date(d.next).toISOString() : null, released: d.released, waiting: db.chordQueue.length, queue: db.chordQueue.slice(0, 40).map((q) => ({ id: q.id, title: q.title, key: q.key })) };
+};
+function queueSongs(body) {
+  const { db } = store;
+  const text = String(body.text ?? '');
+  if (!text.trim()) throw new HttpError(400, 'Paste or choose the songs first');
+  const { songs, skipped } = parseSongs(text);
+  const added = [], dup = [];
+  const have = new Set([...db.chords.filter((c) => c.kind === 'song'), ...db.chordQueue].map((c) => c.title.toLowerCase()));
+  for (const s of songs) {
+    if (db.chordQueue.length >= 1500) { skipped.push({ title: s.title, reason: 'the queue is full (1,500 songs)' }); continue; }
+    if (s.body.length > 12000) { skipped.push({ title: s.title, reason: 'too long' }); continue; }
+    if (have.has(s.title.toLowerCase())) { dup.push(s.title); continue; }
+    have.add(s.title.toLowerCase());
+    const item = { id: randomUUID().slice(0, 8), title: s.title, key: s.key, category: text_(body.category), body: s.body };
+    db.chordQueue.push(item); added.push(s.title);
+  }
+  store.save();
+  return { added: added.length, duplicates: dup.length, skipped, ...queueView() };
+}
+const text_ = (v) => String(v ?? '').trim().slice(0, 40);
+function queueAction(id, body) {
+  const d = store.db.songDrip;
+  if (id === 'start') {
+    d.perWeek = Math.min(50, Math.max(1, Math.round(Number(body.perWeek) || 10)));
+    d.on = true;
+    const first = body.now === false ? 0 : releaseBatch(d.perWeek);
+    d.next = nextFridayEvening();
+    store.save();
+    return { first, ...queueView() };
+  }
+  if (id === 'pause') { d.on = false; store.save(); return queueView(); }
+  if (id === 'release') { const n = releaseBatch(d.perWeek); store.save(); return { first: n, ...queueView() }; }
+  throw new HttpError(404, 'Unknown action');
+}
+
 // The starter library of public-domain chord sheets: the teacher saves any of them with one tap.
 const hasChordTitle = (f) => store.db.chords.some((c) => c.kind === f.kind && c.title.toLowerCase() === f.title.toLowerCase());
 const freeChordList = () => FREE_CHORDS.map((f) => ({ id: f.id, title: f.title, key: f.key, kind: f.kind, category: f.category, chords: chordsUsed(f.body).slice(0, 8), body: f.body, inLibrary: hasChordTitle(f) }));
@@ -860,6 +925,7 @@ function saveFreeChord(id) {
 
 function chordLibrary(child) {
   const { db } = store;
+  dripTick();
   if (!db.settings.chordsEnabled) throw new HttpError(403, 'The Chord Book is switched off right now');
   const acc = accessFor(child);
   const list = db.chords.slice().sort((a, b) => a.title.localeCompare(b.title));
@@ -1453,6 +1519,7 @@ async function teacherApi(req, res, q, parts) {
       });
     }
     if (b === 'guests') return send(res, 200, guestsView());
+    if (b === 'song-queue') { dripTick(); return send(res, 200, queueView()); }
     if (b === 'free-chords') return send(res, 200, { songs: freeChordList() });
     if (b === 'voice-tips') return send(res, 200, voiceTipsForTeacher());
     if (b === 'chord-requests') return send(res, 200, { requests: chordRequestList() });
@@ -1473,7 +1540,7 @@ async function teacherApi(req, res, q, parts) {
   }
   if (req.method === 'POST' && b === 'restore') return send(res, 200, await restoreBackup(req));
 
-  const body = await readBody(req, (b === 'children' && action === 'photo') || (b === 'profile' && id === 'photo') ? 1_500_000 : 100_000);
+  const body = await readBody(req, (b === 'children' && action === 'photo') || (b === 'profile' && id === 'photo') ? 1_500_000 : (b === 'song-queue' && req.method === 'POST' && !id) ? 3_000_000 : 100_000);
   if (b === 'hymn-categories') return send(res, req.method === 'POST' ? 201 : 200, hymnCategoryApi(req.method, id, body));
   if (req.method === 'PUT' && b === 'profile' && !id) return send(res, 200, updateTeacherProfile(body));
   if (req.method === 'POST' && b === 'profile' && id === 'photo') { await savePhoto(teacherProfile(), body.image, null); return send(res, 200, profileView()); }
@@ -1485,6 +1552,11 @@ async function teacherApi(req, res, q, parts) {
     if (req.method === 'DELETE' && id) { store.db.voiceTips = store.db.voiceTips.filter((t) => t.id !== id); store.save(); return send(res, 200, voiceTipsForTeacher()); }
   }
   if (req.method === 'DELETE' && b === 'chord-requests' && id) { store.db.chordRequests = store.db.chordRequests.filter((r) => r.id !== id); store.save(); return send(res, 200, { requests: chordRequestList() }); }
+  if (b === 'song-queue') {
+    if (req.method === 'POST' && !id) return send(res, 201, queueSongs(body));
+    if (req.method === 'POST' && id) return send(res, 200, queueAction(id, body));
+    if (req.method === 'DELETE') { store.db.chordQueue = id && id !== 'all' ? store.db.chordQueue.filter((q) => q.id !== id) : []; store.save(); return send(res, 200, queueView()); }
+  }
   if (req.method === 'POST' && b === 'free-chords') {
     if (id === 'all') { // save every sheet that is not in the Chord Book yet
       const todo = FREE_CHORDS.filter((f) => !hasChordTitle(f));

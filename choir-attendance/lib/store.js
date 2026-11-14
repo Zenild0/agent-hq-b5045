@@ -71,7 +71,7 @@ function migrate(db) {
 }
 
 // Tiny JSON-file store. Writes are atomic (tmp file + rename).
-const blank = () => ({ settings: { ...DEFAULT_SETTINGS }, children: [], sessions: {}, occasions: [], hymns: [], chords: [], chordRequests: [], voiceTips: [], codesShortened: false, latePolicyV2: true, schedule: defaultSchedule(istNow().date), game: emptyGame() });
+const blank = () => ({ settings: { ...DEFAULT_SETTINGS }, children: [], sessions: {}, occasions: [], hymns: [], chords: [], chordQueue: [], songDrip: { on: false, perWeek: 10, next: 0, released: 0 }, chordRequests: [], voiceTips: [], codesShortened: false, latePolicyV2: true, schedule: defaultSchedule(istNow().date), game: emptyGame() });
 const withDefaults = (saved) => ({ ...blank(), ...saved, settings: { ...DEFAULT_SETTINGS, ...saved.settings } });
 
 export function openStore(file) {
