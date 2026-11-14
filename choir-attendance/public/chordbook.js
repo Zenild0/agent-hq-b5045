@@ -133,7 +133,7 @@ export function mountChordBook(host, { code, access }) {
     const pay = locked.pay;
     return `<div class="card gm-unlock"><h3 style="margin:0">${locked.trial?.started ? 'Your free trial has ended' : 'Free to try'} · unlock the Chord Book for ₹${esc(pay?.price ?? 500)} a year</h3>
       <div class="muted">${locked.count} song${locked.count === 1 ? '' : 's'} with chords are waiting. The same payment unlocks every training game too.</div>
-      ${pay?.mobile || pay?.upi ? `<div class="gm-pay">Pay your choir teacher${pay.mobile ? ` on <b>${esc(pay.mobile)}</b>` : ''}${pay.upi ? ` (UPI: <b>${esc(pay.upi)}</b>)` : ''}. They will unlock it for you.</div>` : '<div class="muted">Ask your choir teacher how to pay.</div>'}${feeNoteHtml(pay?.note)}</div>
+      ${pay?.mobile || pay?.upi ? `<div class="gm-pay"><span>Pay your choir teacher${pay.mobile ? ` on <b>${esc(pay.mobile)}</b>` : ''}${pay.upi ? ` (UPI: <b>${esc(pay.upi)}</b>)` : ''}. They will unlock it for you.</span></div>` : '<div class="muted">Ask your choir teacher how to pay.</div>'}${feeNoteHtml(pay?.note)}</div>
       ${mine().length ? '<div class="muted" style="margin:8px 0">Your saved songs are still on this phone:</div>' : ''}`;
   }
 

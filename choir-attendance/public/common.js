@@ -51,8 +51,14 @@ export function headerHtml(title, subtitle = '') {
     </div></header>`;
 }
 
-export const footerHtml = () =>
-  `<footer class="site-foot">Created with ♪ by <b>Zenildo Dias</b></footer>`;
+// The footer also says which version of the app is on this screen, so "I see no change" can be answered at a glance.
+export const footerHtml = () => {
+  setTimeout(() => fetch('/sw.js', { cache: 'no-store' }).then((r) => r.text()).then((t) => {
+    const v = /choir-app-v(\d+)/.exec(t)?.[1];
+    for (const el of document.querySelectorAll('.app-ver')) el.textContent = v ? ` · app v${v}` : '';
+  }).catch(() => {}), 400);
+  return `<footer class="site-foot">Created with ♪ by <b>Zenildo Dias</b><span class="app-ver"></span></footer>`;
+};
 
 // ---------- faces ----------
 

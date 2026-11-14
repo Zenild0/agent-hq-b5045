@@ -412,7 +412,8 @@ details[open] > summary .chev { transform: rotate(180deg); }
 .gm-stage.done { border-color: var(--ok); background: #eefaf4; }
 .gm-stage.lock { opacity: .55; }
 .gm-unlock { display: grid; gap: 8px; background: #fff9e6; border-color: var(--sun); margin: 8px 0; }
-.gm-pay { display: grid; gap: 6px; }
+.gm-pay { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.gm-pay > div { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .gm-note { background: #fff; border-radius: 12px; padding: 8px 10px; font-size: .92rem; border: 1px dashed var(--sun); }
 .gm-top { margin: 4px 0 0; padding-left: 1.2em; font-size: .85rem; font-weight: 700; }
 .gm-top .muted { font-weight: 600; }

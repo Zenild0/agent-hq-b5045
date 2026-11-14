@@ -63,7 +63,7 @@ export function mountGames(host, { code }) {
     return `<div class="card gm-unlock">
       <h3 style="margin:0">${a.trial.started ? 'Your free trial has ended' : 'Free to try'} · unlock all games for ₹${esc(pay?.price ?? 500)} a year</h3>
       <div class="muted">One payment opens every level of every training game, now and as new ones arrive. The first levels stay free.</div>
-      ${pay?.mobile || pay?.upi ? `<div class="gm-pay">Pay your choir teacher${pay.mobile ? ` on <b>${esc(pay.mobile)}</b>` : ''}${pay.upi ? ` (UPI: <b>${esc(pay.upi)}</b>)` : ''}. They will unlock it for you.</div>` : '<div class="muted">Ask your choir teacher how to pay.</div>'}
+      ${pay?.mobile || pay?.upi ? `<div class="gm-pay"><span>Pay your choir teacher${pay.mobile ? ` on <b>${esc(pay.mobile)}</b>` : ''}${pay.upi ? ` (UPI: <b>${esc(pay.upi)}</b>)` : ''}. They will unlock it for you.</span></div>` : '<div class="muted">Ask your choir teacher how to pay.</div>'}
       ${feeNoteHtml(pay?.note)}
     </div>`;
   };
