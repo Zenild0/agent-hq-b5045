@@ -1,6 +1,6 @@
 // Sound and microphone for the singing game. Everything is made in the browser (no sound files).
 // The microphone is listened to live and thrown away: nothing is recorded, stored or sent.
-import { freqOfMidi, CHORDS } from './pitch.js';
+import { freqOfMidi, CHORDS, micFilterFor, MIC_LOWPASS } from './pitch.js';
 import { renderPiano, renderGuitar } from './synth.js';
 
 // Opens the sound system. Call it from a tap (browsers require that). Add the microphone with enableMic().
@@ -23,7 +23,12 @@ export async function openAudio() {
     if (a.stream) return;
     a.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true } });
     a.analyser = ctx.createAnalyser(); a.analyser.fftSize = 4096;
-    ctx.createMediaStreamSource(a.stream).connect(a.analyser);
+    // cut the room's rumble and hiss before listening (see pitch.js); steeper for higher voices
+    const { hp, stages } = micFilterFor(getRange());
+    let node = ctx.createMediaStreamSource(a.stream);
+    for (let i = 0; i < stages; i++) { const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp; f.Q.value = 0.707; node.connect(f); node = f; }
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = MIC_LOWPASS; lp.Q.value = 0.707; node.connect(lp);
+    lp.connect(a.analyser);
     a.buf = new Float32Array(a.analyser.fftSize);
   };
   a.stopMic = () => { a.stream?.getTracks().forEach((t) => t.stop()); a.stream = a.analyser = a.buf = null; }; // the mic light goes off

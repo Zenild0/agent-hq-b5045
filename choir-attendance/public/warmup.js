@@ -1,6 +1,6 @@
 // Warm-up room: a vocal trainer. Grand-piano scales and exercises to sing along with (each key is held for
 // two seconds), chords, a slide, and a live tuner. No score, no clock, nothing saved.
-import { detectPitch, rms, noteFromFreq, freqOfMidi } from './pitch.js';
+import { detectPitch, rms, noteFromFreq, freqOfMidi, acceptPitch, nextFloor, gateFor } from './pitch.js';
 import { NAMES, chordSymbol, chordRoot } from './levels.js';
 import { openAudio, micMessage } from './audio.js';
 import { staffSvg, spell, prefersFlats } from './staff.js';
@@ -236,16 +236,18 @@ export function mountWarmup(root, { onExit, staff = false } = {}) {
     setTimeout(next, 50);
   }
 
-  let recent = [], shownAt = 0, shown = '–', micRaf = 0;
+  let recent = [], shownAt = 0, shown = '–', micRaf = 0, floor = 0.004;
   function loop(now = performance.now()) {
     if (dead || !micOn) return;
     micRaf = requestAnimationFrame(loop);
     audio.analyser.getFloatTimeDomainData(audio.buf);
     let f = 0;
-    if (rms(audio.buf) > 0.01 && now > playingUntil && !paused) {
+    const vol = rms(audio.buf);
+    if (vol > gateFor(floor) && now > playingUntil && !paused) {
       const p = detectPitch(audio.buf, audio.ctx.sampleRate);
-      if (p && p.clarity > 0.85) { recent.push(p.freq); if (recent.length > 5) recent.shift(); f = [...recent].sort((x, y) => x - y)[Math.floor(recent.length / 2)]; }
+      if (acceptPitch(p, vol, floor)) { recent.push(p.freq); if (recent.length > 5) recent.shift(); f = [...recent].sort((x, y) => x - y)[Math.floor(recent.length / 2)]; }
     }
+    if (now > playingUntil && !paused) floor = nextFloor(floor, vol, Boolean(f));
     if (!f && recent.length) recent.shift();
     if (f) {
       const n = noteFromFreq(f);

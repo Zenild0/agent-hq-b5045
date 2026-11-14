@@ -2,7 +2,7 @@
 // Levels 1 to 4 are untimed: keep trying a note, skip it, and move front and back between notes; the score is
 // the total time spent. From level 5 each note has a countdown and the round runs front to back.
 // Every box has a fixed size, so nothing moves or flickers while a child sings.
-import { detectPitch, rms } from './pitch.js';
+import { detectPitch, rms, acceptPitch, nextFloor, gateFor } from './pitch.js';
 import { NAMES, makeTracker, UNTIMED_CAP_MS, signedSemis } from './levels.js';
 import { micMessage } from './audio.js';
 import { staffSvg } from './staff.js';
@@ -48,7 +48,7 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
   const notes = deck.map(() => ({ won: false, ms: 0, err: null, hints: 0, tried: false }));
   let idx = 0, phase = 'ready', streak = 0, tracker = null, cur = deck[0]; // phase: ready | playing | listening | reveal | done
   let startAt = 0, muteUntil = 0, lastMidi = null, lastAt = 0, recent = [], raf = 0, timer = null, paused = false; // muteUntil is on the audio clock, so Pause holds it too
-  let errSum = 0, errN = 0, stepErrs = [], micReady = false, dead = false, starting = false;
+  let floor = 0.004, errSum = 0, errN = 0, stepErrs = [], micReady = false, dead = false, starting = false;
   // The pitch trail: the last four seconds of the child's voice as a line. The green band is the note to hit; the line turns green while it is held.
   const trail = [], trailCtx = X('trail').getContext('2d');
   const drawTrail = (now, tol, holding) => paintTrail(trailCtx, X('trail').width, X('trail').height, trail, now, tol, holding);
@@ -210,13 +210,15 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
     audio.analyser.getFloatTimeDomainData(audio.buf);
     const vol = rms(audio.buf);
     let midi = null;
-    if (vol > 0.01 && phase === 'listening' && audio.ctx.currentTime >= muteUntil) {
+    const gate = gateFor(floor);
+    if (vol > gate && phase === 'listening' && audio.ctx.currentTime >= muteUntil) {
       const p = detectPitch(audio.buf, audio.ctx.sampleRate);
-      if (p && p.clarity > 0.85) {
+      if (acceptPitch(p, vol, floor)) {
         recent.push(69 + 12 * Math.log2(p.freq / 440)); if (recent.length > 5) recent.shift();
         midi = [...recent].sort((a, b) => a - b)[Math.floor(recent.length / 2)];
       }
     }
+    if (phase === 'listening' && audio.ctx.currentTime >= muteUntil) floor = nextFloor(floor, vol, midi != null); // learn how loud the room is
     if (midi == null && recent.length) recent.shift();
     if (midi != null) { lastMidi = midi; lastAt = now; }
     const r = lastMidi != null ? Math.round(lastMidi) : 0;
@@ -245,7 +247,7 @@ export function createPlayer(root, { audio, deck, heading = '', onDone, onExit }
     if (cur.timed && left <= 0) return finishNote(false, now, true);
     if (!cur.timed && spentOn(idx, now) >= UNTIMED_CAP_MS) return finishNote(false, now);
     if (audio.ctx.currentTime < muteUntil) setMsg(paused ? '⏸ Sound paused' : '🎧 Listen…');
-    else if (vol < 0.01) setMsg(cur.timed ? `Sing out loud, ${Math.ceil(left / 1000)} s left` : 'Sing out loud, take your time');
+    else if (vol < gate) setMsg(cur.timed ? `Sing out loud, ${Math.ceil(left / 1000)} s left` : 'Sing out loud, take your time');
     else if (midi == null && t.hold > 0.05) setMsg(`Keep going, hold it… ${Math.max(1, Math.ceil((1 - t.hold) * cur.hold / 1000))}`);
     else if (midi == null) setMsg(cur.timed ? `Sing a steady "Ahh"… ${Math.ceil(left / 1000)} s` : 'Sing a steady "Ahh"… no rush');
     else setMsg(t.hold > 0.05 ? `Hold it… ${Math.max(1, Math.ceil((1 - t.hold) * cur.hold / 1000))}` : t.warm > 0.66 ? 'Almost there!' : t.warm > 0.2 ? 'Getting warmer…' : 'Keep trying, slide your voice…');
