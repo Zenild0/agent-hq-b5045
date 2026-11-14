@@ -1,0 +1,141 @@
+// Training Games: the hub that holds every game, so new ones can be added over time.
+//   1. Vocal trainer (sing the note you hear)    2. Notation trainer (read the note on the staff)    3. Rhythm trainer (soon)
+// Everyone gets the full version of every game free for a few days (7 days, for choir members and guests),
+// and one payment unlocks all the games. The server keeps the days; this screen only shows them.
+import { api, esc, feeNoteHtml } from './common.js';
+import { RANGES, getRange, setRange } from './audio.js';
+import { xpFor, xpCardHtml, badgesHtml } from './xp.js';
+import { newestTip } from './voicetips.js';
+
+const CACHE = 'choir-cache:games-access';
+const fmtDay = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+
+// The big "SING" home that every child sees at the top of Training games. The teacher's page uses the same piece,
+// so what the teacher sees is what a child sees.
+export function kidHeroHtml(v, g) {
+  const first = g.vocals ? 'vocals' : g.notation ? 'notation' : null;
+  if (!first) return '';
+  return `<div class="kid-hero">
+        <div class="kid-top"><b>Ready to sing? 🎤</b><span class="kid-chip fire">🔥 ${v.streak}</span><span class="kid-chip">⚡ ${v.total} XP</span></div>
+        <button class="kid-sing" data-game="${first}" data-sing="1" style="--p:${v.goalShare}" aria-label="Start singing"><span class="kid-sing-in"><span class="kid-mic">🎤</span><b>SING</b><small>${v.goalMet ? 'Goal done! 🎉' : `Today's goal: ${Math.round(v.goalShare * 100)}%`}</small></span></button>
+        <div class="kid-hint">Tap to start. Hear a note, sing it and hold it.</div>
+        <div class="kid-missions">
+          ${g.vocals ? `<button class="kid-mission" data-game="vocals"><span>🔥</span><b>Warm up</b><small>2 minutes</small></button>` : ''}
+          <button class="kid-mission gold" data-game="${first}"><span>⏱</span><b>Hold notes</b><small>${v.week?.notes ? `${v.week.won} this week` : 'Try it!'}</small></button>
+          <button class="kid-mission" data-game="tips"><span>💧</span><b>Voice tip</b><small><span class="vt-dot" hidden>NEW</span>&nbsp;</small></button>
+        </div></div>`;
+}
+
+export function mountGames(host, { code }) {
+  const root = document.createElement('div'); // its own container, so listeners from an earlier visit never pile up
+  host.replaceChildren(root);
+  const xp = xpFor(code); // XP, streak and badges are kept on this phone; they are also sent to the server when the teacher has switched the leaderboard on
+  const unitsDone = () => { try { return Object.values(JSON.parse(localStorage.getItem('choir-singpath') || '{}')).filter((u) => u.stars).length; } catch { return 0; } };
+  let syncing = false;
+  async function syncXp() {
+    if (syncing || !access?.board || !xp.hasPending()) return;
+    syncing = true;
+    try { const r = await api('me/xp', { method: 'POST', code, body: xp.report(unitsDone()) }); if (r.enabled) xp.clearPending(); } catch { /* offline: try again after the next award */ }
+    syncing = false;
+  }
+  const award = xp.award;
+  xp.award = (...args) => { const a = award(...args); syncXp(); return a; };
+  let view = 'hub', ctl = null, access = null;
+
+  async function loadAccess() {
+    try {
+      access = await api('me/access', { code });
+      syncXp();
+      try { localStorage.setItem(CACHE, JSON.stringify(access)); } catch { /* storage full */ }
+    } catch (e) {
+      if (e.status) throw e; // a real answer (wrong code, games off): do not hide it
+      try { access = JSON.parse(localStorage.getItem(CACHE) || 'null'); } catch { access = null; }
+      if (!access) throw e;
+    }
+    return access;
+  }
+
+  const banner = () => {
+    const a = access;
+    if (a.paid) return `<div class="alert ok"><b>Full version active</b> · every training game is open until ${fmtDay(a.paidUntil)}.</div>`;
+    if (a.trial.active) return `<div class="alert ok">🎁 <b>Free trial: ${a.trial.daysLeft} day${a.trial.daysLeft === 1 ? '' : 's'} left.</b> Every level of every game is open. After that, one payment unlocks all the games.${feeNoteHtml(a.pay?.note ?? a.feeNote)}</div>`;
+    const pay = a.pay;
+    return `<div class="card gm-unlock">
+      <h3 style="margin:0">${a.trial.started ? 'Your free trial has ended' : 'Free to try'} · unlock all games for ₹${esc(pay?.price ?? 500)} a year</h3>
+      <div class="muted">One payment opens every level of every training game, now and as new ones arrive. The first levels stay free.</div>
+      ${pay?.mobile || pay?.upi ? `<div class="gm-pay"><span>Pay your choir teacher${pay.mobile ? ` on <b>${esc(pay.mobile)}</b>` : ''}${pay.upi ? ` (UPI: <b>${esc(pay.upi)}</b>)` : ''}. They will unlock it for you.</span></div>` : '<div class="muted">Ask your choir teacher how to pay.</div>'}
+      ${feeNoteHtml(pay?.note)}
+    </div>`;
+  };
+
+  function hub() {
+    view = 'hub';
+    ctl?.destroy?.(); ctl = null;
+    const g = access.games;
+    const hero = kidHeroHtml(xp.view(), g);
+    root.innerHTML = `
+      ${hero}
+      <div class="card"><h2 style="margin:0">Training games</h2>
+        <div class="muted">Short, fun practice that makes you a better singer and music reader.</div>
+        <div class="gm-note" style="margin-top:8px">🎧 Use headphones for the best results, so the phone's sound does not mix with your voice.</div></div>
+      ${xpCardHtml(xp.view())}
+      ${banner()}
+      <div class="card"><h3 style="margin:0 0 6px">My voice</h3>
+        <div class="seg" role="group" aria-label="My voice range">${RANGES.map((r) => `<button type="button" data-range="${r.id}" class="${getRange() === r.id ? 'on' : ''}" aria-pressed="${getRange() === r.id}">${r.label}</button>`).join('')}</div>
+        <div class="muted" style="margin-top:6px">Pick the range that is comfortable. Lower suits deeper or changing voices, Higher suits very young voices. The piano plays an octave lower or higher to match.</div></div>
+      <div class="tg-list">
+        ${g.vocals ? `<button class="tg-card" data-game="vocals"><span class="tg-n">1</span><span class="grow"><b>Vocal trainer</b><span class="muted">Hear a note, then sing it. Levels from beginner to legend, a daily challenge and badges.</span></span><span>›</span></button>` : ''}
+        ${g.notation ? `<button class="tg-card" data-game="notation"><span class="tg-n">2</span><span class="grow"><b>Notation trainer</b><span class="muted">Learn to read music. See a note on the staff and sing it. 20 levels, treble and bass clef.</span></span><span>›</span></button>` : ''}
+        ${g.chords ? `<button class="tg-card" data-game="chords"><span class="tg-n">4</span><span class="grow"><b>Chord Book</b><span class="muted">Search chords for songs and hymns, keep your own songs and build set lists to play.</span></span><span>›</span></button>` : ''}
+        <button class="tg-card" data-game="tips"><span class="tg-n">💧</span><span class="grow"><b>Voice Care Corner <span class="vt-dot" id="tipDot" hidden>NEW</span></b><span class="muted">A new tip every Friday on keeping your voice healthy: what to drink, what to do and what to avoid. Free for everyone.</span></span><span>›</span></button>
+        <div class="tg-card soon"><span class="tg-n">3</span><span class="grow"><b>Rhythm trainer</b><span class="muted">Clap and tap the beat. Coming soon.</span></span></div>
+      </div>
+      <details class="card set-sec"><summary><span class="grow"><b>My badges</b><span class="muted">${xp.view().badges.filter((b) => b.got).length} of ${xp.view().badges.length} earned</span></span><span class="chev" aria-hidden="true">▾</span></summary><div class="set-body">${badgesHtml(xp.view())}</div></details>
+      ${!g.vocals && !g.notation && !g.chords ? '<div class="empty">Your teacher has not switched any game on yet.</div>' : ''}`;
+    paintTipDot();
+  }
+
+  async function paintTipDot() { const t = await newestTip(code); if (t?.isNew) root.querySelectorAll('.vt-dot').forEach((d) => { d.hidden = false; }); }
+
+  async function open(which, { sing = false } = {}) {
+    view = which;
+    root.innerHTML = '<div class="empty">Loading…</div>';
+    try {
+      await loadAccess(); // refresh the trial days and payment status each time a game opens
+      root.innerHTML = '<div class="games-bar"><button class="btn small" data-g="hub">‹ Training games</button></div><div id="gbox"></div>';
+      const box = root.querySelector('#gbox');
+      if (which === 'vocals') {
+        const m = await import('./game.js'); ctl = m.mountGame(box, { code, xp });
+        // The big SING button goes straight into the next lesson of the course, when it is there to press
+        if (sing) { let tries = 0; const t = setInterval(() => { const go = box.querySelector('[data-a="path"]'); if (go || ++tries > 30) { clearInterval(t); go?.click(); } }, 100); }
+      }
+      else if (which === 'tips') { const m = await import('./voicetips.js'); ctl = m.mountVoiceTips(box, { code }); }
+      else if (which === 'chords') { const m = await import('./chordbook.js'); ctl = m.mountChordBook(box, { code, access }); }
+      else { const m = await import('./staffgame.js'); ctl = m.mountStaffGame(box, { access, xp }); }
+    } catch (e) { root.innerHTML = `<div class="card"><div class="alert bad">${esc(e.message)}</div><button class="btn" data-g="hub">‹ Back</button></div>`; }
+  }
+
+  root.addEventListener('click', (e) => {
+    const r = e.target.closest('[data-range]');
+    if (r) { setRange(r.dataset.range); return hub(); }
+    const g = e.target.closest('[data-game]');
+    if (g) return open(g.dataset.game, { sing: g.dataset.sing === '1' });
+    if (e.target.closest('[data-g="hub"]')) return hub();
+  });
+
+  (async () => {
+    root.innerHTML = '<div class="empty">Loading…</div>';
+    try { await loadAccess(); hub(); } catch (e) { root.innerHTML = `<div class="card"><div class="alert bad">${esc(e.message)}</div></div>`; }
+  })();
+
+  return {
+    destroy() { ctl?.destroy?.(); ctl = null; },
+    // the phone's Back button: leave a level first, then the game, then the hub
+    back() {
+      if (view === 'hub') return false;
+      if (ctl?.back?.()) return true;
+      hub();
+      return true;
+    },
+  };
+}
