@@ -109,6 +109,7 @@ async function loadGamesHub() {
     <div class="card"><b>Free trial</b>
       <div class="muted">Each child's 7 free days start the first time they open the games. To give every child a fresh 7 days starting today, including children whose trial has ended, tap the button.</div>
       <div class="row" style="margin-top:8px"><button class="btn" id="giveTrial">🎁 Give everyone 7 free days from today</button><span id="trialMsg" class="muted" aria-live="polite"></span></div></div>
+    <div id="spaceBox"></div>
     <div id="tipsBox"></div>
     <div id="practiceBox"></div>
     <div id="subsBox"></div>`;
@@ -125,6 +126,7 @@ async function loadGamesHub() {
   }
   $('#games').querySelectorAll('[data-game]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.game)));
   loadTipsBox();
+  loadSpaceBox();
   call('teacher/chord-requests').then((r) => { if (r.requests.length) $('#games').querySelector('[data-game="chordbook"] .muted').insertAdjacentHTML('beforeend', ` <b style="color:var(--brand)">· ${r.requests.length} song request${r.requests.length === 1 ? '' : 's'}</b>`); }).catch(() => {});
   $('#giveTrial').addEventListener('click', () => {
     if (!confirm('Give EVERY child (and guest) a fresh 7 days of all the games, starting today? Children who already paid keep their paid year.')) return;
@@ -352,6 +354,23 @@ function openAddTip() {
     e.preventDefault();
     try { await call('teacher/voice-tips', { method: 'POST', body: Object.fromEntries(new FormData(e.target)) }); dlg.close(); await loadTipsBox(); } catch (err) { $('#tipMsg').textContent = `⚠️ ${err.message}`; }
   });
+}
+
+// Choir Space for the teacher: how the week's challenge is going, a note to the children, and removing any post.
+async function loadSpaceBox() {
+  const box = $('#spaceBox'); if (!box) return;
+  const s = await call('teacher/space').catch(() => null);
+  if (!s) return;
+  if (!s.enabled) { box.innerHTML = '<div class="card"><b>Choir Space</b><div class="muted">Switched off. Turn it on in More → Settings to give the children a safe, friendly feed and a weekly challenge.</div></div>'; return; }
+  const c = s.challenge;
+  const kinds = { streak: (p) => `${esc(p.who)} reached a ${p.n}-day streak`, bigday: (p) => `${esc(p.who)} sang ${p.n} min today`, songs: (p) => `${p.n} new songs released`, note: (p) => `📣 ${esc(p.text)}` };
+  box.innerHTML = `<div class="card"><div class="row between"><b>🌟 Choir Space</b><span class="muted">${c.minutes} of ${c.goal} min this week (${c.pct}%)</span></div>
+    <div class="muted">${c.top.length ? `Helping most: ${c.top.map((r) => `${esc(r.name)} ${r.minutes} min`).join(' · ')}` : 'Nobody has practised yet this week.'}</div>
+    <form id="spaceForm" class="row" style="margin-top:8px;flex-wrap:nowrap"><input name="text" class="grow" maxlength="160" placeholder="A short note for the children…" aria-label="Note for the children"><button class="btn primary">Post</button></form>
+    <div id="spaceMsg" class="muted" aria-live="polite"></div>
+    ${s.posts.length ? `<details style="margin-top:8px"><summary class="muted">Recent posts (${s.posts.length}). Tap ✕ to remove one</summary>${s.posts.map((p) => `<div class="row between" style="border-top:1px solid var(--line);padding:6px 0"><span>${(kinds[p.kind] ?? (() => ''))(p)}</span><button class="ibtn" data-space-del="${esc(p.id)}" aria-label="Remove this post">✕</button></div>`).join('')}</details>` : ''}</div>`;
+  $('#spaceForm').addEventListener('submit', (e) => { e.preventDefault(); run(async () => { await call('teacher/space', { method: 'POST', body: { text: new FormData(e.target).get('text') } }); await loadSpaceBox(); $('#spaceMsg').textContent = '✅ Posted'; }); });
+  box.querySelectorAll('[data-space-del]').forEach((b) => b.addEventListener('click', () => run(async () => { await call(`teacher/space/${b.dataset.spaceDel}`, { method: 'DELETE' }); await loadSpaceBox(); })));
 }
 
 let staffTest = null;
@@ -1330,6 +1349,8 @@ async function loadSettings() {
         <label class="chk"><input name="staffEnabled" type="checkbox"${s.staffEnabled ? ' checked' : ''}> 🎼 Notation trainer (game 2) is on for parents</label>
         <label class="chk"><input name="chordsEnabled" type="checkbox"${s.chordsEnabled ? ' checked' : ''}> 🎸 Chord Book (game 4) is on for parents</label>
         <label class="chk"><input name="trainingBoardEnabled" type="checkbox"${s.trainingBoardEnabled ? ' checked' : ''}> 🏆 Training XP leaderboard (shown only to children with a paid year; off until you switch it on)</label>
+        <label class="chk"><input name="spaceEnabled" type="checkbox"${s.spaceEnabled ? ' checked' : ''}> 🌟 Choir Space (a safe, friendly feed, weekly challenge and avatars for children whose parent ticked the box. No chat, no photos, no voices)</label>
+        <label class="field">Choir challenge: minutes the whole choir sings together each week<input name="spaceTarget" type="number" min="10" max="5000" step="10" value="${s.spaceTarget ?? 500}"></label>
         <div class="muted" style="margin:8px 0">The first levels stay free. Parents pay you directly, then you unlock their child for a year (Children → the child → Vocals game), and that opens all the games. After 365 days they pay again.</div>
         <label class="field">Price for one year (₹)<input name="gamePrice" type="number" min="0" step="1" value="${s.gamePrice ?? 500}"></label>
         <label class="field">Mobile number to pay (UPI or phone)<input name="gamePayMobile" type="tel" maxlength="20" value="${esc(s.gamePayMobile ?? '')}"></label>
@@ -1393,6 +1414,8 @@ async function loadSettings() {
       body.staffEnabled = f.get('staffEnabled') === 'on';
       body.chordsEnabled = f.get('chordsEnabled') === 'on';
       body.trainingBoardEnabled = f.get('trainingBoardEnabled') === 'on';
+      body.spaceEnabled = f.get('spaceEnabled') === 'on';
+      body.spaceTarget = f.get('spaceTarget');
       body.gamePrice = f.get('gamePrice');
       body.gamePayMobile = f.get('gamePayMobile') || '';
       body.gameUpi = f.get('gameUpi') || '';

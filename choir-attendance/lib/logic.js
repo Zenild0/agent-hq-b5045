@@ -46,6 +46,8 @@ export const DEFAULT_SETTINGS = {
   gamePayMobile: '',
   gameUpi: '',
   gameEnabled: false, // the singing game: the teacher switches it on when ready
+  spaceEnabled: false, // Choir Space: the safe, friendly feed and weekly challenge. Off until the teacher switches it on
+  spaceTarget: 500, // minutes the whole choir sings together in a week
   trainingBoardEnabled: false, // the Training XP leaderboard (children with a paid year only): off until the teacher switches it on
   chordsEnabled: false, // the Chord Book (chord sheets, My songs, set lists): a paid feature the teacher switches on later
   staffEnabled: false, // the staff-reading game: switched on separately, so games can be launched one at a time

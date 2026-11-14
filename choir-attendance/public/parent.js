@@ -58,6 +58,7 @@ const app = $('#app');
 
 const TABS = [
   ['home', 'Home', 'M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z'],
+  ['space', 'Space', 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8'],
   ['board', 'Rank', 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3'],
   ['games', 'Games', 'M6 11h4M8 9v4M15 12h.01M18 10h.01M17.3 5H6.7a4 4 0 0 0-4 3.4l-1 6A3 3 0 0 0 4.6 18a3 3 0 0 0 2.4-1.2L8 15h8l1 1.8a3 3 0 0 0 2.4 1.2 3 3 0 0 0 3.2-3.6l-1-6A4 4 0 0 0 17.3 5z'],
   ['hymns', 'Hymns', 'M9 18V5l11-2v13M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3zM20 16a3 3 0 1 1-3-3 3 3 0 0 1 3 3z'],
@@ -70,6 +71,7 @@ function shell() {
     <main>
       <div class="net" id="net" role="status"></div>
       <section id="home"><div id="homeCode"></div><div id="homeCards"><div class="empty">Loading…</div></div></section>
+      <section id="space" hidden></section>
       <section id="board" hidden></section>
       <section id="ach" hidden></section>
       <section id="hymns" hidden></section>
@@ -77,7 +79,7 @@ function shell() {
       <section id="child" hidden></section>
     </main>
     ${footerHtml()}
-    <nav class="tabbar" aria-label="Main">${TABS.map(([id, label, d]) => `<button data-tab="${id}"${id === 'games' ? ' id="gamesTab" hidden' : ''}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>${label}</button>`).join('')}</nav>`;
+    <nav class="tabbar" aria-label="Main">${TABS.map(([id, label, d]) => `<button data-tab="${id}"${id === 'games' ? ' id="gamesTab" hidden' : id === 'space' ? ' id="spaceTab" hidden' : ''}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>${label}</button>`).join('')}</nav>`;
   app.querySelectorAll('nav.tabbar button').forEach((b) => b.addEventListener('click', () => { show(b.dataset.tab); scrollTo(0, 0); }));
 }
 
@@ -120,7 +122,7 @@ function drawHome() {
     + (me ? remarksFoldHtml(me, rem) : '');
 }
 
-let gameCtl = null;
+let gameCtl = null, spaceCtl = null;
 function openGame() {
   const box = $('#games');
   gameCtl?.destroy?.(); gameCtl = null;
@@ -130,14 +132,24 @@ function openGame() {
   import('./games.js').then((m) => { gameCtl = m.mountGames(box, { code }); }).catch(() => { box.innerHTML = '<div class="alert bad">The game could not load. Please try again.</div>'; });
 }
 
+// Choir Space: loaded only when opened, so a problem there can never stop the rest of the app
+function openSpace() {
+  spaceCtl?.destroy?.(); spaceCtl = null;
+  const box = $('#space');
+  import('./space.js').then((m) => { spaceCtl = m.mountSpace(box, { code }); }).catch(() => { box.innerHTML = '<div class="alert bad">Choir Space could not load. Please try again.</div>'; });
+}
+const paintSpaceTab = () => { const t = $('#spaceTab'); if (t) t.hidden = !(overview?.settings?.spaceEnabled && code && me && !me.guest); };
+
 function show(t, fromBack = false) {
   if (!fromBack) noteVisit(t);
   if (tab === 'games' && t !== 'games') { gameCtl?.destroy?.(); gameCtl = null; $('#games').innerHTML = ''; }
+  if (tab === 'space' && t !== 'space') { spaceCtl?.destroy?.(); spaceCtl = null; $('#space').innerHTML = ''; }
   tab = t;
   app.querySelectorAll('nav.tabbar button').forEach((b) => b.classList.toggle('on', b.dataset.tab === t));
   const showing = t === 'board' ? (me?.guest ? ['board'] : ['board', 'ach']) : [t];
-  ['home', 'board', 'ach', 'hymns', 'games', 'child'].forEach((id) => { $(`#${id}`).hidden = !showing.includes(id); });
+  ['home', 'space', 'board', 'ach', 'hymns', 'games', 'child'].forEach((id) => { $(`#${id}`).hidden = !showing.includes(id); });
   if (t === 'games') openGame();
+  if (t === 'space') openSpace();
 }
 
 // ---------- leaderboard ----------
@@ -377,6 +389,7 @@ async function loadMe() {
     childView();
     drawHome();
     drawBoard();
+    paintSpaceTab();
     if (!me.consent) askConsent();
   } catch (e) {
     me = null;
@@ -489,6 +502,7 @@ show(tab);
 cachedApi('public')
   .then((o) => {
     overview = o;
+    paintSpaceTab();
     $('#gamesTab').hidden = !(o.settings?.gameEnabled || o.settings?.staffEnabled || o.settings?.chordsEnabled);
     boardTab();
     achTab();

@@ -15,6 +15,7 @@ import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak
 import { FREE_CHORDS } from './lib/freechords.js';
 import { VOICE_TIPS, tipsAt, releaseAt, nextFridayEvening } from './lib/voicetips.js';
 import { parseSongs } from './lib/songimport.js';
+import { REACTIONS, MAX_POSTS, BIG_DAY_SECS, streakMark, cleanAvatar, avatarOf, challengeView, BADGES, FRAMES, COLOURS } from './lib/space.js';
 import { isChord, chordsUsed, normaliseSheet, detectKey } from './public/chordpro.js';
 import { LEVELS, DAILY_COUNT, STAGES, stageSpec, isTimed } from './public/levels.js';
 import { istNow, isDate, isTime, toMinutes, scheduleDays, nextPractice, shiftDate, rulesOf } from './lib/schedule.js';
@@ -338,13 +339,96 @@ function xpBoardFor(child) {
   const rows = db.children.filter((c) => c.active && !c.guest && isPaid(db.game.kids[c.id], today));
   return { enabled: true, locked: false, ...buildBoard(xpOf, rows, today, child.id, (c) => ({ id: c.id, name: shortName(c.name), photo: photoUrl(c), head: headUrl(c) })) };
 }
+// ---- Choir Space ----
+const spaceDb = () => (store.db.space ??= { posts: [] });
+const spaceKid = (c) => c && c.active && !c.guest && c.consent?.on; // only children whose parent said yes appear
+function addPost(p) {
+  const sp = spaceDb();
+  if (p.key && sp.posts.some((x) => x.key === p.key)) return null;
+  const post = { id: randomUUID().slice(0, 8), at: Date.now(), reacts: {}, ...p };
+  sp.posts.push(post);
+  if (sp.posts.length > MAX_POSTS) sp.posts.splice(0, sp.posts.length - MAX_POSTS);
+  return post;
+}
+// Called when a child's practice arrives: a streak milestone or a long practice day becomes a friendly post.
+function spacePosts(child, x) {
+  if (!store.db.settings.spaceEnabled || !spaceKid(child)) return;
+  const mark = streakMark(x.streak || 0);
+  if (mark) addPost({ kind: 'streak', childId: child.id, n: mark, key: `${child.id}:streak:${mark}` });
+  const day = istDate();
+  if ((x.stats?.[day]?.secs || 0) >= BIG_DAY_SECS) addPost({ kind: 'bigday', childId: child.id, n: Math.round(x.stats[day].secs / 60), key: `${child.id}:day:${day}` });
+}
+function spaceChallenge(meId) {
+  const day = istDate();
+  const rows = store.db.children.filter(spaceKid).map((c) => ({ id: c.id, name: shortName(c.name), secs: statsOf(xpOf(c.id), day, 'week').secs }));
+  return challengeView(rows, store.db.settings.spaceTarget, meId);
+}
+const avatarFor = (c) => ({ ...avatarOf(c), initial: String(c.name ?? '?').trim()[0]?.toUpperCase() ?? '?' });
+function spaceFeed(child) {
+  const { db } = store;
+  const posts = spaceDb().posts.slice().reverse().filter((p) => p.kind === 'note' || p.kind === 'songs' || spaceKid(db.children.find((c) => c.id === p.childId))).slice(0, 30);
+  return posts.map((p) => {
+    const who = p.childId ? db.children.find((c) => c.id === p.childId) : null;
+    return {
+      id: p.id, kind: p.kind, at: new Date(p.at).toISOString(), n: p.n ?? 0, text: p.text ?? '',
+      who: who ? { id: who.id, name: shortName(who.name), avatar: avatarFor(who) } : null,
+      reacts: REACTIONS.map((e) => ({ e, n: (p.reacts[e] ?? []).length, mine: (p.reacts[e] ?? []).includes(child.id) })),
+    };
+  });
+}
+function spaceView(child) {
+  const { db } = store;
+  if (!db.settings.spaceEnabled) return { enabled: false };
+  if (!accessFor(child).full) return { enabled: true, locked: true, pay: payInfo(), price: db.settings.gamePrice, note: db.settings.feeNote };
+  if (!spaceKid(child)) return { enabled: true, needConsent: true };
+  const day = istDate();
+  const x = xpOf(child.id);
+  const stories = db.children.filter(spaceKid).map((c) => ({ id: c.id, name: shortName(c.name), avatar: avatarFor(c), streak: xpOf(c.id)?.streak ?? 0, week: statsOf(xpOf(c.id), day, 'week').minutes }))
+    .filter((s) => s.week > 0 || s.streak > 0).sort((a, b) => b.streak - a.streak || b.week - a.week).slice(0, 8);
+  return {
+    enabled: true, locked: false, reactions: REACTIONS,
+    me: { id: child.id, name: shortName(child.name), avatar: avatarFor(child), xp: x?.total ?? 0, streak: x?.streak ?? 0, badges: BADGES, frames: FRAMES, colours: COLOURS },
+    challenge: spaceChallenge(child.id), stories, feed: spaceFeed(child),
+  };
+}
+function spaceReact(child, body) {
+  if (!store.db.settings.spaceEnabled || !spaceKid(child) || !accessFor(child).full) throw new HttpError(403, 'Choir Space is not open for you yet');
+  if (!REACTIONS.includes(body.emoji)) throw new HttpError(400, 'Pick one of the reactions');
+  const post = spaceDb().posts.find((p) => p.id === body.post);
+  if (!post) throw new HttpError(404, 'That post is gone');
+  const list = (post.reacts[body.emoji] ??= []);
+  const i = list.indexOf(child.id);
+  if (i >= 0) list.splice(i, 1); else list.push(child.id);
+  store.save();
+  return { ok: true, reacts: REACTIONS.map((e) => ({ e, n: (post.reacts[e] ?? []).length, mine: (post.reacts[e] ?? []).includes(child.id) })) };
+}
+function spaceAvatar(child, body) {
+  if (!spaceKid(child)) throw new HttpError(403, 'Choir Space is not open for you yet');
+  const a = cleanAvatar(body, xpOf(child.id)?.total ?? 0);
+  if (!a) throw new HttpError(400, 'That one is not unlocked yet. Keep earning XP!');
+  child.avatar = a;
+  store.save();
+  return { avatar: avatarFor(child) };
+}
+function teacherSpace() {
+  const { db } = store;
+  return { enabled: Boolean(db.settings.spaceEnabled), target: db.settings.spaceTarget, challenge: spaceChallenge(''), posts: spaceDb().posts.slice().reverse().slice(0, 25).map((p) => ({ id: p.id, kind: p.kind, at: new Date(p.at).toISOString(), n: p.n ?? 0, text: p.text ?? '', who: p.childId ? db.children.find((c) => c.id === p.childId)?.name ?? '' : '' })) };
+}
+function teacherSpacePost(body) {
+  const msg = text(body.text, 160, 'Message');
+  if (!msg) throw new HttpError(400, 'Write a short note first');
+  addPost({ kind: 'note', text: msg });
+  store.save();
+  return teacherSpace();
+}
+
 function xpReport(child, body) {
   const { db } = store;
-  if (!db.settings.trainingBoardEnabled) return { enabled: false }; // nothing is kept while the board is off; the phone keeps its own XP and sends it later
+  if (!db.settings.trainingBoardEnabled && !db.settings.spaceEnabled) return { enabled: false }; // nothing is kept while the board and Space are off; the phone keeps its own XP and sends it later
   const kid = (db.game.kids[child.id] ??= emptyKid());
   kid.xp ??= emptyXp();
   const accepted = recordXp(kid.xp, body, istDate());
-  if (accepted) store.save();
+  if (accepted) { spacePosts(child, kid.xp); store.save(); }
   return { enabled: true, accepted, total: kid.xp.total };
 }
 // What the teacher sees: who has been practising.
@@ -439,7 +523,7 @@ function publicOverview(q) {
   const shortWinners = (list) => list.map((m) => ({ ...m, winners: m.winners.map((w) => ({ ...w, name: shortName(w.name) })) }));
   return {
     season, seasonLabel: seasonLabel(season), seasons: seasonsWithData(db, today()),
-    settings: { satPoints: db.settings.satPoints, sunPoints: db.settings.sunPoints, feastPoints: db.settings.feastPoints, practicePoints: db.settings.practicePoints, remarkPenalty: db.settings.remarkPenalty, remarkBonus: db.settings.remarkBonus, gameEnabled: Boolean(db.settings.gameEnabled), staffEnabled: Boolean(db.settings.staffEnabled), chordsEnabled: Boolean(db.settings.chordsEnabled), trainingBoardEnabled: Boolean(db.settings.trainingBoardEnabled) },
+    settings: { satPoints: db.settings.satPoints, sunPoints: db.settings.sunPoints, feastPoints: db.settings.feastPoints, practicePoints: db.settings.practicePoints, remarkPenalty: db.settings.remarkPenalty, remarkBonus: db.settings.remarkBonus, gameEnabled: Boolean(db.settings.gameEnabled), staffEnabled: Boolean(db.settings.staffEnabled), chordsEnabled: Boolean(db.settings.chordsEnabled), trainingBoardEnabled: Boolean(db.settings.trainingBoardEnabled), spaceEnabled: Boolean(db.settings.spaceEnabled) },
     schedule: scheduleView(),
     month, monthLabel: monthLabel(month),
     monthBoard: strip(scoreboard(db, season, mr.start, mr.end, { hideOut: true })),
@@ -586,6 +670,8 @@ function updateSettings(body) {
   if ('staffEnabled' in body) s.staffEnabled = Boolean(body.staffEnabled);
   if ('chordsEnabled' in body) s.chordsEnabled = Boolean(body.chordsEnabled);
   if ('trainingBoardEnabled' in body) s.trainingBoardEnabled = Boolean(body.trainingBoardEnabled);
+  if ('spaceEnabled' in body) s.spaceEnabled = Boolean(body.spaceEnabled);
+  if ('spaceTarget' in body) { const n = Math.round(Number(body.spaceTarget)); if (!(n >= 10 && n <= 5000)) throw new HttpError(400, 'The weekly goal should be between 10 and 5000 minutes'); s.spaceTarget = n; }
   if ('feeNote' in body) s.feeNote = text(body.feeNote ?? '', 400, 'Why there is a fee');
   if ('gamePrice' in body) s.gamePrice = Math.round(num(body.gamePrice, 0, 100000));
   if ('gamePayMobile' in body) s.gamePayMobile = phone(body.gamePayMobile ?? '', 'Payment number');
@@ -861,6 +947,7 @@ function releaseBatch(n, now = Date.now()) {
     done += 1;
   }
   db.songDrip.released += done;
+  if (done && db.settings.spaceEnabled) addPost({ kind: 'songs', n: done, key: `songs:${new Date(now).toISOString().slice(0, 10)}` });
   return done;
 }
 // Runs whenever the Chord Book is opened and once an hour: releases every batch that has come due.
@@ -1520,6 +1607,7 @@ async function teacherApi(req, res, q, parts) {
     }
     if (b === 'guests') return send(res, 200, guestsView());
     if (b === 'song-queue') { dripTick(); return send(res, 200, queueView()); }
+    if (b === 'space') return send(res, 200, teacherSpace());
     if (b === 'free-chords') return send(res, 200, { songs: freeChordList() });
     if (b === 'voice-tips') return send(res, 200, voiceTipsForTeacher());
     if (b === 'chord-requests') return send(res, 200, { requests: chordRequestList() });
@@ -1552,6 +1640,10 @@ async function teacherApi(req, res, q, parts) {
     if (req.method === 'DELETE' && id) { store.db.voiceTips = store.db.voiceTips.filter((t) => t.id !== id); store.save(); return send(res, 200, voiceTipsForTeacher()); }
   }
   if (req.method === 'DELETE' && b === 'chord-requests' && id) { store.db.chordRequests = store.db.chordRequests.filter((r) => r.id !== id); store.save(); return send(res, 200, { requests: chordRequestList() }); }
+  if (b === 'space') {
+    if (req.method === 'POST' && !id) return send(res, 201, teacherSpacePost(body));
+    if (req.method === 'DELETE' && id) { spaceDb().posts = spaceDb().posts.filter((p) => p.id !== id); store.save(); return send(res, 200, teacherSpace()); }
+  }
   if (b === 'song-queue') {
     if (req.method === 'POST' && !id) return send(res, 201, queueSongs(body));
     if (req.method === 'POST' && id) return send(res, 200, queueAction(id, body));
@@ -1679,12 +1771,15 @@ async function api(req, res, url) {
       await savePhoto(child, body.image, body.head);
       return send(res, 200, { photo: photoUrl(child), head: headUrl(child) });
     }
-    if (req.method === 'GET' && b === 'access') return send(res, 200, { ...accessFor(child), board: Boolean(store.db.settings.trainingBoardEnabled) });
+    if (req.method === 'GET' && b === 'access') return send(res, 200, { ...accessFor(child), board: Boolean(store.db.settings.trainingBoardEnabled || store.db.settings.spaceEnabled) });
     if (req.method === 'GET' && b === 'xp-board') return send(res, 200, xpBoardFor(child));
     if (req.method === 'GET' && b === 'voice-tips') return send(res, 200, voiceTipsFor());
     if (req.method === 'POST' && b === 'chords' && parts[2] === 'request') return send(res, 200, requestChord(child, await readBody(req, 2_000)));
     if (req.method === 'GET' && b === 'chords') return send(res, 200, parts[2] ? chordSong(child, parts[2]) : chordLibrary(child));
     if (req.method === 'POST' && b === 'xp') return send(res, 200, xpReport(child, await readBody(req, 5_000)));
+    if (req.method === 'GET' && b === 'space') return send(res, 200, spaceView(child));
+    if (req.method === 'POST' && b === 'space' && parts[2] === 'react') return send(res, 200, spaceReact(child, await readBody(req, 2_000)));
+    if (req.method === 'POST' && b === 'avatar') return send(res, 200, spaceAvatar(child, await readBody(req, 2_000)));
     if (req.method === 'POST' && b === 'consent') { // a parent or guardian says yes, once, on this phone
       const body = await readBody(req, 2_000);
       if (body.agree !== true) throw new HttpError(400, 'Please tick the box to agree');
