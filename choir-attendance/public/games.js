@@ -10,6 +10,22 @@ import { newestTip } from './voicetips.js';
 const CACHE = 'choir-cache:games-access';
 const fmtDay = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
+// The big "SING" home that every child sees at the top of Training games. The teacher's page uses the same piece,
+// so what the teacher sees is what a child sees.
+export function kidHeroHtml(v, g) {
+  const first = g.vocals ? 'vocals' : g.notation ? 'notation' : null;
+  if (!first) return '';
+  return `<div class="kid-hero">
+        <div class="kid-top"><b>Ready to sing? 🎤</b><span class="kid-chip fire">🔥 ${v.streak}</span><span class="kid-chip">⚡ ${v.total} XP</span></div>
+        <button class="kid-sing" data-game="${first}" data-sing="1" style="--p:${v.goalShare}" aria-label="Start singing"><span class="kid-sing-in"><span class="kid-mic">🎤</span><b>SING</b><small>${v.goalMet ? 'Goal done! 🎉' : `Today's goal: ${Math.round(v.goalShare * 100)}%`}</small></span></button>
+        <div class="kid-hint">Tap to start. Hear a note, sing it and hold it.</div>
+        <div class="kid-missions">
+          ${g.vocals ? `<button class="kid-mission" data-game="vocals"><span>🔥</span><b>Warm up</b><small>2 minutes</small></button>` : ''}
+          <button class="kid-mission gold" data-game="${first}"><span>⏱</span><b>Hold notes</b><small>${v.week?.notes ? `${v.week.won} this week` : 'Try it!'}</small></button>
+          <button class="kid-mission" data-game="tips"><span>💧</span><b>Voice tip</b><small><span class="vt-dot" hidden>NEW</span>&nbsp;</small></button>
+        </div></div>`;
+}
+
 export function mountGames(host, { code }) {
   const root = document.createElement('div'); // its own container, so listeners from an earlier visit never pile up
   host.replaceChildren(root);
@@ -56,17 +72,7 @@ export function mountGames(host, { code }) {
     view = 'hub';
     ctl?.destroy?.(); ctl = null;
     const g = access.games;
-    const v = xp.view();
-    const first = g.vocals ? 'vocals' : g.notation ? 'notation' : null;
-    const hero = first ? `<div class="kid-hero">
-        <div class="kid-top"><b>Ready to sing? 🎤</b><span class="kid-chip fire">🔥 ${v.streak}</span><span class="kid-chip">⚡ ${v.total} XP</span></div>
-        <button class="kid-sing" data-game="${first}" data-sing="1" style="--p:${v.goalShare}" aria-label="Start singing"><span class="kid-sing-in"><span class="kid-mic">🎤</span><b>SING</b><small>${v.goalMet ? 'Goal done! 🎉' : `Today's goal: ${Math.round(v.goalShare * 100)}%`}</small></span></button>
-        <div class="kid-hint">Tap to start. Hear a note, sing it and hold it.</div>
-        <div class="kid-missions">
-          ${g.vocals ? `<button class="kid-mission" data-game="vocals"><span>🔥</span><b>Warm up</b><small>2 minutes</small></button>` : ''}
-          <button class="kid-mission gold" data-game="${first}"><span>⏱</span><b>Hold notes</b><small>${v.week?.notes ? `${v.week.won} this week` : 'Try it!'}</small></button>
-          <button class="kid-mission" data-game="tips"><span>💧</span><b>Voice tip</b><small><span class="vt-dot" hidden>NEW</span>&nbsp;</small></button>
-        </div></div>` : '';
+    const hero = kidHeroHtml(xp.view(), g);
     root.innerHTML = `
       ${hero}
       <div class="card"><h2 style="margin:0">Training games</h2>

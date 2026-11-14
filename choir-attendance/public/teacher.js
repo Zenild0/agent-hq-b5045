@@ -97,8 +97,9 @@ function subsPanelHtml(subs) {
 // Training games: one page that holds every game, so more can be added. The subscription is shared by all of them.
 async function loadGamesHub() {
   $('#games').innerHTML = `
+    <div id="kidHero"></div>
     <div class="card"><h2 style="margin:0">Training games</h2>
-      <div class="muted">Try each game yourself. Everyone, guests included, gets every game free for 7 days; one payment then unlocks all of them.</div></div>
+      <div class="muted">This is what every child sees. Try each game yourself. Everyone, guests included, gets every game free for 7 days; one payment then unlocks all of them.</div></div>
     <div class="tg-list">
       <button class="tg-card" data-game="vocals"><span class="tg-n">1</span><span class="grow"><b>Vocal trainer</b><span class="muted">Hear a note, sing it. Levels, daily challenge, badges.</span></span><span>›</span></button>
       <button class="tg-card" data-game="staffgame"><span class="tg-n">2</span><span class="grow"><b>Notation trainer</b><span class="muted">Learn to read music: 20 levels, treble and bass clef.</span></span><span>›</span></button>
@@ -111,6 +112,17 @@ async function loadGamesHub() {
     <div id="tipsBox"></div>
     <div id="practiceBox"></div>
     <div id="subsBox"></div>`;
+  // the same SING home the children see, with your own progress
+  Promise.all([import('./games.js'), import('./xp.js')]).then(([g, x]) => {
+    const host = $('#kidHero'); if (!host) return;
+    host.innerHTML = g.kidHeroHtml(x.xpFor('teacher').view(), { vocals: true, notation: true });
+    host.querySelectorAll('[data-game]').forEach((b) => b.addEventListener('click', () => openGame(b.dataset.game, b.dataset.sing === '1')));
+  }).catch(() => {});
+  function openGame(name, sing = false) {
+    if (name === 'tips') return $('#tipsBox')?.scrollIntoView({ behavior: 'smooth' });
+    showTab(name);
+    if (sing && name === 'vocals') { let tries = 0; const t = setInterval(() => { const go = document.querySelector('#vocals [data-a="path"]'); if (go || ++tries > 40) { clearInterval(t); go?.click(); } }, 100); }
+  }
   $('#games').querySelectorAll('[data-game]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.game)));
   loadTipsBox();
   call('teacher/chord-requests').then((r) => { if (r.requests.length) $('#games').querySelector('[data-game="chordbook"] .muted').insertAdjacentHTML('beforeend', ` <b style="color:var(--brand)">· ${r.requests.length} song request${r.requests.length === 1 ? '' : 's'}</b>`); }).catch(() => {});
