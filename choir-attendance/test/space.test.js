@@ -60,6 +60,13 @@ test('Choir Space stays closed until the teacher opens it, needs the parent tick
   assert.equal((await j('/api/me/space/react', { method: 'POST', code: maya.code, body: { post: post.id, emoji: '👏' } })).data.reacts.find((x) => x.e === '👏').n, 0, 'tap again to undo');
   assert.equal((await j('/api/me/space/react', { method: 'POST', code: maya.code, body: { post: post.id, emoji: '💩' } })).status, 400, 'only the offered reactions');
   assert.equal((await j('/api/me/space/react', { method: 'POST', code: shy.code, body: { post: post.id, emoji: '👏' } })).status, 403);
+  // open to every choir child, whether or not they have paid
+  const free = (await j('/api/teacher/children', { method: 'POST', body: { name: 'Free Kid' } })).data;
+  await j('/api/me/consent', { method: 'POST', body: { agree: true }, code: free.code });
+  const fv = (await j('/api/me/space', { code: free.code })).data;
+  assert.equal(fv.locked, false, 'no payment needed');
+  assert.ok(fv.feed.length >= 2 && fv.challenge);
+  assert.equal((await j('/api/me/space/react', { method: 'POST', code: free.code, body: { post: post.id, emoji: '🔥' } })).status, 200);
 });
 
 test('avatars unlock with XP, and the teacher can post a note and remove any post', async () => {

@@ -1449,7 +1449,7 @@ async function loadSettings() {
         <label class="chk"><input name="rhythmEnabled" type="checkbox"${s.rhythmEnabled !== false ? ' checked' : ''}> 🥁 Rhythm trainer (game 3) is on (levels 1 and 2 free)</label>
         <label class="chk"><input name="earEnabled" type="checkbox"${s.earEnabled !== false ? ' checked' : ''}> 🕵️ Ear Detective (listening game) is on (levels 1 and 2 free)</label>
         <label class="chk"><input name="trainingBoardEnabled" type="checkbox"${s.trainingBoardEnabled ? ' checked' : ''}> 🏆 Music Lab leaderboard (shown only to children with a paid year; off until you switch it on)</label>
-        <label class="chk"><input name="spaceEnabled" type="checkbox"${s.spaceEnabled ? ' checked' : ''}> 🌟 Choir Space (a safe, friendly feed, weekly challenge and avatars for children whose parent ticked the box. No chat, no photos, no voices)</label>
+        <label class="chk"><input name="spaceEnabled" type="checkbox"${s.spaceEnabled ? ' checked' : ''}> 🌟 Choir Space (a safe, friendly feed, weekly challenge and avatars for every choir child whose parent ticked the box, free for all. No chat, no photos, no voices)</label>
         <label class="field">Choir challenge: minutes the whole choir sings together each week<input name="spaceTarget" type="number" min="10" max="5000" step="10" value="${s.spaceTarget ?? 500}"></label>
         <div class="muted" style="margin:8px 0">The first levels stay free. Parents pay you directly, then you unlock their child for a year (Children → the child → Vocals game), and that opens all the games. After 365 days they pay again.</div>
         <label class="field">Price for one year (₹)<input name="gamePrice" type="number" min="0" step="1" value="${s.gamePrice ?? 500}"></label>

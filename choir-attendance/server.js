@@ -380,8 +380,7 @@ function spaceFeed(child) {
 function spaceView(child) {
   const { db } = store;
   if (!db.settings.spaceEnabled) return { enabled: false };
-  if (!accessFor(child).full) return { enabled: true, locked: true, pay: payInfo(), price: db.settings.gamePrice, note: db.settings.feeNote };
-  if (!spaceKid(child)) return { enabled: true, needConsent: true };
+  if (!spaceKid(child)) return { enabled: true, needConsent: true }; // open to every choir child, paid or not; only the parent's tick is needed
   const day = istDate();
   const x = xpOf(child.id);
   const stories = db.children.filter(spaceKid).map((c) => ({ id: c.id, name: shortName(c.name), avatar: avatarFor(c), streak: xpOf(c.id)?.streak ?? 0, week: statsOf(xpOf(c.id), day, 'week').minutes }))
@@ -393,7 +392,7 @@ function spaceView(child) {
   };
 }
 function spaceReact(child, body) {
-  if (!store.db.settings.spaceEnabled || !spaceKid(child) || !accessFor(child).full) throw new HttpError(403, 'Choir Space is not open for you yet');
+  if (!store.db.settings.spaceEnabled || !spaceKid(child)) throw new HttpError(403, 'Choir Space is not open for you yet');
   if (!REACTIONS.includes(body.emoji)) throw new HttpError(400, 'Pick one of the reactions');
   const post = spaceDb().posts.find((p) => p.id === body.post);
   if (!post) throw new HttpError(404, 'That post is gone');
