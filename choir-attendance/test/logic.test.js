@@ -213,3 +213,15 @@ test('ranks are sequential: three tied for 1st are followed by 2nd, not 4th', ()
   assert.equal(byName.D[1], 2); // next after a three-way tie
   assert.deepEqual(byName.X, [0.5, 3]); // late costs 0.5; then 3rd, never skipping a rank
 });
+
+test('only missed Saturday practices are leaves: a missed weekend is one leave, special occasions and medical leave are none', () => {
+  const weekend = [
+    ['2026-06-06', 'saturday', { a: e('absent') }], ['2026-06-07', 'sunday', { a: e('absent') }],
+    ['2026-06-13', 'practice', { a: e('absent') }], ['2026-06-14', 'feast', { a: e('absent') }],
+    ['2026-06-20', 'saturday', { a: e('excused') }],
+  ];
+  assert.equal(childStats(mkDb(weekend), 'a', 2026).leaves, 1, 'Saturday and Sunday of the same weekend count once');
+  const five = ['2026-06-06', '2026-06-13', '2026-06-20', '2026-06-27', '2026-07-04'].map((d) => [d, 'saturday', { a: e('absent') }]);
+  const st = childStats(mkDb(five), 'a', 2026);
+  assert.equal(st.leaves, 5); assert.equal(st.leavesLeft, 0);
+});

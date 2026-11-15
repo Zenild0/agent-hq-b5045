@@ -14,8 +14,8 @@ export const fmtDate = (d) =>
 export const typeLabel = (type, event) => ({
   saturday: 'Saturday practice',
   sunday: 'Sunday mass',
-  practice: `${event || 'Special'} practice`,
-  feast: `${event || 'Special'} mass`,
+  practice: `${event || 'Occasion'} practice`,
+  feast: event ? `${event} (special occasion)` : 'Special occasion',
 }[type] || type);
 
 export async function api(path, { method = 'GET', body, pin, code } = {}) {
@@ -213,9 +213,12 @@ export function leaveAlertHtml(d, { teacher = false } = {}) {
     if (teacher || decision === 'keep') return ''; // teacher sees the decision panel instead
     return `<div class="alert warn"><b>Leave limit passed.</b> ${esc(d.name)} has used more than ${s.maxLeaves} leaves this year. Your choir teacher will be in touch.</div>`;
   }
+  if (!teacher && decision !== 'keep' && st.leaves >= s.maxLeaves && s.maxLeaves > 0) {
+    return `<div class="alert bad"><b>Over the leave limit.</b> ${esc(d.name)} has ${st.leaves} leaves this year and may have to take a break until next year. Please talk to your choir teacher.</div>`;
+  }
   if (st.leavesLeft <= 1) {
-    const left = st.leavesLeft ? `only ${st.leavesLeft} leave left` : 'no leaves left';
-    return `<div class="alert warn"><b>Careful:</b> ${left} this year. Please try to attend every practice.</div>`;
+    const left = st.leavesLeft ? 'One more leave and you may have to take a break until next year.' : 'No leaves left this year.';
+    return `<div class="alert warn"><b>Careful:</b> ${st.leaves} of ${s.maxLeaves} leaves used. ${left} Please try to attend every practice.</div>`;
   }
   return '';
 }

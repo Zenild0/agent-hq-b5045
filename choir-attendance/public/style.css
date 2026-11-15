@@ -1171,3 +1171,16 @@ html[data-theme=dark] .at-head { background: #0E0B1F; }
 .ed-fb { display: grid; justify-items: center; gap: 8px; text-align: center; font-weight: 700; min-height: 2em; } .ed-fb .ok { color: var(--ok); } .ed-fb .bad { color: var(--bad); }
 .ed-pic { width: 160px; height: 80px; } .ed-pic .g { stroke: var(--line); stroke-dasharray: 4 4; } .ed-pic .ln { stroke: var(--muted); stroke-width: 2; fill: none; }
 .ed-pic .n1 { fill: #3BA7FF; } .ed-pic .n2 { fill: #FF8A3D; }
+
+/* ---------- leaves on the children's home ---------- */
+.lv { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; padding: 10px 12px; margin: 0 0 12px; border-radius: 20px; border: 1px solid var(--line); background: var(--card); color: inherit; font: inherit; cursor: pointer; }
+.lv-ic { width: 40px; height: 40px; flex: none; border-radius: 14px; display: grid; place-items: center; font-size: 1.2rem; background: rgba(31, 181, 127, .14); }
+.lv-main { flex: 1; min-width: 0; display: grid; gap: 2px; } .lv-main b { font: 800 .92rem/1.25 var(--font-body); } .lv-main span { font-weight: 700; font-size: .78rem; color: var(--muted); line-height: 1.35; } .lv-main small { font-weight: 800; font-size: .7rem; color: var(--muted); }
+.lv-dots { display: flex; gap: 4px; flex: none; flex-wrap: wrap; max-width: 76px; justify-content: flex-end; } .lv-dots i { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--line); }
+.lv-dots i.used { background: #ffb020; border-color: #ffb020; } .lv-dots i.over { background: var(--bad); border-color: var(--bad); }
+.lv-mid .lv-ic { background: rgba(127, 127, 160, .15); }
+.lv-warn { border-color: #ffb020; background: rgba(255, 176, 32, .12); } .lv-warn .lv-ic { background: rgba(255, 176, 32, .25); } .lv-warn .lv-main span { color: inherit; } .lv-warn .lv-dots i.used { background: #ff8a1f; border-color: #ff8a1f; }
+.lv-bad { border-color: var(--bad); background: rgba(212, 56, 44, .12); } .lv-bad .lv-ic { background: rgba(212, 56, 44, .2); } .lv-bad .lv-main span { color: inherit; } .lv-bad .lv-dots i.used { background: var(--bad); border-color: var(--bad); }
+.lv-warn .lv-ic, .lv-bad .lv-ic { animation: lv-nudge 2.4s ease-in-out 1s 2; }
+@keyframes lv-nudge { 0%, 100% { transform: none; } 20% { transform: rotate(-10deg); } 40% { transform: rotate(8deg); } 60% { transform: rotate(-4deg); } }
+@media (prefers-reduced-motion: reduce) { .lv-ic { animation: none !important; } }

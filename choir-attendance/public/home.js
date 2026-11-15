@@ -58,7 +58,7 @@ export function daysFoldHtml(sc, history, open = false) {
   const have = history !== null && history !== undefined;
   const byDate = new Map(sc.days.map((d) => [d.date, d]));
   // Past days with attendance that are not on the schedule (e.g. a Sunday mass) still count.
-  const extraLabel = (h) => ({ saturday: '', sunday: 'Mass', practice: h.event || 'Special', feast: h.event ? `${h.event} mass` : 'Mass' }[h.type] ?? '');
+  const extraLabel = (h) => ({ saturday: '', sunday: 'Mass', practice: h.event || 'Special', feast: h.event || 'Special occasion' }[h.type] ?? '');
   for (const h of history || []) if (h.date <= sc.today && !byDate.has(h.date)) byDate.set(h.date, { date: h.date, time: '', label: extraLabel(h), cancelled: false, extra: true });
   const all = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
   const past = all.filter((d) => d.date <= sc.today && !(d.date === sc.today && sc.next?.date === d.date));
@@ -307,4 +307,28 @@ export function labBoardHtml(d) {
   return `<section class="hb lab">${head()}<div class="hb-podium">${pod(b, 2)}${pod(a, 1)}${pod(c, 3)}</div>${you}
     ${rows.length > 3 ? `<div class="hb-list">${rows.slice(3, 6).map((r) => `<div class="hb-row${r.id === meId ? ' me' : ''}"><b>${r.rank}</b>${avatarHtml({ name: r.name, photo: r.head || r.photo }, 'sm')}<span class="grow">${r.id === meId ? 'You' : esc(r.name)}</span><em>${r.xp} XP</em></div>`).join('')}</div>` : ''}
     <button type="button" class="hb-all" data-q="board">See the full Music Lab board ›</button></section>`;
+}
+
+// ---------- leaves on the children's home: always visible, gentle until it matters ----------
+// Only missed Saturday practices count (and Sunday mass if the teacher switched that on). Medical leave and special
+// occasions never count. At one below the limit: a warning. At the limit and above: you have gone over, a break may follow.
+export function leaveMeterHtml(me) {
+  const st = me?.stats, s = me?.settings;
+  if (!st || !s || me.guest) return '';
+  const max = s.maxLeaves ?? 5, n = st.leaves ?? 0, decision = st.decision?.status;
+  const what = s.countSundayAbsences ? 'missed Saturday practices and Sunday masses' : 'missed Saturday practices';
+  const dots = Array.from({ length: Math.max(max, n) }, (_, i) => `<i class="${i < n ? (i >= max ? 'over' : 'used') : ''}"></i>`).join('');
+  const dates = (st.leaveDates ?? []).slice(-3).map((d) => esc(fmtDate(d).replace(/ \d{4}$/, '').replace(/^\w+,? /, ''))).join(' · ');
+  let tone = 'ok', title, body;
+  if (decision === 'out') { tone = 'bad'; title = 'Taking a break this year'; body = 'Your teacher has decided you will take a break until next year. You are welcome back next April.'; }
+  else if (decision === 'keep' && n >= max) { tone = 'warn'; title = `${n} leaves this year · your teacher says you can continue`; body = 'Please try to come to every practice from now on.'; }
+  else if (n >= max) { tone = 'bad'; title = `${n} leaves: over the limit for this year`; body = 'You have gone over the number of leaves allowed this year, and you may have to take a break until next year. Please talk to your choir teacher.'; }
+  else if (n === max - 1) { tone = 'warn'; title = `${n} of ${max} leaves used`; body = 'Careful! One more leave and you may have to take a break until next year. Please try to come every Saturday.'; }
+  else if (n > 0) { tone = 'mid'; title = `${n} of ${max} leaves used this year`; body = `Only ${what} count. Medical leave and special occasions do not.`; }
+  else { title = 'No leaves this year 🌟'; body = 'Great going! Keep coming every Saturday.'; }
+  return `<button type="button" class="lv lv-${tone}" data-q="child" aria-label="${esc(title)}. ${esc(body)}">
+    <span class="lv-ic" aria-hidden="true">${tone === 'bad' ? '🚫' : tone === 'warn' ? '⚠️' : tone === 'mid' ? '🗓' : '✅'}</span>
+    <span class="lv-main"><b>${esc(title)}</b><span>${esc(body)}</span>${n && dates ? `<small>Missed: ${dates}</small>` : ''}</span>
+    <span class="lv-dots" aria-hidden="true">${dots}</span>
+  </button>`;
 }

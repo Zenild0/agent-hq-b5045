@@ -3,7 +3,7 @@ import {
   statsHtml, historyHtml, leaveAlertHtml,
 } from './common.js';
 import { icon } from './icons.js';
-import { greetBarHtml, quickGridHtml, storiesHtml, wireHome, homeBoardHtml, nextCardHtml, daysFoldHtml, remarksFoldHtml, guestHomeHtml, eventBoardHtml, occasionPracticesHtml } from './home.js';
+import { greetBarHtml, quickGridHtml, storiesHtml, wireHome, homeBoardHtml, leaveMeterHtml, nextCardHtml, daysFoldHtml, remarksFoldHtml, guestHomeHtml, eventBoardHtml, occasionPracticesHtml } from './home.js';
 import { pickPhotos } from './photo.js';
 import { applyLook, lookCardHtml, wireLook, configure } from './theme.js';
 import { initBack, noteVisit, onBackFirst } from './nav.js';
@@ -139,6 +139,7 @@ function drawHome() {
   ].filter(Boolean) : [];
   box.innerHTML = (me ? greetBarHtml({ avatar: avatarHtml({ name: me.name, photo: me.head || me.photo }, 'sm'), hello: `${hour < 12 ? '☀️ Good morning' : hour < 17 ? '🌤 Good afternoon' : '🌙 Good evening'}`, name: `Hi, ${esc(me.name.split(' ')[0])}! 👋`, sub: me.standard ? esc(me.standard) : '' }) : '')
     + nextCardHtml(overview.schedule)
+    + (me ? leaveMeterHtml(me) : '')
     + storiesHtml(stories)
     + (overview.monthBoard ? homeBoardHtml(overview, me?.id, homeBoardRange) : '')
     + occasionPracticesHtml(me)
@@ -286,7 +287,7 @@ function boardTab() {
     <div class="card">
       <h3>How to earn points</h3>
       <div class="muted">Saturday practice = <b>${fmtPts(o.settings.satPoints)}</b> point · Sunday mass = <b>${fmtPts(o.settings.sunPoints)}</b> points ·
-      Feast practices = <b>${fmtPts(o.settings.practicePoints)}</b> point each · Feast mass = <b>${fmtPts(o.settings.feastPoints)}</b> points.
+      Occasion practices = <b>${fmtPts(o.settings.practicePoints)}</b> point each · Special occasions = <b>${fmtPts(o.settings.feastPoints)}</b> points.
       A day with any remark to improve (late, not paying attention, incomplete book, talking) takes off <b>${fmtPts(o.settings.remarkPenalty ?? 0.5)}</b> in total, however many. Each good remark (well behaved, helped others) adds <b>${fmtPts(o.settings.remarkBonus ?? 0.25)}</b>.</div>
     </div>
     </div>`;

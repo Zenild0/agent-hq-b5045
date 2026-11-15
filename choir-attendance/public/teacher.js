@@ -430,7 +430,7 @@ $('#backMore').addEventListener('click', () => showTab(currentTab === 'vocals' |
 
 const MORE_PAGES = [
   { id: 'schedule', icon: icon('schedule'), label: 'Schedule', sub: 'Practice days' },
-  { id: 'occasions', icon: icon('sparkle'), label: 'Occasions', sub: 'Feasts and events' },
+  { id: 'occasions', icon: icon('sparkle'), label: 'Occasions', sub: 'Special occasions and events' },
   { id: 'games', icon: icon('mic'), label: 'Music Lab', sub: 'Trainers, Chord Book, subscribers' },
   { id: 'board', icon: 'trophy', label: 'Leaderboard', sub: 'Month and year' },
   { id: 'settings', icon: icon('settings'), label: 'Settings', sub: 'Points, payment, look' },
@@ -615,8 +615,8 @@ async function loadAttendance() {
 
 // ---- the attendance page ----
 let attFilter = 'all', attQuery = '', attFirst = false, attUndo = null;
-const TYPE_CHIPS = [['saturday', 'Saturday', 'satPoints'], ['sunday', 'Sunday', 'sunPoints'], ['practice', 'Practice', 'practicePoints'], ['feast', 'Feast mass', 'feastPoints']];
-const TYPE_LONG = { saturday: 'Saturday practice', sunday: 'Sunday mass', practice: 'Special practice', feast: 'Special mass' };
+const TYPE_CHIPS = [['saturday', 'Saturday', 'satPoints'], ['sunday', 'Sunday', 'sunPoints'], ['practice', 'Occasion practice', 'practicePoints'], ['feast', 'Special occasion', 'feastPoints']];
+const TYPE_LONG = { saturday: 'Saturday practice', sunday: 'Sunday mass', practice: 'Occasion practice', feast: 'Special occasion' };
 
 const attCounts = () => {
   const n = (k) => view.children.filter((c) => c.status === k).length;
@@ -884,7 +884,7 @@ async function loadOccasions() {
         ${ev.practices.filter((p) => p.date >= todayStr()).length ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">${ev.practices.filter((p) => p.date >= todayStr()).map((p) => `<span class="badge info">📅 ${esc(fmtDate(p.date))} · ${esc(fmtClock(p.time))}</span>`).join('')}</div>` : '<div class="muted" style="margin-top:8px">No practice dates scheduled. Tap 📅 Schedule to add them.</div>'}
         ${ev.sessions.length ? `<div class="matrix-wrap"><table class="matrix">
           <thead><tr><th>Child</th>${ev.sessions.map((x) => `
-            <th><button class="link" data-goto="${x.date}|${x.type}|${esc(ev.event)}">${x.date.slice(8)}/${x.date.slice(5, 7)}</button><div class="muted">${x.type === 'feast' ? '🎶 Mass' : 'Practice'}<br>${x.presentCount} here</div></th>`).join('')}
+            <th><button class="link" data-goto="${x.date}|${x.type}|${esc(ev.event)}">${x.date.slice(8)}/${x.date.slice(5, 7)}</button><div class="muted">${x.type === 'feast' ? '🎶 Occasion' : 'Practice'}<br>${x.presentCount} here</div></th>`).join('')}
             <th>Attended</th><th>Points</th><th>Remarks</th><th></th></tr></thead>
           <tbody>${ev.children.map((c) => `
             <tr><td><button class="link" data-open="${esc(c.id)}">${esc(c.name)}</button>${c.guest ? ' <span class="badge info">Guest</span>' : ''}</td>
@@ -1432,14 +1432,14 @@ async function loadSettings() {
       ${sec('Points and leaves', 'How children score and how many leaves they get', `
         ${num('satPoints', 'Saturday practice points', s.satPoints)}
         ${num('sunPoints', 'Sunday mass points', s.sunPoints)}
-        ${num('practicePoints', 'Points per feast practice (Christmas, Easter…)', s.practicePoints)}
-        ${num('feastPoints', 'Points for the feast mass itself', s.feastPoints)}
+        ${num('practicePoints', 'Points per occasion practice (Christmas, Easter…)', s.practicePoints)}
+        ${num('feastPoints', 'Points for the special occasion itself', s.feastPoints)}
         ${num('remarkPenalty', 'Points taken off a session with any negative remark (charged once, however many)', s.remarkPenalty)}
         ${num('remarkBonus', 'Points added for each positive remark (well behaved, helped others)', s.remarkBonus)}
         ${num('latePointsFactor', 'Share of points when late (1 = full points; the remark penalty applies on top)', s.latePointsFactor, 'step="0.1" max="1"')}
         ${num('maxLeaves', 'Leaves allowed per year (April–April)', s.maxLeaves, 'step="1"')}
         <label class="chk"><input name="countSundayAbsences" type="checkbox"${s.countSundayAbsences ? ' checked' : ''}> Missing Sunday mass also counts as a leave</label>
-        <p class="muted">Feast practices, feast masses and medical absences never count as leaves. Going over the leave limit never removes a child by itself; you decide.</p>`, true)}
+        <p class="muted">Only missed Saturday practices count as leaves (plus Sunday mass if you tick the box above). Occasion practices, special occasions and medical leave never count. Going over the leave limit never removes a child by itself; you decide.</p>`, true)}
       ${sec('Vocals and payment', 'The singing game, its price and how parents pay', `
         <div class="muted" style="margin-bottom:4px"><b>Music Lab for the children.</b> Switch each game on when you are ready, one at a time. Everyone, guests included, gets every game free for 7 days; one payment then unlocks all the games.</div>
         <label class="chk"><input name="gameEnabled" type="checkbox"${s.gameEnabled ? ' checked' : ''}> 🎤 Vocal trainer (game 1) is on for parents</label>
