@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { execFileSync } from 'node:child_process';
 import { readFile, writeFile, mkdir, rm, stat } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
@@ -1761,6 +1762,7 @@ async function api(req, res, url) {
   const [a, b] = parts;
 
   if (req.method === 'GET' && a === 'public') return send(res, 200, publicOverview(q));
+  if (req.method === 'GET' && a === 'version') return send(res, 200, { commit: BUILD, started: STARTED_AT }); // which build is running: the page footer shows it
   if (req.method === 'GET' && a === 'hymns') return send(res, 200, hymnList());
   if (req.method === 'GET' && a === 'meta') return send(res, 200, { pinRequired: !isLocal(req) && Boolean(PIN_ENV), teacherAllowed: isLocal(req) || Boolean(PIN_ENV) });
 
@@ -1836,6 +1838,9 @@ async function serveStatic(req, res, pathname) {
   return serveFile(res, file);
 }
 
+const STARTED_AT = new Date().toISOString();
+let BUILD = ''; // the build this server started from
+try { BUILD = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: here, timeout: 3000 }).toString().trim(); } catch { /* not a git checkout */ }
 export const server = createServer(async (req, res) => {
   // Basic hardening on every response: no type sniffing, no framing, no referrer leaks, and only this site may use the camera and microphone.
   res.setHeader('x-content-type-options', 'nosniff');
