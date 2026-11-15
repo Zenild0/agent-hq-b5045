@@ -236,56 +236,103 @@ export function remarksLogHtml(log) {
       </div>`).join('')}`;
 }
 
-// ---------- hymn viewer: large, readable, with a full-screen button ----------
+// ---------- hymn viewer: a calm reading screen ----------
+// Big, spaced lyrics; the text size is remembered; ♥ favourite; ◀ ▶ to the next hymn in the list (or swipe);
+// the audio sits at the bottom; the screen stays awake while you sing from it.
 
-let viewer;
-const readSize = () => { try { return Number(localStorage.getItem('choir-hv-size')) || 1.4; } catch { return 1.4; } };
+const safeGet = (k, d = '') => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
+const safeSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } };
+const readJson = (k, d) => { try { const v = JSON.parse(safeGet(k, '')); return v ?? d; } catch { return d; } };
+export const hymnPrefs = {
+  favs: () => new Set(readJson('choir-hymn-fav', [])),
+  toggleFav(id) { const s = this.favs(); if (s.has(id)) s.delete(id); else s.add(id); safeSet('choir-hymn-fav', JSON.stringify([...s])); return s.has(id); },
+  recent: () => readJson('choir-hymn-recent', []),
+  seen(id) { safeSet('choir-hymn-recent', JSON.stringify([id, ...this.recent().filter((x) => x !== id)].slice(0, 8))); },
+  lastCat: () => safeGet('choir-hymn-cat', 'all'),
+  setLastCat: (c) => safeSet('choir-hymn-cat', c),
+};
 
-export function openHymnViewer(h, categoryLabel = '') {
+let viewer, wake = null, ctx = null, cur = null;
+const readSize = () => Number(safeGet('choir-hv-size', '')) || 1.5;
+
+async function keepAwake(on) {
+  try {
+    if (on && navigator.wakeLock && !wake) wake = await navigator.wakeLock.request('screen');
+    else if (!on && wake) { await wake.release(); wake = null; }
+  } catch { wake = null; /* not allowed: the screen may dim, nothing else */ }
+}
+
+function paintViewer() {
+  const h = cur, label = ctx?.labelOf?.(h) ?? ctx?.categoryLabel ?? '';
+  const list = ctx?.list ?? [h], i = Math.max(0, list.findIndex((x) => x.id === h.id)), multi = list.length > 1;
+  const link = /^https?:\/\//i.test(h.link || '') ? h.link : '';
+  const fav = hymnPrefs.favs().has(h.id);
+  viewer.innerHTML = `
+    <div class="hv-bar">
+      <button class="ibtn" data-hv="close" title="Close" aria-label="Close">✕</button>
+      <span class="grow hv-count">${multi ? `${i + 1} of ${list.length}` : ''}</span>
+      ${multi ? '<button class="ibtn" data-hv="prev" aria-label="Previous hymn"' + (i === 0 ? ' disabled' : '') + '>◀</button><button class="ibtn" data-hv="next" aria-label="Next hymn"' + (i === list.length - 1 ? ' disabled' : '') + '>▶</button>' : ''}
+      <button class="ibtn hv-fav${fav ? ' on' : ''}" data-hv="fav" aria-pressed="${fav}" aria-label="${fav ? 'Remove from favourites' : 'Add to favourites'}">${fav ? '♥' : '♡'}</button>
+      <button class="ibtn" data-hv="smaller" aria-label="Smaller text">A−</button>
+      <button class="ibtn" data-hv="bigger" aria-label="Bigger text">A+</button>
+      ${document.fullscreenEnabled ? '<button class="ibtn" data-hv="full" title="Full screen" aria-label="Full screen">⛶</button>' : ''}
+    </div>
+    <div class="hv-body" style="--hv-size:${readSize()}rem">
+      ${label ? `<div class="hv-cat">${esc(label)}</div>` : ''}
+      <h2 class="hv-title">${esc(h.title)}</h2>
+      ${h.notes ? `<div class="hv-note">${esc(h.notes)}</div>` : ''}
+      ${link ? `<p><a class="hv-link" href="${esc(link)}" target="_blank" rel="noopener noreferrer">🔗 Open the music link</a></p>` : ''}
+      ${h.lyrics ? `<div class="hv-lyrics">${esc(h.lyrics)}</div>` : '<div class="muted" style="margin-top:14px">No lyrics have been added for this hymn yet.</div>'}
+    </div>
+    ${h.audio ? `<div class="hv-audio"><span aria-hidden="true">🎧</span><audio controls preload="none" src="${esc(h.audio)}"></audio></div>` : ''}`;
+  viewer.scrollTo?.(0, 0);
+}
+const go = (d) => {
+  const list = ctx?.list ?? [], i = list.findIndex((x) => x.id === cur.id), n = list[i + d];
+  if (!n) return;
+  viewer.querySelector('audio')?.pause();
+  cur = n; ctx.onNav?.(n); paintViewer();
+};
+
+export function openHymnViewer(h, categoryLabel = '', context = null) {
+  cur = h; ctx = context ? { ...context, categoryLabel } : { categoryLabel };
   if (!viewer) {
     viewer = document.createElement('dialog');
     viewer.className = 'hv';
     document.body.appendChild(viewer);
     viewer.addEventListener('close', () => {
       viewer.querySelector('audio')?.pause();
+      keepAwake(false);
       if (document.fullscreenElement) document.exitFullscreen?.();
+      ctx?.onClose?.();
     });
-    document.addEventListener('fullscreenchange', () => {
-      const b = viewer.querySelector('[data-hv=full]');
-      if (b) b.textContent = document.fullscreenElement ? '⤢' : '⛶';
+    document.addEventListener('fullscreenchange', () => { const b = viewer.querySelector('[data-hv=full]'); if (b) b.textContent = document.fullscreenElement ? '⤢' : '⛶'; });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && viewer.open) keepAwake(true); });
+    viewer.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-hv]'); if (!b) return;
+      const a = b.dataset.hv;
+      if (a === 'close') viewer.close();
+      else if (a === 'prev') go(-1);
+      else if (a === 'next') go(1);
+      else if (a === 'fav') { const on = hymnPrefs.toggleFav(cur.id); b.classList.toggle('on', on); b.textContent = on ? '♥' : '♡'; b.setAttribute('aria-pressed', String(on)); }
+      else if (a === 'smaller' || a === 'bigger') {
+        const next = Math.min(3.4, Math.max(0.9, readSize() + (a === 'bigger' ? 0.2 : -0.2)));
+        safeSet('choir-hv-size', String(next));
+        viewer.querySelector('.hv-body')?.style.setProperty('--hv-size', `${next}rem`);
+      } else if (a === 'full') { if (document.fullscreenElement) document.exitFullscreen(); else viewer.requestFullscreen?.().catch(() => {}); }
     });
+    // swipe left or right for the next or previous hymn
+    let sx = 0, sy = 0;
+    viewer.addEventListener('touchstart', (e) => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive: true });
+    viewer.addEventListener('touchend', (e) => {
+      const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+      if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 2) go(dx < 0 ? 1 : -1);
+    }, { passive: true });
+    viewer.addEventListener('keydown', (e) => { if (e.key === 'ArrowRight') go(1); else if (e.key === 'ArrowLeft') go(-1); });
   }
-  const link = /^https?:\/\//i.test(h.link || '') ? h.link : '';
-  viewer.innerHTML = `
-    <div class="hv-bar">
-      <button class="ibtn" data-hv="close" title="Close" aria-label="Close">✕</button>
-      <span class="grow"></span>
-      <button class="ibtn" data-hv="smaller" aria-label="Smaller text">A−</button>
-      <button class="ibtn" data-hv="bigger" aria-label="Bigger text">A+</button>
-      ${document.fullscreenEnabled ? '<button class="ibtn" data-hv="full" title="Full screen" aria-label="Full screen">⛶</button>' : ''}
-    </div>
-    <div class="hv-body" style="--hv-size:${readSize()}rem">
-      ${categoryLabel ? `<div class="muted">${esc(categoryLabel)}</div>` : ''}
-      <h2 class="hv-title">${esc(h.title)}${h.notes ? ` <span class="muted hnote">(${esc(h.notes)})</span>` : ''}</h2>
-      ${h.audio ? `<audio controls preload="none" src="${esc(h.audio)}"></audio>` : ''}
-      ${link ? `<p><a class="ibtn" href="${esc(link)}" target="_blank" rel="noopener noreferrer" title="Open music link" aria-label="Open music link">🔗</a></p>` : ''}
-      ${h.lyrics ? `<div class="hv-lyrics">${esc(h.lyrics)}</div>` : '<div class="muted" style="margin-top:14px">No lyrics have been added for this hymn yet.</div>'}
-    </div>`;
-  const body = viewer.querySelector('.hv-body');
-  const resize = (delta) => {
-    const next = Math.min(3.4, Math.max(0.9, readSize() + delta));
-    try { localStorage.setItem('choir-hv-size', String(next)); } catch { /* private mode */ }
-    body.style.setProperty('--hv-size', `${next}rem`);
-  };
-  viewer.querySelector('[data-hv=close]').addEventListener('click', () => viewer.close());
-  viewer.querySelector('[data-hv=smaller]').addEventListener('click', () => resize(-0.2));
-  viewer.querySelector('[data-hv=bigger]').addEventListener('click', () => resize(0.2));
-  viewer.querySelector('[data-hv=full]')?.addEventListener('click', () => {
-    if (document.fullscreenElement) document.exitFullscreen();
-    else viewer.requestFullscreen?.().catch(() => {});
-  });
+  paintViewer();
   if (!viewer.open) viewer.showModal();
-  viewer.scrollTo?.(0, 0);
+  keepAwake(true);
 }
 
 // WhatsApp link that opens the chat with this number directly (message pre-filled).

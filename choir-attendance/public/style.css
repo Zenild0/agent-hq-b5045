@@ -919,3 +919,33 @@ dialog.consent::backdrop { background: rgba(10,7,32,.8); }
 .sp-row .fr { display: inline-block; width: 16px; height: 16px; border-radius: 50%; border: 3px solid var(--c); vertical-align: middle; }
 .sp-safe { margin: 14px 0 8px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 16px; color: var(--muted); font-weight: 700; font-size: .8rem; }
 @media (prefers-reduced-motion: reduce) { .sp-react { transition: none; } }
+
+/* Hymns: search first, category chips, calm cards, a reading screen made for singing from */
+.hl-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 4px 0 10px; } .hl-head h2 { margin: 0; font: 800 1.5rem var(--font-head); }
+.hl-search { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 10px; padding: 0 14px; min-height: 52px; margin: 0 0 10px; border-radius: 26px; background: var(--card); border: 1.5px solid var(--line); box-shadow: 0 6px 18px rgba(20, 10, 60, .12); }
+.hl-search:focus-within { border-color: var(--brand); }
+.hl-search svg { width: 20px; height: 20px; flex: none; fill: none; stroke: var(--muted); stroke-width: 2.2; stroke-linecap: round; }
+.hl-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: inherit; font: 700 1rem var(--font-body, inherit); min-height: 48px; padding: 0; }
+.hl-chips { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 10px; scrollbar-width: none; margin: 0 -2px; } .hl-chips::-webkit-scrollbar { display: none; }
+.hl-chip { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--card); color: inherit; font: 800 .85rem var(--font-body, inherit); cursor: pointer; white-space: nowrap; }
+.hl-chip b { font-size: .72rem; opacity: .65; } .hl-chip.on { background: var(--brand); border-color: var(--brand); color: #fff; } .hl-chip.on b { opacity: .9; }
+.hl-sec { font: 800 .72rem var(--font-body, inherit); letter-spacing: .08em; color: var(--muted); text-transform: uppercase; margin: 12px 4px 6px; }
+.hl-letter { position: sticky; top: 62px; z-index: 1; background: var(--bg); padding: 4px; margin: 6px 0 2px; }
+.hl-rec { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: none; }
+.hl-card { flex: none; width: 118px; padding: 10px; border-radius: 20px; border: 0; color: #fff; text-align: left; cursor: pointer; display: grid; gap: 6px; background: linear-gradient(145deg, hsl(var(--h) 70% 55%), hsl(calc(var(--h) + 30) 70% 40%)); }
+.hl-card span { font: 800 1.5rem var(--font-head); opacity: .9; } .hl-card b { font-size: .8rem; line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.hl-row { display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 12px; margin-bottom: 8px; border-radius: 20px; background: var(--card); border: 1px solid var(--line); cursor: pointer; min-height: 64px; }
+.hl-row:active { transform: scale(.99); } .hl-row:focus-visible { outline: 3px solid var(--brand); }
+.hl-disc { width: 42px; height: 42px; flex: none; border-radius: 14px; display: grid; place-items: center; color: #fff; font: 800 1.15rem var(--font-head); background: linear-gradient(145deg, hsl(var(--h) 70% 55%), hsl(calc(var(--h) + 30) 70% 40%)); }
+.hl-main { flex: 1; min-width: 0; display: grid; gap: 2px; } .hl-main b { font-size: 1rem; line-height: 1.25; } .hl-main small { color: var(--muted); font-weight: 700; font-size: .74rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hl-tags { font-size: .9rem; letter-spacing: 2px; }
+.hl-heart, .hl-edit { width: 44px; height: 44px; flex: none; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font-size: 1.35rem; cursor: pointer; } .hl-heart.on { color: #ff4f7b; } .hl-heart:active { transform: scale(1.25); }
+dialog.hv .hv-bar .hv-count { color: var(--muted); font-weight: 800; font-size: .8rem; } dialog.hv .ibtn:disabled { opacity: .3; } .hv-fav.on { color: #ff4f7b; }
+.hv-cat { font: 800 .72rem var(--font-body, inherit); letter-spacing: .08em; text-transform: uppercase; color: var(--brand); }
+.hv-note { color: var(--muted); font-weight: 700; margin-top: -4px; } .hv-link { font-weight: 800; }
+.hv-body { max-width: 36rem; padding-bottom: 120px; }
+dialog.hv .hv-lyrics { line-height: 1.75; letter-spacing: .01em; }
+.hv-audio { position: sticky; bottom: 0; display: flex; align-items: center; gap: 10px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); background: var(--card); border-top: 1px solid var(--line); } .hv-audio audio { flex: 1; min-width: 0; margin: 0; width: auto; }
+@media (prefers-reduced-motion: reduce) { .hl-row:active, .hl-heart:active { transform: none; } }
+.hl-search input, .hl-search input[type=search] { -webkit-appearance: none; appearance: none; background: transparent !important; box-shadow: none; border: 0; }
+.hl-search input::-webkit-search-cancel-button { filter: opacity(.6); }

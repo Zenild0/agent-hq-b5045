@@ -8,7 +8,7 @@ configure({ key: 'choir-theme-teacher', lens: false }); // the teacher area keep
 applyLook();
 import { waLink,
   $, api, esc, fmtPts, fmtDate, typeLabel, headerHtml, footerHtml, avatarHtml, leaveBadge,
-  renderBoard, remarkLabel, isGood, statsHtml, historyHtml, leaveAlertHtml, remarksLogHtml, openHymnViewer,
+  renderBoard, remarkLabel, isGood, statsHtml, historyHtml, leaveAlertHtml, remarksLogHtml,
 } from './common.js';
 
 let pin = '';
@@ -1430,7 +1430,6 @@ async function loadSettings() {
 
 // ======================= Hymn library =======================
 
-const openHymnCats = new Set();
 let hymnState = null;
 
 async function loadHymns() {
@@ -1438,43 +1437,17 @@ async function loadHymns() {
   drawHymnsTab();
 }
 
-const hymnSort = () => { try { return localStorage.getItem('choir-hymn-sort') === 'az' ? 'az' : 'cat'; } catch { return 'cat'; } };
-
 function drawHymnsTab() {
   const { categories, hymns } = hymnState;
-  const az = hymnSort() === 'az';
-  const byTitle = (a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base', numeric: true });
-  const groups = az ? [{ id: '_az', label: 'All hymns (A–Z)' }] : categories;
-  const raw = $('#hq')?.value || ''; // keep exactly what was typed, spaces included
-  const term = raw.trim().toLowerCase();
   $('#hymns').innerHTML = `
-    <div class="card">
-      <div class="row between"><div><h3 style="margin:0">Hymn library</h3><div class="muted">Hymns taught that are not in the book. Parents browse them by category.</div></div>
-        <div class="row"><button class="btn primary" id="addHymn">＋ Add hymn</button><button class="btn" id="addHymns">＋ Add many</button><button class="btn" id="hymnCats">⚙ Categories</button></div></div>
-      <div class="row" role="group" aria-label="Order of hymns" style="margin-top:8px"><button class="btn small${az ? '' : ' primary'}" data-sort="cat">By category</button><button class="btn small${az ? ' primary' : ''}" data-sort="az">A–Z</button></div>
-      <details style="margin-top:8px"><summary class="muted" style="cursor:pointer;min-height:36px;display:flex;align-items:center">Missing hymns? Bring them back from a backup</summary>
-        <div class="muted" style="margin:6px 0">Choose a backup file (.tar from Settings, or a saved data .json). Only hymns that are missing are added; nothing else changes.</div>
-        <label class="btn small" style="display:inline-block">⬆ Choose backup file<input type="file" id="hRecover" accept=".tar,.json,application/x-tar,application/json" hidden></label>
-        <span class="muted" id="hRecoverMsg" aria-live="polite"></span></details>
-      <label class="field"><span class="sr">Search</span><input id="hq" type="search" placeholder="Search hymns…" value="${esc(raw)}"></label>
-    </div>
-    ${groups.map((c) => {
-      const items = hymns.filter((h) => (az || h.category === c.id) && (!term || h.title.toLowerCase().includes(term))).sort(byTitle);
-      if (term && !items.length) return '';
-      return `<details class="hcat" data-cat="${esc(c.id)}"${az || term || openHymnCats.has(c.id) ? ' open' : ''}>
-        <summary><span>${esc(c.label)}</span><span class="badge info">${items.length}</span></summary>
-        ${items.map((h) => `
-          <div class="hymn row between">
-            <div class="grow hline"><span class="ht">${esc(h.title)}</span>${h.notes ? ` <span class="muted hnote">(${esc(h.notes)})</span>` : ''}${az ? ` <span class="badge info">${esc(categories.find((x) => x.id === h.category)?.label || '')}</span>` : ''}${h.audio ? ' <span class="badge ok">🎧 recording</span>' : ''}${h.link ? ' <span class="badge info">🔗 link</span>' : ''}</div>
-            <span class="row"><button class="ibtn" data-hview="${esc(h.id)}" title="View full screen" aria-label="View full screen">⛶</button><button class="ibtn" data-hedit="${esc(h.id)}" title="Edit" aria-label="Edit">✎</button></span>
-          </div>`).join('') || '<div class="hymn muted">No hymns here yet.</div>'}
-      </details>`;
-    }).join('')}`;
-  $('#hq').addEventListener('input', () => { drawHymnsTab(); const el = $('#hq'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); });
-  $('#hymns').querySelectorAll('[data-sort]').forEach((b) => b.addEventListener('click', () => {
-    try { localStorage.setItem('choir-hymn-sort', b.dataset.sort); } catch { /* ignore */ }
-    drawHymnsTab();
-  }));
+    <div class="hl-head"><div><h2>Hymns</h2><div class="muted">This is how the children see it. Tap ✎ to edit a hymn.</div></div>
+      <div class="row"><button class="btn primary" id="addHymn">＋ Add hymn</button><button class="btn" id="addHymns">＋ Add many</button><button class="btn" id="hymnCats">⚙ Categories</button></div></div>
+    <div id="hlist"></div>
+    <details class="card" style="margin-top:12px"><summary class="muted" style="cursor:pointer;min-height:36px;display:flex;align-items:center">Missing hymns? Bring them back from a backup</summary>
+      <div class="muted" style="margin:6px 0">Choose a backup file (.tar from Settings, or a saved data .json). Only hymns that are missing are added; nothing else changes.</div>
+      <label class="btn small" style="display:inline-block">⬆ Choose backup file<input type="file" id="hRecover" accept=".tar,.json,application/x-tar,application/json" hidden></label>
+      <span class="muted" id="hRecoverMsg" aria-live="polite"></span></details>`;
+  import('./hymnlist.js').then((m) => m.mountHymnBrowser($('#hlist'), { categories, hymns, teacher: true, onEdit: (h) => openHymn(h.id), empty: 'No hymns yet. Tap “＋ Add hymn”.' }));
   $('#hRecover').addEventListener('change', async (e) => {
     const f = e.target.files[0];
     e.target.value = '';
@@ -1491,15 +1464,6 @@ function drawHymnsTab() {
   $('#addHymn').addEventListener('click', () => openHymn(null));
   $('#addHymns').addEventListener('click', openHymnBulk);
   $('#hymnCats').addEventListener('click', openHymnCategories);
-  $('#hymns').querySelectorAll('[data-hview]').forEach((b) => b.addEventListener('click', () => {
-    const h = hymns.find((x) => x.id === b.dataset.hview);
-    openHymnViewer(h, categories.find((c) => c.id === h.category)?.label);
-  }));
-  $('#hymns').querySelectorAll('[data-hedit]').forEach((b) => b.addEventListener('click', () => openHymn(b.dataset.hedit)));
-  $('#hymns').querySelectorAll('details.hcat').forEach((d) => d.addEventListener('toggle', () => {
-    if (term) return;
-    if (d.open) openHymnCats.add(d.dataset.cat); else openHymnCats.delete(d.dataset.cat);
-  }));
 }
 
 const catOptions = (selected) => hymnState.categories.map((c) => `<option value="${esc(c.id)}"${c.id === selected ? ' selected' : ''}>${esc(c.label)}</option>`).join('') + '<option value="__new">＋ New category…</option>';

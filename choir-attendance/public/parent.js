@@ -1,6 +1,6 @@
 import {
   $, api, esc, fmtPts, headerHtml, footerHtml, renderBoard, achieversHtml, avatarHtml,
-  statsHtml, historyHtml, leaveAlertHtml, openHymnViewer,
+  statsHtml, historyHtml, leaveAlertHtml,
 } from './common.js';
 import { nextCardHtml, daysFoldHtml, remarksFoldHtml, guestHomeHtml, eventBoardHtml, occasionPracticesHtml } from './home.js';
 import { pickPhotos } from './photo.js';
@@ -297,63 +297,14 @@ function achTab() {
 // ---------- hymn library (open to everyone) ----------
 
 let hymnData = null;
-const openCats = new Set();
-const hymnSort = () => { try { return localStorage.getItem('choir-hymn-sort') === 'az' ? 'az' : 'cat'; } catch { return 'cat'; } };
-
-function drawHymns() {
-  const term = ($('#hsearch')?.value || '').trim().toLowerCase();
-  const { categories, hymns } = hymnData;
-  const safeLink = (u) => /^https?:\/\//i.test(u) ? u : '';
-  const az = hymnSort() === 'az';
-  const catLabel = (h) => categories.find((c) => c.id === h.category)?.label || '';
-  const byTitle = (a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base', numeric: true });
-  const groups = az ? [{ id: '_az', label: 'All hymns (A–Z)' }] : categories;
-  const html = groups.map((c) => {
-    const items = hymns.filter((h) => (az || h.category === c.id) && (!term || h.title.toLowerCase().includes(term))).sort(byTitle);
-    if (term && !items.length) return '';
-    const open = az || term || openCats.has(c.id);
-    return `
-      <details class="hcat" data-cat="${esc(c.id)}"${open ? ' open' : ''}>
-        <summary><span>${esc(c.label)}</span><span class="badge info">${items.length}</span></summary>
-        ${items.length ? items.map((h) => `
-          <div class="hymn">
-            <div class="row between"><span class="grow"><button class="link ht" data-hv="${esc(h.id)}">${esc(h.title)}</button>${h.notes ? ` <span class="muted hnote">(${esc(h.notes)})</span>` : ''}${az ? ` <span class="badge info">${esc(catLabel(h))}</span>` : ''}</span>
-              <span class="row" style="gap:6px;flex:none">${safeLink(h.link) ? `<a class="ibtn" href="${esc(safeLink(h.link))}" target="_blank" rel="noopener noreferrer" title="Music link" aria-label="Music link">🔗</a>` : ''}
-                <button class="ibtn" data-hv="${esc(h.id)}" title="Open full screen" aria-label="Open ${esc(h.title)} full screen">⛶</button></span></div>
-            ${h.audio ? `<audio controls preload="none" src="${esc(h.audio)}"></audio>` : ''}
-          </div>`).join('') : '<div class="hymn muted">No hymns here yet.</div>'}
-      </details>`;
-  }).join('');
-  $('#hlist').innerHTML = html || '<div class="empty">No hymns match your search.</div>';
-  $('#hlist').querySelectorAll('[data-hv]').forEach((b) => b.addEventListener('click', () => {
-    const h = hymnData.hymns.find((x) => x.id === b.dataset.hv);
-    openHymnViewer(h, hymnData.categories.find((c) => c.id === h.category)?.label);
-  }));
-  $('#hlist').querySelectorAll('details').forEach((d) => d.addEventListener('toggle', () => {
-    if (term) return;
-    if (d.open) openCats.add(d.dataset.cat); else openCats.delete(d.dataset.cat);
-  }));
-}
-
 async function hymnsTab() {
   $('#hymns').innerHTML = `
-    <h2>🎵 Hymn library</h2>
-    <div class="muted">Hymns we have learned that are not in the book. Open a group to listen or find the music.</div>
-    <div class="row" role="group" aria-label="Order of hymns"><button class="btn small" data-sort="cat">By category</button><button class="btn small" data-sort="az">A–Z</button></div>
-    <label class="field"><span class="sr">Search hymns</span><input id="hsearch" type="search" placeholder="Search for a hymn…" autocomplete="off"></label>
+    <div class="hl-head"><h2>Hymns</h2><div class="muted">Hymns we have learned. Tap one to read the words and listen.</div></div>
     <div id="hlist"><div class="empty">Loading…</div></div>`;
-  $('#hsearch').addEventListener('input', () => hymnData && drawHymns());
-  const paintSort = () => $('#hymns').querySelectorAll('[data-sort]').forEach((b) => b.classList.toggle('primary', b.dataset.sort === hymnSort()));
-  paintSort();
-  $('#hymns').querySelectorAll('[data-sort]').forEach((b) => b.addEventListener('click', () => {
-    try { localStorage.setItem('choir-hymn-sort', b.dataset.sort); } catch { /* ignore */ }
-    paintSort();
-    if (hymnData) drawHymns();
-  }));
   try {
     hymnData = await cachedApi('hymns');
-    if (!hymnData.hymns.length) $('#hlist').innerHTML = '<div class="empty">Hymns will appear here once your teacher adds them.</div>';
-    else drawHymns();
+    const { mountHymnBrowser } = await import('./hymnlist.js');
+    mountHymnBrowser($('#hlist'), hymnData);
   } catch (e) { $('#hlist').innerHTML = `<div class="alert bad">${esc(e.message)}</div>`; }
 }
 
