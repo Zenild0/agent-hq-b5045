@@ -7,6 +7,10 @@ import { xpFor, awardLine } from './xp.js';
 const KEY = 'choir-rhythm';
 const read = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { return {}; } };
 const write = (v) => { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch { /* storage full */ } };
+// Practice speed, like the slow-down button in drum and piano apps. Slow is for learning: the level clears at Normal or Fast.
+export const SPEEDS = [{ id: 'slow', label: '🐢 Slow', f: 0.75 }, { id: 'normal', label: '🎵 Normal', f: 1 }, { id: 'fast', label: '🐇 Fast', f: 1.15 }];
+let speed = (() => { try { const v = localStorage.getItem('choir-rhythm-speed'); return SPEEDS.some((s) => s.id === v) ? v : 'normal'; } catch { return 'normal'; } })();
+const speedF = () => SPEEDS.find((s) => s.id === speed).f;
 const STAR = (n) => '★'.repeat(n) + '☆'.repeat(3 - n);
 
 // ---- the written rhythm: one long line that scrolls past a playhead, like a music game ----
@@ -99,6 +103,7 @@ export function mountRhythm(host, { access = null, xp: xpIn = null } = {}) {
         <div class="rt-beats" id="rtBeats">${Array.from({ length: BEATS_PER_BAR }, (_, k) => `<i data-b="${k}">${k + 1}</i>`).join('')}</div>
         <div class="rt-msg" id="rtMsg" aria-live="polite">${i === 0 ? esc(lv.how) : 'Listen first, then your turn.'}</div>
         <button type="button" class="rt-pad" id="rtPad" aria-label="Drum: tap here">TAP</button>
+        <div class="rt-speed" role="group" aria-label="Speed">${SPEEDS.map((s) => `<button type="button" data-speed="${s.id}" class="${speed === s.id ? 'on' : ''}" aria-pressed="${speed === s.id}">${s.label}</button>`).join('')}<span class="muted">${Math.round(lv.bpm * speedF())} bpm</span></div>
         <div class="rt-acts"><button class="btn" data-a="listen">👂 Listen</button><button class="btn primary" data-a="go">🥁 My turn</button></div>
         <div class="rt-acts" id="rtNext" hidden><button class="btn" data-a="again">🔁 Try again</button><button class="btn primary" data-a="next">${i === deck.length - 1 ? 'Finish ✓' : 'Next ▶'}</button></div>
       </div>`;
@@ -111,7 +116,7 @@ export function mountRhythm(host, { access = null, xp: xpIn = null } = {}) {
   function run(kind) {
     clearTimers();
     const { lv, deck, i } = state, p = deck[i];
-    const beat = 60 / lv.bpm, t0 = snd.ctx.currentTime + 0.25, start = t0 + BEATS_PER_BAR * beat, len = patternBeats(p);
+    const beat = 60 / (lv.bpm * speedF()), t0 = snd.ctx.currentTime + 0.25, start = t0 + BEATS_PER_BAR * beat, len = patternBeats(p);
     for (let b = 0; b < BEATS_PER_BAR; b++) snd.click(t0 + b * beat, b === 0);
     for (let b = 0; b < len; b++) snd.click(start + b * beat, b % BEATS_PER_BAR === 0);
     if (kind === 'listen') onsets(p).forEach((o) => snd.clap(start + o * beat));
@@ -147,11 +152,12 @@ export function mountRhythm(host, { access = null, xp: xpIn = null } = {}) {
     const lag = snd.lag();
     const exp = onsets(p).map((o) => start + o * beat + lag);
     const r = scoreTaps(exp, state.taps);
+    if (r.accuracy >= (state.best ?? -1)) state.bestSpeed = speed;
     state.best = Math.max(state.best ?? 0, r.accuracy);
     state.phase = 'scored';
     root.querySelector('#rtScore').innerHTML = rhythmSvg(p, r.notes);
     park(-0.6); // show the marked notes from the start; swipe to see the rest
-    msg.innerHTML = `<b>${r.accuracy}%</b> · ${esc(rhythmFeedback(r))}`;
+    msg.innerHTML = `<b>${r.accuracy}%</b> · ${esc(rhythmFeedback(r))}${r.accuracy < 55 && speed !== 'slow' ? ' Try 🐢 Slow first.' : ''}`;
     msg.className = `rt-msg ${r.accuracy >= 75 ? 'ok' : r.accuracy >= 55 ? '' : 'bad'}`;
     if (r.accuracy >= 90) navigator.vibrate?.([20, 40, 20]);
     root.querySelector('#rtNext').hidden = false;
@@ -159,21 +165,23 @@ export function mountRhythm(host, { access = null, xp: xpIn = null } = {}) {
 
   function next() {
     state.results.push(state.best ?? 0);
+    state.speeds = [...(state.speeds || []), state.bestSpeed || speed]; state.bestSpeed = null;
     state.i += 1; state.best = null;
     if (state.i < state.deck.length) { play(); return; }
-    const acc = Math.round(state.results.reduce((a, n) => a + n, 0) / state.results.length), stars = rhythmStars(acc), passed = stars > 0;
+    const practice = (state.speeds || []).includes('slow'); // a round with slow patterns is practice: XP, but no stars
+    const acc = Math.round(state.results.reduce((a, n) => a + n, 0) / state.results.length), stars = practice ? 0 : rhythmStars(acc), passed = stars > 0;
     const data = read(); data.best = data.best || {};
     const was = data.best[state.id] || 0; if (stars > was) data.best[state.id] = stars; write(data);
-    const earned = xp.award('level', { passed, stars, game: 'rhythm' });
+    const earned = xp.award(practice ? 'practice' : 'level', { passed, stars, won: Math.round(acc / 20), game: 'rhythm' });
     const nextLv = RLEVELS.find((l) => l.id === state.id + 1);
     root.innerHTML = `
       <div class="card rt-result">
         <div class="rt-big">${passed ? (stars === 3 ? '🏆' : '🎉') : '💪'}</div>
-        <h2 style="margin:0">${passed ? `${esc(state.lv.name)} cleared!` : 'Not quite yet'}</h2>
+        <h2 style="margin:0">${passed ? `${esc(state.lv.name)} cleared!` : practice ? 'Good practice! 🐢' : 'Not quite yet'}</h2>
         <div class="stars rt-stars">${STAR(stars)}</div>
         <div class="kid-tiles"><div class="kid-tile gold"><small>XP</small><b>+${earned?.gained ?? 0}</b></div><div class="kid-tile"><small>TIMING</small><b>${acc}%</b></div><div class="kid-tile"><small>BEST</small><b>${STAR(Math.max(stars, was)).replace(/☆/g, '')}${Math.max(stars, was) ? '' : '–'}</b></div></div>
         ${earned && awardLine(earned) ? `<div class="gm-new">${esc(awardLine(earned))}</div>` : ''}
-        <div class="muted">${passed ? (stars < 3 ? 'Play again for 3 stars, or go on.' : 'Perfect rhythm!') : 'You need 55% to clear it. Listen carefully and try again.'}</div>
+        <div class="muted">${passed ? (stars < 3 ? 'Play again for 3 stars, or go on.' : 'Perfect rhythm!') : practice ? `You scored ${acc}% at slow speed. Now try it at 🎵 Normal to clear the level.` : 'You need 55% to clear it. Listen carefully and try again.'}</div>
         ${passed && nextLv ? `<button class="btn primary" data-lv="${nextLv.id}">▶ Next: ${esc(nextLv.name)}</button>` : ''}
         <button class="btn${passed ? '' : ' primary'}" data-lv="${state.id}">🔁 Play again</button>
         <button class="btn" data-a="home">All levels</button>
@@ -192,6 +200,8 @@ export function mountRhythm(host, { access = null, xp: xpIn = null } = {}) {
   const onKey = (e) => { if ((e.code === 'Space' || e.key === 'j') && state?.phase === 'go') { e.preventDefault(); tap(); } };
   document.addEventListener('keydown', onKey);
   root.addEventListener('click', (e) => {
+    const sp = e.target.closest('[data-speed]');
+    if (sp && state && state.phase !== 'listen' && state.phase !== 'go') { speed = sp.dataset.speed; try { localStorage.setItem('choir-rhythm-speed', speed); } catch { /* ignore */ } root.querySelectorAll('[data-speed]').forEach((b) => { b.classList.toggle('on', b.dataset.speed === speed); b.setAttribute('aria-pressed', String(b.dataset.speed === speed)); }); root.querySelector('.rt-speed .muted').textContent = `${Math.round(state.lv.bpm * speedF())} bpm`; return; }
     const lv = e.target.closest('[data-lv]'); if (lv && !lv.disabled) return startLevel(Number(lv.dataset.lv));
     const a = e.target.closest('[data-a]')?.dataset.a; if (!a) return;
     if (a === 'leave' || a === 'home') return home();

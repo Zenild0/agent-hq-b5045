@@ -89,6 +89,7 @@ export function mountGames(host, { code }) {
         ${g.notation ? `<button class="tg-card" data-game="notation"><span class="tg-n">2</span><span class="grow"><b>Notation trainer</b><span class="muted">Learn to read music. See a note on the staff and sing it. 20 levels, treble and bass clef.</span></span><span>›</span></button>` : ''}
         ${g.chords ? `<button class="tg-card" data-game="chords"><span class="tg-n">4</span><span class="grow"><b>Chord Book</b><span class="muted">Search chords for songs and hymns, keep your own songs and build set lists to play.</span></span><span>›</span></button>` : ''}
         <button class="tg-card" data-game="tips"><span class="tg-n">💧</span><span class="grow"><b>Voice Care Corner <span class="vt-dot" id="tipDot" hidden>NEW</span></b><span class="muted">A new tip every Friday on keeping your voice healthy: what to drink, what to do and what to avoid. Free for everyone.</span></span><span>›</span></button>
+        ${g.ear ? `<button class="tg-card" data-game="ear"><span class="tg-n">🕵️</span><span class="grow"><b>Ear Detective</b><span class="muted">Hear two notes and solve the case: higher or lower, same or different, step or leap. No microphone needed.</span></span><span>›</span></button>` : ''}
         ${g.rhythm ? `<button class="tg-card" data-game="rhythm"><span class="tg-n">3</span><span class="grow"><b>Rhythm trainer</b><span class="muted">Hear a rhythm, then tap it back on the drum. 8 levels, from a steady beat to off-beat rhythms.</span></span><span>›</span></button>` : ''}
       </div>
       <details class="card set-sec"><summary><span class="grow"><b>My badges</b><span class="muted">${xp.view().badges.filter((b) => b.got).length} of ${xp.view().badges.length} earned</span></span><span class="chev" aria-hidden="true">▾</span></summary><div class="set-body">${badgesHtml(xp.view())}</div></details>
@@ -123,6 +124,7 @@ export function mountGames(host, { code }) {
         // The big SING button goes straight into the next lesson of the course, when it is there to press
         if (sing) { let tries = 0; const t = setInterval(() => { const go = box.querySelector('[data-a="path"]'); if (go || ++tries > 30) { clearInterval(t); go?.click(); } }, 100); }
       }
+      else if (which === 'ear') { const m = await import('./eargame.js'); ctl = m.mountEar(box, { access, xp }); }
       else if (which === 'rhythm') { const m = await import('./rhythmgame.js'); ctl = m.mountRhythm(box, { access, xp }); }
       else if (which === 'tips') { const m = await import('./voicetips.js'); ctl = m.mountVoiceTips(box, { code }); }
       else if (which === 'chords') { const m = await import('./chordbook.js'); ctl = m.mountChordBook(box, { code, access }); }

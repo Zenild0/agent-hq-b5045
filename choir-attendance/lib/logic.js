@@ -50,6 +50,7 @@ export const DEFAULT_SETTINGS = {
   spaceTarget: 500, // minutes the whole choir sings together in a week
   trainingBoardEnabled: false, // the Training XP leaderboard (children with a paid year only): off until the teacher switches it on
   chordsEnabled: false, // the Chord Book (chord sheets, My songs, set lists): a paid feature the teacher switches on later
+  earEnabled: true, // Ear Detective (listening questions) inside Music Lab, on by default like the Rhythm trainer
   rhythmEnabled: true, // the Rhythm trainer inside Music Lab (on by default; Music Lab itself shows once another game is on)
   staffEnabled: false, // the staff-reading game: switched on separately, so games can be launched one at a time
   countSundayAbsences: false, // by default only Saturday practice absences are leaves

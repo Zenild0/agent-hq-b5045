@@ -41,6 +41,7 @@ app.innerHTML = `
     <section id="vocals" hidden></section>
     <section id="staffgame" hidden></section>
     <section id="rhythm" hidden></section>
+    <section id="ear" hidden></section>
     <section id="chordbook" hidden></section>
     <section id="board" hidden></section>
     <section id="settings" hidden></section>
@@ -73,8 +74,8 @@ function lockOut(message) {
   app.querySelector('main').innerHTML = `<div class="card"><h2 style="margin-top:0">🔒 Teacher area</h2><p>${esc(message)}</p><p class="muted">Open <b>http://localhost:3000/teacher</b> on the computer running the app. Parents use the main link and their child's code.</p><a class="btn" href="/">Go to the parent page</a></div>`;
 }
 
-const tabs = ['home', 'more', 'games', 'staffgame', 'rhythm', 'chordbook', 'attendance', 'schedule', 'occasions', 'children', 'hymns', 'vocals', 'board', 'settings'];
-const loaders = { games: loadGamesHub, staffgame: loadStaffGame, rhythm: loadRhythm, chordbook: loadChordBook, home: loadHome, more: loadMore, attendance: loadAttendance, schedule: loadSchedule, occasions: loadOccasions, children: loadChildren, hymns: loadHymns, vocals: loadVocals, board: loadBoard, settings: loadSettings };
+const tabs = ['home', 'more', 'games', 'staffgame', 'rhythm', 'ear', 'chordbook', 'attendance', 'schedule', 'occasions', 'children', 'hymns', 'vocals', 'board', 'settings'];
+const loaders = { games: loadGamesHub, staffgame: loadStaffGame, rhythm: loadRhythm, ear: loadEar, chordbook: loadChordBook, home: loadHome, more: loadMore, attendance: loadAttendance, schedule: loadSchedule, occasions: loadOccasions, children: loadChildren, hymns: loadHymns, vocals: loadVocals, board: loadBoard, settings: loadSettings };
 // The teacher's own copy of Vocals: every level and the paid features are open, and progress stays on this device.
 let vocals = null;
 function subsPanelHtml(subs) {
@@ -102,6 +103,7 @@ async function loadGamesHub() {
       <button class="tg-card" data-game="vocals"><span class="tg-n">1</span><span class="grow"><b>Vocal trainer</b><span class="muted">Hear a note, sing it. Levels, daily challenge, badges.</span></span><span>›</span></button>
       <button class="tg-card" data-game="staffgame"><span class="tg-n">2</span><span class="grow"><b>Notation trainer</b><span class="muted">Learn to read music: 20 levels, treble and bass clef.</span></span><span>›</span></button>
       <button class="tg-card" data-game="chordbook"><span class="tg-n">4</span><span class="grow"><b>Chord Book</b><span class="muted">Add chord sheets for hymns and songs. Students search them, keep their own songs and build set lists.</span></span><span>›</span></button>
+      <button class="tg-card" data-game="ear"><span class="tg-n">🕵️</span><span class="grow"><b>Ear Detective</b><span class="muted">Listening questions, 6 levels. Try it yourself.</span></span><span>›</span></button>
       <button class="tg-card" data-game="rhythm"><span class="tg-n">3</span><span class="grow"><b>Rhythm trainer</b><span class="muted">Hear a rhythm, tap it back. 8 levels. Try it yourself.</span></span><span>›</span></button>
     </div>
     <div class="card"><b>Free trial</b>
@@ -371,6 +373,14 @@ async function loadSpaceBox() {
   box.querySelectorAll('[data-space-del]').forEach((b) => b.addEventListener('click', () => run(async () => { await call(`teacher/space/${b.dataset.spaceDel}`, { method: 'DELETE' }); await loadSpaceBox(); })));
 }
 
+let earTest = null;
+function loadEar() {
+  earTest?.destroy?.(); earTest = null;
+  const box = $('#ear');
+  box.innerHTML = '<div class="empty">Loading…</div>';
+  return import('./eargame.js').then((m) => { earTest = m.mountEar(box); }).catch(() => { box.innerHTML = '<div class="alert bad">The game could not load. Please try again.</div>'; });
+}
+
 let rhythmTest = null;
 function loadRhythm() {
   rhythmTest?.destroy?.(); rhythmTest = null;
@@ -401,9 +411,10 @@ function showTab(name, fromBack = false) {
   currentTab = name;
   if (name !== 'staffgame' && staffTest) { staffTest.destroy?.(); staffTest = null; $('#staffgame').innerHTML = ''; }
   if (name !== 'rhythm' && rhythmTest) { rhythmTest.destroy?.(); rhythmTest = null; $('#rhythm').innerHTML = ''; }
+  if (name !== 'ear' && earTest) { earTest.destroy?.(); earTest = null; $('#ear').innerHTML = ''; }
   if (name !== 'vocals' && vocals) { vocals.destroy?.(); vocals = null; $('#vocals').innerHTML = ''; } // stops the microphone
   tabs.forEach((t) => { $(`#${t}`).hidden = t !== name; });
-  const inGame = name === 'vocals' || name === 'staffgame' || name === 'chordbook' || name === 'rhythm'; // these sit under Training games
+  const inGame = name === 'vocals' || name === 'staffgame' || name === 'chordbook' || name === 'rhythm' || name === 'ear'; // these sit under Training games
   const underMore = inGame || MORE_PAGES.some((p) => p.id === name);
   app.querySelectorAll('nav.tabbar button').forEach((x) => x.classList.toggle('on', x.dataset.tab === (underMore ? 'more' : name)));
   $('#backbar').hidden = !underMore;
@@ -412,7 +423,7 @@ function showTab(name, fromBack = false) {
   return run(loaders[name]);
 }
 app.querySelectorAll('nav.tabbar button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
-$('#backMore').addEventListener('click', () => showTab(currentTab === 'vocals' || currentTab === 'staffgame' || currentTab === 'chordbook' || currentTab === 'rhythm' ? 'games' : 'more'));
+$('#backMore').addEventListener('click', () => showTab(currentTab === 'vocals' || currentTab === 'staffgame' || currentTab === 'chordbook' || currentTab === 'rhythm' || currentTab === 'ear' ? 'games' : 'more'));
 
 
 // ======================= Home and More =======================
@@ -1434,6 +1445,7 @@ async function loadSettings() {
         <label class="chk"><input name="staffEnabled" type="checkbox"${s.staffEnabled ? ' checked' : ''}> 🎼 Notation trainer (game 2) is on for parents</label>
         <label class="chk"><input name="chordsEnabled" type="checkbox"${s.chordsEnabled ? ' checked' : ''}> 🎸 Chord Book (game 4) is on for parents</label>
         <label class="chk"><input name="rhythmEnabled" type="checkbox"${s.rhythmEnabled !== false ? ' checked' : ''}> 🥁 Rhythm trainer (game 3) is on (levels 1 and 2 free)</label>
+        <label class="chk"><input name="earEnabled" type="checkbox"${s.earEnabled !== false ? ' checked' : ''}> 🕵️ Ear Detective (listening game) is on (levels 1 and 2 free)</label>
         <label class="chk"><input name="trainingBoardEnabled" type="checkbox"${s.trainingBoardEnabled ? ' checked' : ''}> 🏆 Music Lab leaderboard (shown only to children with a paid year; off until you switch it on)</label>
         <label class="chk"><input name="spaceEnabled" type="checkbox"${s.spaceEnabled ? ' checked' : ''}> 🌟 Choir Space (a safe, friendly feed, weekly challenge and avatars for children whose parent ticked the box. No chat, no photos, no voices)</label>
         <label class="field">Choir challenge: minutes the whole choir sings together each week<input name="spaceTarget" type="number" min="10" max="5000" step="10" value="${s.spaceTarget ?? 500}"></label>
@@ -1500,6 +1512,7 @@ async function loadSettings() {
       body.staffEnabled = f.get('staffEnabled') === 'on';
       body.chordsEnabled = f.get('chordsEnabled') === 'on';
       body.rhythmEnabled = f.get('rhythmEnabled') === 'on';
+      body.earEnabled = f.get('earEnabled') === 'on';
       body.trainingBoardEnabled = f.get('trainingBoardEnabled') === 'on';
       body.spaceEnabled = f.get('spaceEnabled') === 'on';
       body.spaceTarget = f.get('spaceTarget');

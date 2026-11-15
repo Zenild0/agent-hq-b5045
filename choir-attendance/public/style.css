@@ -1152,3 +1152,22 @@ html[data-theme=dark] .at-head { background: #0E0B1F; }
 .rt-result { text-align: center; display: grid; gap: 10px; } .rt-big { font-size: 3rem; } .rt-stars { font-size: 2rem; color: #FFB703; letter-spacing: 4px; }
 @media (prefers-reduced-motion: reduce) { .rt-pad.hit { animation: none; } }
 .rt-play > * { min-width: 0; } .rt-lanewrap { max-width: 100%; overflow: hidden; } .rt-lane { max-width: 100%; }
+
+.rt-speed { display: flex; align-items: center; gap: 6px; justify-content: center; flex-wrap: wrap; }
+.rt-speed button { min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1.5px solid var(--line); background: transparent; color: inherit; font: 800 .8rem var(--font-body); cursor: pointer; }
+.rt-speed button.on { background: var(--ink); border-color: var(--ink); color: var(--bg); } .rt-speed .muted { font-size: .75rem; font-weight: 700; }
+
+/* ---------- Ear Detective ---------- */
+.ed-hero { background: linear-gradient(145deg, #3BA7FF, #6C4DFF); }
+.ed-q { text-align: center; font: 800 1.05rem/1.3 var(--font-head); }
+.ed-hear { justify-self: center; width: 150px; height: 150px; border-radius: 50%; border: 0; cursor: pointer; display: grid; place-content: center; gap: 2px; font-size: 2.6rem; color: #fff;
+  background: radial-gradient(circle at 50% 35%, #7FC3FF, #3B7BFF 55%, #2B4FC8); box-shadow: 0 10px 0 #1f3a96, 0 18px 30px rgba(59, 123, 255, .35); }
+.ed-hear span { font: 800 .9rem var(--font-head); } .ed-hear:active { transform: translateY(4px); box-shadow: 0 6px 0 #1f3a96; }
+.ed-ans { display: grid; grid-template-columns: repeat(min(var(--n), 2), 1fr); gap: 10px; }
+.ed-ans[style*="--n:3"] { grid-template-columns: repeat(3, 1fr); }
+.ed-btn { min-height: 76px; border-radius: 20px; border: 2px solid var(--line); background: var(--card); color: inherit; font: inherit; cursor: pointer; display: grid; place-content: center; gap: 2px; text-align: center; }
+.ed-btn .ic { font-size: 1.5rem; } .ed-btn b { font: 800 1rem var(--font-head); }
+.ed-btn.right { border-color: var(--ok); background: rgba(31, 181, 127, .16); } .ed-btn.wrong { border-color: var(--bad); background: rgba(212, 56, 44, .14); } .ed-btn:disabled { cursor: default; }
+.ed-fb { display: grid; justify-items: center; gap: 8px; text-align: center; font-weight: 700; min-height: 2em; } .ed-fb .ok { color: var(--ok); } .ed-fb .bad { color: var(--bad); }
+.ed-pic { width: 160px; height: 80px; } .ed-pic .g { stroke: var(--line); stroke-dasharray: 4 4; } .ed-pic .ln { stroke: var(--muted); stroke-width: 2; fill: none; }
+.ed-pic .n1 { fill: #3BA7FF; } .ed-pic .n2 { fill: #FF8A3D; }

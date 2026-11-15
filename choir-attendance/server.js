@@ -324,7 +324,7 @@ function accessFor(child) {
     full: hasFull(kid, today), paid, paidUntil: paidUntilOf(kid), expired: wasPaid(kid) && !paid,
     trial: trialOf(kid, today), guest: Boolean(child.guest),
     pay: !paid || left <= 30 ? payInfo() : null,
-    games: { vocals: Boolean(db.settings.gameEnabled), notation: Boolean(db.settings.staffEnabled), chords: Boolean(db.settings.chordsEnabled), rhythm: Boolean(db.settings.rhythmEnabled && (db.settings.gameEnabled || db.settings.staffEnabled || db.settings.chordsEnabled)) },
+    games: { vocals: Boolean(db.settings.gameEnabled), notation: Boolean(db.settings.staffEnabled), chords: Boolean(db.settings.chordsEnabled), rhythm: Boolean(db.settings.rhythmEnabled && (db.settings.gameEnabled || db.settings.staffEnabled || db.settings.chordsEnabled)), ear: Boolean(db.settings.earEnabled && (db.settings.gameEnabled || db.settings.staffEnabled || db.settings.chordsEnabled)) },
   };
 }
 const roundGate = new Map(); // child id -> { last, day, n } to stop floods
@@ -673,6 +673,7 @@ function updateSettings(body) {
   if ('staffEnabled' in body) s.staffEnabled = Boolean(body.staffEnabled);
   if ('chordsEnabled' in body) s.chordsEnabled = Boolean(body.chordsEnabled);
   if ('rhythmEnabled' in body) s.rhythmEnabled = Boolean(body.rhythmEnabled);
+  if ('earEnabled' in body) s.earEnabled = Boolean(body.earEnabled);
   if ('trainingBoardEnabled' in body) s.trainingBoardEnabled = Boolean(body.trainingBoardEnabled);
   if ('spaceEnabled' in body) s.spaceEnabled = Boolean(body.spaceEnabled);
   if ('spaceTarget' in body) { const n = Math.round(Number(body.spaceTarget)); if (!(n >= 10 && n <= 5000)) throw new HttpError(400, 'The weekly goal should be between 10 and 5000 minutes'); s.spaceTarget = n; }
