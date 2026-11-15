@@ -44,7 +44,7 @@ const challengeHtml = (c) => `
 export function mountSpace(host, { code }) {
   const root = document.createElement('div');
   host.replaceChildren(root);
-  let data = null, dead = false;
+  let data = null, dead = false, group = (() => { try { return localStorage.getItem('choir-space-group') || ''; } catch { return ''; } })();
 
   const studio = () => {
     const m = data.me, a = m.avatar, own = (xp) => m.xp >= xp;
@@ -61,10 +61,12 @@ export function mountSpace(host, { code }) {
     if (dead) return;
     if (!data.enabled) { root.innerHTML = '<div class="card muted">Choir Space is not open right now.</div>'; return; }
     if (data.locked) { root.innerHTML = `<div class="card"><h3 style="margin:0">Choir Space</h3><p class="muted">Cheer your friends on and fill the weekly challenge together. It is part of the full version (₹${esc(data.price ?? 500)} a year). Every child gets a free trial first.</p>${feeNoteHtml(data.note)}</div>`; return; }
+    if (data.noGroup) { root.innerHTML = '<div class="card"><h3 style="margin:0">Choir Space</h3><p class="muted">Your Space opens when your teacher adds you to an event.</p></div>'; return; }
     if (data.needConsent) { root.innerHTML = '<div class="card"><h3 style="margin:0">Choir Space</h3><p class="muted">A parent needs to tick the box in <b>Me</b> first. Then you can join your friends here.</p></div>'; return; }
     const m = data.me;
     root.innerHTML = `
-      <div class="sp-top"><div><small>Treble Makers</small><h2>Choir Space</h2></div><span class="sp-chip fire">🔥 ${m.streak}</span><span class="sp-chip">⚡ ${m.xp}</span></div>
+      <div class="sp-top"><div><small>${esc(data.groups.find((g) => g.id === data.group)?.label ?? 'Treble Makers')}</small><h2>Choir Space</h2></div><span class="sp-chip fire">🔥 ${m.streak}</span><span class="sp-chip">⚡ ${m.xp}</span></div>
+      ${data.groups.length > 1 ? `<div class="sp-groups" role="tablist" aria-label="Groups">${data.groups.map((g) => `<button type="button" role="tab" class="sp-group${g.id === data.group ? ' on' : ''}" data-group="${esc(g.id)}" aria-selected="${g.id === data.group}">${g.id === 'main' ? '🎶' : '✨'} ${esc(g.label)}</button>`).join('')}</div>` : ''}
       ${data.stories.length ? `<div class="sp-stories" aria-label="Friends practising">${data.stories.map((s) => `<div class="sp-story">${avatarEl(s.avatar, 52)}<small>${s.id === m.id ? 'You' : esc(s.name.split(' ')[0])}${s.streak > 1 ? ` 🔥${s.streak}` : ''}</small></div>`).join('')}</div>` : ''}
       ${challengeHtml(data.challenge)}
       <div class="sp-feed">${data.feed.length ? data.feed.map(postHtml).join('') : '<div class="card muted">Nothing here yet. Practise in Games and your streaks and long practice days will show up for your friends to cheer.</div>'}</div>
@@ -74,11 +76,13 @@ export function mountSpace(host, { code }) {
 
   async function load() {
     root.innerHTML = '<div class="empty">Loading…</div>';
-    try { data = await api('me/space', { code }); paint(); }
+    try { data = await api(`me/space${group ? `?group=${encodeURIComponent(group)}` : ''}`, { code }); paint(); }
     catch (e) { root.innerHTML = `<div class="card"><div class="alert bad">${esc(e.message)}</div></div>`; }
   }
 
   root.addEventListener('click', async (e) => {
+    const gb = e.target.closest('[data-group]');
+    if (gb) { group = gb.dataset.group; try { localStorage.setItem('choir-space-group', group); } catch { /* ignore */ } load(); return; }
     const go = e.target.closest('[data-go]');
     if (go) { document.querySelector(`nav.tabbar [data-tab="${go.dataset.go}"]`)?.click(); return; }
     const r = e.target.closest('[data-react]');

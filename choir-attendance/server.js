@@ -341,8 +341,30 @@ function xpBoardFor(child) {
   return { enabled: true, locked: false, meId: child.id, ...buildBoard(xpOf, rows, today, child.id, (c) => ({ id: c.id, name: shortName(c.name), photo: photoUrl(c), head: headUrl(c) })) };
 }
 // ---- Choir Space ----
+// Groups: "main" is the main choir (no guests). Each occasion of this choir year is its own group with all its people,
+// guests included. A child sees the main choir (if they are in it) and every occasion they belong to; a guest sees only
+// their occasions. Practice posts belong to the child and show in every group the child is in; notes go to one group.
 const spaceDb = () => (store.db.space ??= { posts: [] });
-const spaceKid = (c) => c && c.active && !c.guest && c.consent?.on; // only children whose parent said yes appear
+const spaceKid = (c) => c && c.active && c.consent?.on; // only children whose parent said yes appear
+const MAIN = 'main';
+const occOf = (gid) => (gid?.startsWith('occ:') ? store.db.occasions.find((o) => o.id === gid.slice(4)) : null);
+function groupsOf(child) {
+  const season = seasonOf(today());
+  const occ = store.db.occasions.filter((o) => o.season === season && o.members.includes(child.id)).map((o) => ({ id: `occ:${o.id}`, label: o.name }));
+  return [...(child.guest ? [] : [{ id: MAIN, label: 'Main choir' }]), ...occ];
+}
+// Who is in a group (only children with the parent's tick).
+function groupKids(gid) {
+  const { db } = store;
+  if (gid === MAIN) return db.children.filter((c) => spaceKid(c) && !c.guest && !isOut(c, seasonOf(today()), today()));
+  const o = occOf(gid);
+  return o ? o.members.map((id) => db.children.find((c) => c.id === id)).filter(spaceKid) : [];
+}
+function inGroup(post, gid, kidIds) {
+  if (post.kind === 'note') return (post.group ?? MAIN) === gid;
+  if (post.kind === 'songs') return gid === MAIN;
+  return kidIds.has(post.childId);
+}
 function addPost(p) {
   const sp = spaceDb();
   if (p.key && sp.posts.some((x) => x.key === p.key)) return null;
@@ -359,48 +381,49 @@ function spacePosts(child, x) {
   const day = istDate();
   if ((x.stats?.[day]?.secs || 0) >= BIG_DAY_SECS) addPost({ kind: 'bigday', childId: child.id, n: Math.round(x.stats[day].secs / 60), key: `${child.id}:day:${day}` });
 }
-function spaceChallenge(meId) {
+function spaceChallenge(meId, gid = MAIN) {
   const day = istDate();
-  const rows = store.db.children.filter(spaceKid).map((c) => ({ id: c.id, name: shortName(c.name), secs: statsOf(xpOf(c.id), day, 'week').secs }));
+  const rows = groupKids(gid).map((c) => ({ id: c.id, name: shortName(c.name), secs: statsOf(xpOf(c.id), day, 'week').secs }));
   return challengeView(rows, store.db.settings.spaceTarget, meId);
 }
 const avatarFor = (c) => ({ ...avatarOf(c), initial: String(c.name ?? '?').trim()[0]?.toUpperCase() ?? '?' });
-function spaceFeed(child) {
+const reactsOut = (p, meId) => REACTIONS.map((e) => ({ e, n: (p.reacts[e] ?? []).length, mine: (p.reacts[e] ?? []).includes(meId) }));
+function spaceFeed(meId, gid) {
   const { db } = store;
-  const posts = spaceDb().posts.slice().reverse().filter((p) => p.kind === 'note' || p.kind === 'songs' || spaceKid(db.children.find((c) => c.id === p.childId))).slice(0, 30);
-  return posts.map((p) => {
+  const ids = new Set(groupKids(gid).map((c) => c.id));
+  return spaceDb().posts.slice().reverse().filter((p) => inGroup(p, gid, ids)).slice(0, 30).map((p) => {
     const who = p.childId ? db.children.find((c) => c.id === p.childId) : null;
-    return {
-      id: p.id, kind: p.kind, at: new Date(p.at).toISOString(), n: p.n ?? 0, text: p.text ?? '',
-      who: who ? { id: who.id, name: shortName(who.name), avatar: avatarFor(who) } : null,
-      reacts: REACTIONS.map((e) => ({ e, n: (p.reacts[e] ?? []).length, mine: (p.reacts[e] ?? []).includes(child.id) })),
-    };
+    return { id: p.id, kind: p.kind, at: new Date(p.at).toISOString(), n: p.n ?? 0, text: p.text ?? '', who: who ? { id: who.id, name: shortName(who.name), avatar: avatarFor(who) } : null, reacts: reactsOut(p, meId) };
   });
 }
-function spaceView(child) {
+function spaceView(child, wanted = '') {
   const { db } = store;
   if (!db.settings.spaceEnabled) return { enabled: false };
   if (!spaceKid(child)) return { enabled: true, needConsent: true }; // open to every choir child, paid or not; only the parent's tick is needed
+  const groups = groupsOf(child);
+  if (!groups.length) return { enabled: true, noGroup: true };
+  const group = groups.find((g) => g.id === wanted)?.id ?? groups[0].id;
   const day = istDate();
   const x = xpOf(child.id);
-  const stories = db.children.filter(spaceKid).map((c) => ({ id: c.id, name: shortName(c.name), avatar: avatarFor(c), streak: xpOf(c.id)?.streak ?? 0, week: statsOf(xpOf(c.id), day, 'week').minutes }))
+  const stories = groupKids(group).map((c) => ({ id: c.id, name: shortName(c.name), avatar: avatarFor(c), streak: xpOf(c.id)?.streak ?? 0, week: statsOf(xpOf(c.id), day, 'week').minutes }))
     .filter((s) => s.week > 0 || s.streak > 0).sort((a, b) => b.streak - a.streak || b.week - a.week).slice(0, 8);
   return {
-    enabled: true, locked: false, reactions: REACTIONS,
+    enabled: true, locked: false, reactions: REACTIONS, groups, group,
     me: { id: child.id, name: shortName(child.name), avatar: avatarFor(child), xp: x?.total ?? 0, streak: x?.streak ?? 0, badges: BADGES, frames: FRAMES, colours: COLOURS },
-    challenge: spaceChallenge(child.id), stories, feed: spaceFeed(child),
+    challenge: spaceChallenge(child.id, group), stories, feed: spaceFeed(child.id, group),
   };
 }
 function spaceReact(child, body) {
   if (!store.db.settings.spaceEnabled || !spaceKid(child)) throw new HttpError(403, 'Choir Space is not open for you yet');
   if (!REACTIONS.includes(body.emoji)) throw new HttpError(400, 'Pick one of the reactions');
   const post = spaceDb().posts.find((p) => p.id === body.post);
-  if (!post) throw new HttpError(404, 'That post is gone');
+  const sees = post && groupsOf(child).some((g) => inGroup(post, g.id, new Set(groupKids(g.id).map((c) => c.id))));
+  if (!post || !sees) throw new HttpError(404, 'That post is gone');
   const list = (post.reacts[body.emoji] ??= []);
   const i = list.indexOf(child.id);
   if (i >= 0) list.splice(i, 1); else list.push(child.id);
   store.save();
-  return { ok: true, reacts: REACTIONS.map((e) => ({ e, n: (post.reacts[e] ?? []).length, mine: (post.reacts[e] ?? []).includes(child.id) })) };
+  return { ok: true, reacts: reactsOut(post, child.id) };
 }
 function spaceAvatar(child, body) {
   if (!spaceKid(child)) throw new HttpError(403, 'Choir Space is not open for you yet');
@@ -410,14 +433,17 @@ function spaceAvatar(child, body) {
   store.save();
   return { avatar: avatarFor(child) };
 }
+const allGroups = () => [{ id: MAIN, label: 'Main choir' }, ...store.db.occasions.filter((o) => o.season === seasonOf(today())).map((o) => ({ id: `occ:${o.id}`, label: o.name }))];
 function teacherSpace() {
   const { db } = store;
-  return { enabled: Boolean(db.settings.spaceEnabled), target: db.settings.spaceTarget, challenge: spaceChallenge(''), posts: spaceDb().posts.slice().reverse().slice(0, 25).map((p) => ({ id: p.id, kind: p.kind, at: new Date(p.at).toISOString(), n: p.n ?? 0, text: p.text ?? '', who: p.childId ? db.children.find((c) => c.id === p.childId)?.name ?? '' : '' })) };
+  const label = (p) => (p.kind === 'note' ? allGroups().find((g) => g.id === (p.group ?? MAIN))?.label ?? 'Main choir' : '');
+  return { enabled: Boolean(db.settings.spaceEnabled), target: db.settings.spaceTarget, groups: allGroups(), challenge: spaceChallenge(''), posts: spaceDb().posts.slice().reverse().slice(0, 25).map((p) => ({ id: p.id, kind: p.kind, at: new Date(p.at).toISOString(), n: p.n ?? 0, text: p.text ?? '', group: label(p), who: p.childId ? db.children.find((c) => c.id === p.childId)?.name ?? '' : '' })) };
 }
 function teacherSpacePost(body) {
   const msg = text(body.text, 160, 'Message');
   if (!msg) throw new HttpError(400, 'Write a short note first');
-  addPost({ kind: 'note', text: msg });
+  const group = allGroups().some((g) => g.id === body.group) ? body.group : MAIN;
+  addPost({ kind: 'note', text: msg, group });
   store.save();
   return teacherSpace();
 }
@@ -1795,7 +1821,7 @@ async function api(req, res, url) {
     if (req.method === 'POST' && b === 'chords' && parts[2] === 'request') return send(res, 200, requestChord(child, await readBody(req, 2_000)));
     if (req.method === 'GET' && b === 'chords') return send(res, 200, parts[2] ? chordSong(child, parts[2]) : chordLibrary(child));
     if (req.method === 'POST' && b === 'xp') return send(res, 200, xpReport(child, await readBody(req, 5_000)));
-    if (req.method === 'GET' && b === 'space') return send(res, 200, spaceView(child));
+    if (req.method === 'GET' && b === 'space') return send(res, 200, spaceView(child, q.get('group') || ''));
     if (req.method === 'POST' && b === 'space' && parts[2] === 'react') return send(res, 200, spaceReact(child, await readBody(req, 2_000)));
     if (req.method === 'POST' && b === 'avatar') return send(res, 200, spaceAvatar(child, await readBody(req, 2_000)));
     if (req.method === 'POST' && b === 'consent') { // a parent or guardian says yes, once, on this phone

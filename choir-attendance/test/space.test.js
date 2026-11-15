@@ -86,3 +86,33 @@ test('avatars unlock with XP, and the teacher can post a note and remove any pos
   assert.ok(!gone.posts.some((p) => p.kind === 'note'));
   void DEFAULT_AVATAR;
 });
+
+test('groups: the main choir sees Main choir and its occasions; a guest sees only their occasion', async () => {
+  const mk = async (name) => { const c = (await j('/api/teacher/children', { method: 'POST', body: { name } })).data; await j('/api/me/consent', { method: 'POST', body: { agree: true }, code: c.code }); return c; };
+  const inOcc = await mk('Carol Singer'), notInOcc = await mk('Home Body');
+  await j('/api/teacher/occasions', { method: 'POST', body: { season: 2026, name: 'Christmas Carols', members: [inOcc.id], guests: 'Gina Guest' } });
+  const occ = (await j('/api/teacher/occasions?season=2026')).data.events.find((e) => e.event === 'Christmas Carols');
+  const gina = (await j('/api/teacher/children')).data.children.find((c) => c.name === 'Gina Guest');
+  await j('/api/me/consent', { method: 'POST', body: { agree: true }, code: gina.code });
+  // the guest practises: her post shows in the occasion only
+  await j('/api/me/xp', { method: 'POST', code: gina.code, body: { days: { [day()]: 20 }, streak: 3 } });
+  const g = (await j('/api/me/space', { code: gina.code })).data;
+  assert.deepEqual(g.groups.map((x) => x.label), ['Christmas Carols'], 'a guest sees only her occasion');
+  assert.equal(g.group, `occ:${occ.id}`);
+  assert.ok(g.feed.some((p) => p.who?.name === 'Gina G.'));
+  const inMain = (await j('/api/me/space', { code: notInOcc.code })).data;
+  assert.deepEqual(inMain.groups.map((x) => x.label), ['Main choir']);
+  assert.ok(!inMain.feed.some((p) => p.who?.name === 'Gina G.'), 'guests are not in the main choir feed');
+  const member = (await j('/api/me/space', { code: inOcc.code })).data;
+  assert.deepEqual(member.groups.map((x) => x.label), ['Main choir', 'Christmas Carols'], 'a choir child in an occasion sees both');
+  const occView = (await j(`/api/me/space?group=occ:${occ.id}`, { code: inOcc.code })).data;
+  assert.ok(occView.feed.some((p) => p.who?.name === 'Gina G.'), 'inside the occasion, everyone in it shows');
+  assert.equal((await j(`/api/me/space?group=occ:${occ.id}`, { code: notInOcc.code })).data.group, 'main', 'someone outside the occasion cannot open it');
+  // a note to the occasion reaches only that group
+  await j('/api/teacher/space', { method: 'POST', body: { text: 'Carol practice is at 6!', group: `occ:${occ.id}` } });
+  assert.ok((await j('/api/me/space', { code: gina.code })).data.feed.some((p) => p.text === 'Carol practice is at 6!'));
+  assert.ok(!(await j('/api/me/space', { code: notInOcc.code })).data.feed.some((p) => p.text === 'Carol practice is at 6!'));
+  const ginaPost = g.feed.find((p) => p.who?.name === 'Gina G.');
+  assert.equal((await j('/api/me/space/react', { method: 'POST', code: notInOcc.code, body: { post: ginaPost.id, emoji: '👏' } })).status, 404, 'cannot react to a post you cannot see');
+  assert.equal((await j('/api/me/space/react', { method: 'POST', code: inOcc.code, body: { post: ginaPost.id, emoji: '👏' } })).status, 200);
+});

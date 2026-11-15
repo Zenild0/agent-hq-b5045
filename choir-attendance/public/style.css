@@ -1185,3 +1185,7 @@ html[data-theme=dark] .at-head { background: #0E0B1F; }
 @keyframes lv-nudge { 0%, 100% { transform: none; } 20% { transform: rotate(-10deg); } 40% { transform: rotate(8deg); } 60% { transform: rotate(-4deg); } }
 @media (prefers-reduced-motion: reduce) { .lv-ic { animation: none !important; } }
 .at-out { font-size: .78rem; font-weight: 700; margin: 6px 4px 10px; }
+
+.sp-groups { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: -2px 0 10px; } .sp-groups::-webkit-scrollbar { display: none; }
+.sp-group { flex: none; min-height: 38px; padding: 0 14px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--card); color: inherit; font: 800 .82rem var(--font-body); cursor: pointer; white-space: nowrap; }
+.sp-group.on { background: var(--brand); border-color: var(--brand); color: #fff; } html[data-theme=dark] .sp-group.on { background: #C8FF3D; border-color: #C8FF3D; color: #0E0B1F; }

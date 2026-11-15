@@ -363,13 +363,14 @@ async function loadSpaceBox() {
   if (!s) return;
   if (!s.enabled) { box.innerHTML = '<div class="card"><b>Choir Space</b><div class="muted">Switched off. Turn it on in More → Settings to give the children a safe, friendly feed and a weekly challenge.</div></div>'; return; }
   const c = s.challenge;
-  const kinds = { streak: (p) => `${esc(p.who)} reached a ${p.n}-day streak`, bigday: (p) => `${esc(p.who)} sang ${p.n} min today`, songs: (p) => `${p.n} new songs released`, note: (p) => `📣 ${esc(p.text)}` };
+  const kinds = { streak: (p) => `${esc(p.who)} reached a ${p.n}-day streak`, bigday: (p) => `${esc(p.who)} sang ${p.n} min today`, songs: (p) => `${p.n} new songs released`, note: (p) => `📣 <span class="muted">${esc(p.group)}:</span> ${esc(p.text)}` };
   box.innerHTML = `<div class="card"><div class="row between"><b>🌟 Choir Space</b><span class="muted">${c.minutes} of ${c.goal} min this week (${c.pct}%)</span></div>
     <div class="muted">${c.top.length ? `Helping most: ${c.top.map((r) => `${esc(r.name)} ${r.minutes} min`).join(' · ')}` : 'Nobody has practised yet this week.'}</div>
-    <form id="spaceForm" class="row" style="margin-top:8px;flex-wrap:nowrap"><input name="text" class="grow" maxlength="160" placeholder="A short note for the children…" aria-label="Note for the children"><button class="btn primary">Post</button></form>
+    <form id="spaceForm" style="margin-top:8px;display:grid;gap:6px"><select name="group" aria-label="Post to">${s.groups.map((g) => `<option value="${esc(g.id)}">To: ${esc(g.label)}${g.id === 'main' ? '' : ' (occasion, guests included)'}</option>`).join('')}</select>
+      <div class="row" style="flex-wrap:nowrap"><input name="text" class="grow" maxlength="160" placeholder="A short note for the children…" aria-label="Note for the children"><button class="btn primary">Post</button></div></form>
     <div id="spaceMsg" class="muted" aria-live="polite"></div>
     ${s.posts.length ? `<details style="margin-top:8px"><summary class="muted">Recent posts (${s.posts.length}). Tap ✕ to remove one</summary>${s.posts.map((p) => `<div class="row between" style="border-top:1px solid var(--line);padding:6px 0"><span>${(kinds[p.kind] ?? (() => ''))(p)}</span><button class="ibtn" data-space-del="${esc(p.id)}" aria-label="Remove this post">✕</button></div>`).join('')}</details>` : ''}</div>`;
-  $('#spaceForm').addEventListener('submit', (e) => { e.preventDefault(); run(async () => { await call('teacher/space', { method: 'POST', body: { text: new FormData(e.target).get('text') } }); await loadSpaceBox(); $('#spaceMsg').textContent = '✅ Posted'; }); });
+  $('#spaceForm').addEventListener('submit', (e) => { e.preventDefault(); run(async () => { const fd = new FormData(e.target); await call('teacher/space', { method: 'POST', body: { text: fd.get('text'), group: fd.get('group') } }); await loadSpaceBox(); $('#spaceMsg').textContent = '✅ Posted'; }); });
   box.querySelectorAll('[data-space-del]').forEach((b) => b.addEventListener('click', () => run(async () => { await call(`teacher/space/${b.dataset.spaceDel}`, { method: 'DELETE' }); await loadSpaceBox(); })));
 }
 

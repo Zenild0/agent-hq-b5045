@@ -168,7 +168,7 @@ function openSpace() {
   const box = $('#space');
   import('./space.js').then((m) => { spaceCtl = m.mountSpace(box, { code }); }).catch(() => { box.innerHTML = '<div class="alert bad">Choir Space could not load. Please try again.</div>'; });
 }
-const paintSpaceTab = () => { const t = $('#spaceTab'); if (!t) return; const was = t.hidden; t.hidden = !(overview?.settings?.spaceEnabled && code && me && !me.guest); if (was !== t.hidden) drawHome(); }; // the home's quick links follow the tabs
+const paintSpaceTab = () => { const t = $('#spaceTab'); if (!t) return; const was = t.hidden; t.hidden = !(overview?.settings?.spaceEnabled && code && me); /* guests too: they see only their event's group */ if (was !== t.hidden) drawHome(); }; // the home's quick links follow the tabs
 
 function show(t, fromBack = false) {
   if (!fromBack) noteVisit(t);
