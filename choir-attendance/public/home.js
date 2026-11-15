@@ -11,20 +11,35 @@ const dow = (date) => new Date(`${date}T00:00:00Z`).getUTCDay();
 const ymd = (date) => date.split('-').map(Number);
 const daysFrom = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
 
-export function nextCardHtml(sc) {
+// ---------- the home kit: compact, scannable pieces shared by the teacher's home and the children's home ----------
+
+// The next practice, small: a date block, the time, how far away it is, and one line of note. `cta` is an optional button inside the card.
+export function nextCardHtml(sc, cta = '') {
   const n = sc?.next;
-  if (!n) return `<section class="card next"><div class="tag">Next practice</div><div class="when">To be announced</div></section>`;
+  if (!n) return `<section class="hk-hero" aria-label="Next practice"><div class="hk-date off"><b>–</b></div><div class="hk-hero-main"><div class="t">Next practice</div><div class="s">To be announced</div></div>${cta}</section>`;
   const away = daysFrom(sc.today, n.date);
   const rel = away === 0 ? 'Today' : away === 1 ? 'Tomorrow' : `In ${away} days`;
+  const [, m, d] = ymd(n.date);
   return `
-    <section class="card next" aria-label="Next practice">
-      <div class="tag">Next practice</div>
-      <div class="when">${WD[dow(n.date)]} ${ymd(n.date)[2]} ${MONTHS[ymd(n.date)[1] - 1].slice(0, 3)} · ${fmtTime(n.time)}</div>
-      ${n.label ? `<div>${esc(n.label)}</div>` : ''}
-      <div><span class="pill-lite">${rel}</span></div>
-      ${n.note ? `<div class="tnote">📌 ${esc(n.note)}</div>` : ''}
+    <section class="hk-hero${away <= 1 ? ' soon' : ''}" aria-label="Next practice">
+      <div class="hk-date"><small>${WD[dow(n.date)].slice(0, 3)}</small><b>${d}</b><small>${MONTHS[m - 1].slice(0, 3)}</small></div>
+      <div class="hk-hero-main"><div class="t">${fmtTime(n.time)} <span class="hk-pill">${rel}</span></div>
+        <div class="s">${n.label ? esc(n.label) : 'Next practice'}${n.note ? ` · 📌 ${esc(n.note)}` : ''}</div></div>
+      ${cta}
     </section>`;
 }
+
+// A slim greeting: avatar, who, one line under it, and chips or a button on the right.
+export const greetBarHtml = ({ avatar, hello, name, sub = '', right = '' }) =>
+  `<header class="hk-greet">${avatar}<div class="hk-who"><small>${hello}</small><b>${name}</b>${sub ? `<span>${sub}</span>` : ''}</div>${right}</header>`;
+
+// The colourful quick-action grid (like the category grid in a delivery app). items: [{ id, icon, label, hue, badge }]
+export const quickGridHtml = (items) =>
+  `<nav class="hk-grid" aria-label="Quick links">${items.map((i) => `<button type="button" class="hk-q" data-q="${esc(i.id)}"><span class="ic" style="--h:${i.hue ?? 260}" aria-hidden="true">${i.icon}${i.badge ? `<i>${esc(i.badge)}</i>` : ''}</span><b>${esc(i.label)}</b></button>`).join('')}</nav>`;
+
+// A row of small number chips. items: [{ id, v, l, tone }]
+export const statStripHtml = (items) =>
+  `<section class="hk-stats" aria-label="At a glance">${items.map((s) => `<button type="button" class="hk-stat ${s.tone ?? ''}"${s.id ? ` data-stat="${esc(s.id)}"` : ' disabled'}><b>${s.v}</b><small>${esc(s.l)}</small></button>`).join('')}</section>`;
 
 // Attendance on one date for this child: 'present', 'absent' (absent or medical leave) or ''.
 function statusByDate(history) {
@@ -116,12 +131,11 @@ export function trioHtml(me, sc) {
   const done = [...status.entries()].filter(([d]) => d <= sc.today).sort((a, b) => a[0].localeCompare(b[0]));
   const present = done.filter(([, v]) => v === 'present').length;
   const last = done.slice(-5);
-  return `
-    <section class="trio" aria-label="${esc(me.name)} at a glance">
-      <div class="tile t1"><small>Points</small><b>${fmtPts(me.stats?.points ?? 0)}</b><small>${fmtPts(me.monthPoints ?? 0)} this month</small></div>
-      <div class="tile t2"><small>Rank</small><b>${me.yearRank ? `#${me.yearRank}` : '–'}</b><small>${me.yearRank ? `of ${me.yearRanked} this year` : 'this year'}</small></div>
-      <div class="tile t3"><small>Present</small><b>${present}/${done.length}</b><div class="dots">${last.map(([, v]) => `<i class="${v === 'present' ? 'g' : 'r'}"></i>`).join('')}</div></div>
-    </section>`;
+  return statStripHtml([
+    { v: fmtPts(me.stats?.points ?? 0), l: `points · ${fmtPts(me.monthPoints ?? 0)} this month`, tone: 't1' },
+    { v: me.yearRank ? `#${me.yearRank}` : '–', l: me.yearRank ? `of ${me.yearRanked} this year` : 'rank this year', tone: 't2' },
+    { v: `${present}/${done.length}`, l: `present${last.length ? ' · ' + last.map(([, v]) => (v === 'present' ? '●' : '○')).join('') : ''}`, tone: 't3' },
+  ]);
 }
 
 // ---------- guests: their own event ----------

@@ -2,7 +2,7 @@ import {
   $, api, esc, fmtPts, headerHtml, footerHtml, renderBoard, achieversHtml, avatarHtml,
   statsHtml, historyHtml, leaveAlertHtml,
 } from './common.js';
-import { nextCardHtml, daysFoldHtml, remarksFoldHtml, guestHomeHtml, eventBoardHtml, occasionPracticesHtml } from './home.js';
+import { greetBarHtml, quickGridHtml, nextCardHtml, daysFoldHtml, remarksFoldHtml, guestHomeHtml, eventBoardHtml, occasionPracticesHtml } from './home.js';
 import { pickPhotos } from './photo.js';
 import { applyLook, lookCardHtml, wireLook, configure } from './theme.js';
 import { initBack, noteVisit, onBackFirst } from './nav.js';
@@ -115,11 +115,17 @@ function drawHome() {
     });
     return;
   }
-  box.innerHTML = nextCardHtml(overview.schedule)
+  const ICONS = { games: ['🎤', 'Sing', 285], space: ['🌟', 'Space', 45], board: ['🏆', 'Rank', 90], hymns: ['🎵', 'Hymns', 330], child: ['🙂', 'Me', 200] };
+  const quick = me ? quickGridHtml([...app.querySelectorAll('nav.tabbar button')].filter((b) => !b.hidden && ICONS[b.dataset.tab]).map((b) => ({ id: b.dataset.tab, icon: ICONS[b.dataset.tab][0], label: ICONS[b.dataset.tab][1], hue: ICONS[b.dataset.tab][2] }))) : '';
+  const hello = new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening';
+  box.innerHTML = (me ? greetBarHtml({ avatar: avatarHtml({ name: me.name, photo: me.head || me.photo }, 'sm'), hello, name: `Hi, ${esc(me.name.split(' ')[0])}! 👋`, sub: me.standard ? esc(me.standard) : '' }) : '')
+    + nextCardHtml(overview.schedule)
     + occasionPracticesHtml(me)
     + (me ? trioHtml(me, overview.schedule) : '')
+    + quick
     + daysFoldHtml(overview.schedule, me ? me.history || [] : null, days)
     + (me ? remarksFoldHtml(me, rem) : '');
+  box.querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click', () => { show(b.dataset.q); scrollTo(0, 0); }));
 }
 
 let gameCtl = null, spaceCtl = null;
@@ -138,7 +144,7 @@ function openSpace() {
   const box = $('#space');
   import('./space.js').then((m) => { spaceCtl = m.mountSpace(box, { code }); }).catch(() => { box.innerHTML = '<div class="alert bad">Choir Space could not load. Please try again.</div>'; });
 }
-const paintSpaceTab = () => { const t = $('#spaceTab'); if (t) t.hidden = !(overview?.settings?.spaceEnabled && code && me && !me.guest); };
+const paintSpaceTab = () => { const t = $('#spaceTab'); if (!t) return; const was = t.hidden; t.hidden = !(overview?.settings?.spaceEnabled && code && me && !me.guest); if (was !== t.hidden) drawHome(); }; // the home's quick links follow the tabs
 
 function show(t, fromBack = false) {
   if (!fromBack) noteVisit(t);
