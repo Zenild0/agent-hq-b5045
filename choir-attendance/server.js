@@ -604,16 +604,27 @@ function sessionView(date, type, eventName) {
     occasions: db.occasions.filter((o) => o.season === season).map((o) => o.name).sort(),
     missingOccasion: OCCASION_TYPES.includes(type) && !occ,
     pending: pendingDecisions(season),
-    children: rosterOf(type, occ).map((c) => {
+    children: sessionPeople(type, occ, sess).map((c) => {
       const e = sess?.entries[c.id] || {};
       const st = childStats(db, c.id, season);
       return {
         id: c.id, name: c.name, photo: photoUrl(c), head: headUrl(c), standard: c.standard, guest: Boolean(c.guest),
         status: e.status || null, reason: e.reason || '', remarks: e.remarks || [], note: e.note || '',
         leaves: st.leaves, exceeded: st.exceeded && !c.guest, decision: st.decision?.status ?? null,
+        former: Boolean(occ && !occ.members.includes(c.id)), // left the occasion; this practice still shows their mark
       };
     }).sort(compareNames),
   };
+}
+
+// Who is on an attendance list: the roster, plus anyone already marked in this very session (e.g. someone who has
+// since left an occasion), so a past practice always shows everyone who was marked.
+function sessionPeople(type, occ, sess) {
+  const list = rosterOf(type, occ);
+  if (!sess) return list;
+  const extra = Object.entries(sess.entries).filter(([id, e]) => e.status && !list.some((c) => c.id === id))
+    .map(([id]) => store.db.children.find((c) => c.id === id)).filter((c) => c?.active);
+  return [...list, ...extra];
 }
 
 function getOrCreateSession(date, type, event) {
@@ -625,7 +636,7 @@ function getOrCreateSession(date, type, event) {
 function mark(body) {
   const { db } = store;
   const { name: event, occ } = checkSessionKey(body.date, body.type, body.event);
-  if (!rosterOf(body.type, occ).some((c) => c.id === body.childId)) {
+  if (!sessionPeople(body.type, occ, store.db.sessions[sessionKey(body.date, body.type, event)]).some((c) => c.id === body.childId)) {
     throw new HttpError(400, OCCASION_TYPES.includes(body.type) ? 'That child is not part of this occasion' : 'That child is not in the main group');
   }
   const status = body.status ?? null;
@@ -1080,22 +1091,19 @@ function upcomingOccasionPractices(childId = null) {
     .sort(byWhen);
 }
 
+// Someone can leave an occasion at any time. Their attendance so far is kept: it still counts for points and history,
+// and the practices where they were marked still show them. They just do not appear for new practices.
 function updateOccasion(occ, body) {
   const keep = pickMembers(body.members, occ.members);
-  for (const id of occ.members) {
-    if (!keep.includes(id) && hasEntries(occ, id)) {
-      const c = store.db.children.find((x) => x.id === id);
-      throw new HttpError(400, `${c?.name ?? 'A child'} already has attendance in ${occ.name}, so can't be removed. Mark them absent instead.`);
-    }
-  }
+  const kept = occ.members.filter((id) => !keep.includes(id) && hasEntries(occ, id)).map((id) => store.db.children.find((x) => x.id === id)?.name).filter(Boolean);
   const guests = createChildren(body.guests, { standard: body.standard, guest: true });
   occ.members = [...keep, ...guests.added.map((c) => c.id)];
   store.save();
-  return { guestsAdded: guests.added.length, skipped: guests.skipped };
+  return { guestsAdded: guests.added.length, skipped: guests.skipped, removedKeptHistory: kept };
 }
 
 function deleteOccasion(occ) {
-  if (occ.members.some((id) => hasEntries(occ, id))) throw new HttpError(400, 'This occasion already has attendance recorded, so it can\'t be deleted');
+  if (store.db.children.some((c) => hasEntries(occ, c.id))) throw new HttpError(400, 'This occasion already has attendance recorded, so it can\'t be deleted');
   store.db.occasions = store.db.occasions.filter((o) => o !== occ);
   store.save();
 }

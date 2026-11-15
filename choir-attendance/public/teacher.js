@@ -783,7 +783,7 @@ function childRow(c) {
         ${avatarHtml(c, 'sm')}
         <div class="att-name">
           <button class="link" data-open="${esc(c.id)}">${esc(c.name)}</button>
-          <div class="att-meta">${c.guest ? '<span class="badge info">Guest</span>' : leaveBadge(c.leaves, view.settings.maxLeaves, c.exceeded)}${c.status === 'excused' && c.reason ? ` <span class="badge info">${esc(c.reason)}</span>` : ''}</div>
+          <div class="att-meta">${c.former ? '<span class="badge warn">Left this occasion</span> ' : ''}${c.guest ? '<span class="badge info">Guest</span>' : leaveBadge(c.leaves, view.settings.maxLeaves, c.exceeded)}${c.status === 'excused' && c.reason ? ` <span class="badge info">${esc(c.reason)}</span>` : ''}</div>
         </div>
         <div class="pam">
           ${b('present', 'P', 'Present')}${b('absent', 'A', 'Absent')}${b('excused', 'ML', 'Medical leave')}
@@ -1005,6 +1005,7 @@ async function openOccasion(id, seasonWanted = occSeason) {
         ? await call(`teacher/occasions/${id}`, { method: 'PUT', body: { members, guests } })
         : await call('teacher/occasions', { method: 'POST', body: { season, name, members, guests } });
       if (r.skipped?.length) alert(`Some guest names were skipped:\n${r.skipped.map((x) => `${x.line}: ${x.reason}`).join('\n')}`);
+      if (r.removedKeptHistory?.length) flash(`${r.removedKeptHistory.join(', ')} removed from this occasion. Their attendance so far is kept and still counts.`, 'ok');
       dlg.close();
       if (!ev) { type = 'practice'; event = name; }
       refreshVisible();

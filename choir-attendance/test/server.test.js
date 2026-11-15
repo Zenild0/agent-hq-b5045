@@ -191,9 +191,20 @@ test('guests: added with an occasion, marked only there, kept off the main list,
   assert.ok(!(await j('/api/public?season=2026')).data.yearBoard.some((x) => x.name === 'Gita G.'));
   const occ = (await j('/api/teacher/occasions?season=2026')).data.events.find((x) => x.event === 'Easter');
   assert.equal(occ.children.find((c) => c.name === 'Gita Guest').good, 1);
-  // cannot drop someone who already has attendance; can drop a guest with none
+  // someone with attendance can leave the occasion: their marks are kept, still count, and still show on that practice
   const upd = await j(`/api/teacher/occasions/${occ.id}`, { method: 'PUT', body: { members: [anna.id] } });
-  assert.equal(upd.status, 400);
+  assert.equal(upd.status, 200);
+  assert.deepEqual(upd.data.removedKeptHistory, ['Gita Guest'], 'the teacher is told whose attendance is kept');
+  const after = (await j('/api/teacher/occasions?season=2026')).data.events.find((x) => x.event === 'Easter');
+  const g = after.children.find((c) => c.name === 'Gita Guest');
+  assert.ok(g && g.member === false && g.attended === 1 && g.good === 1, 'her attendance and remark are still there');
+  const past = (await j('/api/teacher/session?date=2027-03-20&type=practice&event=Easter')).data.children;
+  assert.equal(past.find((c) => c.name === 'Gita Guest').former, true, 'the old practice still shows her, marked as having left');
+  assert.ok(!past.some((c) => c.name === 'Harry Helper'), 'someone removed with no marks is gone');
+  assert.equal((await mark(gita.id, { remarks: ['Well behaved'], note: 'fixed' })).status, 200, 'that past mark can still be corrected');
+  const fresh = (await j('/api/teacher/session?date=2027-03-27&type=practice&event=Easter')).data.children;
+  assert.ok(!fresh.some((c) => c.name === 'Gita Guest'), 'a new practice no longer lists her');
+  assert.equal((await j(`/api/teacher/occasions/${occ.id}`, { method: 'DELETE' })).status, 400, 'an occasion with attendance still cannot be deleted');
   // promote to the main group
   await j(`/api/teacher/children/${gita.id}`, { method: 'PATCH', body: { guest: false } });
   assert.ok((await j('/api/teacher/session?date=2027-03-20&type=saturday')).data.children.some((c) => c.name === 'Gita Guest'));
