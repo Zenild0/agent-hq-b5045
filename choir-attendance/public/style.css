@@ -1062,3 +1062,12 @@ html[data-theme=dark] .at-head { background: #0E0B1F; }
 .pam button { border-radius: 50%; width: 44px; height: 44px; } .pam .more { width: 36px; border-radius: 14px; }
 .pam .pa.present { border-color: rgba(19, 138, 91, .45); } .pam .pa.absent { border-color: rgba(212, 56, 44, .4); } .pam .pa.excused { border-color: rgba(31, 111, 214, .4); }
 .banner .ico { width: 18px; height: 18px; }
+
+/* Voice Care Corner: the home remedies box */
+.vt-rem > summary { list-style: none; display: flex; align-items: center; gap: 12px; cursor: pointer; } .vt-rem > summary::-webkit-details-marker { display: none; }
+.vt-rem > summary .grow { display: grid; gap: 2px; } .vt-rem > summary .muted { font-size: .8rem; }
+.vt-rem-ic { width: 44px; height: 44px; flex: none; border-radius: 14px; display: grid; place-items: center; font-size: 1.5rem; background: linear-gradient(145deg, #FFD36E, #FF9F43); }
+.vt-rem[open] .chev { transform: rotate(180deg); }
+.vt-rem-list { display: grid; gap: 8px; margin-top: 12px; }
+.vt-rem-item { border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; } .vt-rem-item > summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; gap: 6px; }
+.vt-rem-item[open] { background: rgba(255, 200, 61, .08); } .vt-rem-item .vt-body { margin: 8px 0; }

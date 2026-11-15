@@ -853,6 +853,7 @@ function voiceTipsFor() {
   const r = tipsAt(now, store.db.voiceTips);
   return {
     tips: r.tips.map((t) => ({ id: t.id, emoji: t.emoji, tag: t.tag, title: t.title, body: t.body, challenge: t.challenge, link: t.link ?? '', linkLabel: t.linkLabel ?? '', at: new Date(t.at || Date.parse('2026-11-14')).toISOString(), isNew: t.at > 0 && now - t.at < WEEK_MS, custom: t.custom })),
+    remedies: r.remedies.map((t) => ({ id: t.id, emoji: t.emoji, tag: t.tag, title: t.title, body: t.body, challenge: t.challenge ?? '', link: t.link ?? '', linkLabel: t.linkLabel ?? '' })),
     next: r.next ? new Date(r.next).toISOString() : null,
     remaining: r.remaining,
   };

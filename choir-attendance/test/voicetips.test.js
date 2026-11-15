@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { VOICE_TIPS, OPEN_AT_START, START_FRIDAY, releaseAt, tipsAt, nextFridayEvening } from '../lib/voicetips.js';
+import { VOICE_TIPS, REMEDIES, OPEN_AT_START, START_FRIDAY, releaseAt, tipsAt, nextFridayEvening } from '../lib/voicetips.js';
 
 process.env.CHOIR_DATA = join(mkdtempSync(join(tmpdir(), 'choir-tips-')), 'db.json');
 delete process.env.CHOIR_PIN;
@@ -18,14 +18,23 @@ const j = async (path, { method = 'GET', body, code } = {}) => {
 const at = (iso) => Date.parse(iso);
 
 test('the tips are all well formed and the links only go to web pages', () => {
-  assert.ok(VOICE_TIPS.length >= 30);
-  assert.equal(new Set(VOICE_TIPS.map((t) => t.id)).size, VOICE_TIPS.length);
-  for (const t of VOICE_TIPS) {
+  assert.ok(VOICE_TIPS.length >= 25);
+  const all = [...VOICE_TIPS, ...REMEDIES];
+  assert.equal(new Set(all.map((t) => t.id)).size, all.length, 'no tip is both weekly and a remedy');
+  for (const t of all) {
     assert.ok(t.title && t.body.length > 60 && t.emoji, t.id);
     if (t.link) assert.match(t.link, /^https:\/\//, t.id);
   }
-  assert.ok(VOICE_TIPS.some((t) => /ginger/i.test(t.title)) && VOICE_TIPS.some((t) => /warm water|sip water/i.test(t.title + t.body)));
-  assert.ok(VOICE_TIPS.find((t) => t.id === 'ginger-honey').body.includes('under 1 year'), 'the honey warning is there');
+  assert.ok(VOICE_TIPS.some((t) => /warm water|sip water/i.test(t.title + t.body)));
+});
+
+test('cough and sore-throat home remedies are open at any time, with the honey warning and when to see a doctor', () => {
+  assert.ok(REMEDIES.length >= 8);
+  assert.ok(REMEDIES.every((t) => t.tag === 'Home remedy'));
+  for (const id of ['honey-lemon', 'ginger-honey']) assert.match(REMEDIES.find((t) => t.id === id).body, /under 1 year/, `${id} warns about babies`);
+  assert.equal(REMEDIES.at(-1).id, 'see-doctor', 'the list ends with when to see a doctor');
+  assert.match(REMEDIES.at(-1).body, /fever|breathing/);
+  assert.equal(tipsAt(at('2026-11-14T00:00:00Z')).remedies.length, REMEDIES.length, 'all open before the first Friday');
 });
 
 test('a few tips are open from day one, then one more appears every Friday at 6 pm India time', () => {

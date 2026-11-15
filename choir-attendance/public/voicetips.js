@@ -20,6 +20,8 @@ export async function newestTip(code) {
   } catch { return null; }
 }
 
+const remOpen = () => { try { return localStorage.getItem('choir-rem-open') !== '0'; } catch { return true; } };
+
 export function mountVoiceTips(host, { code }) {
   const root = document.createElement('div');
   host.replaceChildren(root);
@@ -39,6 +41,8 @@ export function mountVoiceTips(host, { code }) {
         <div class="muted">Little tips to keep your voice happy and healthy. A new one arrives every Friday at 6 pm.</div>
         ${offline ? '<div class="alert warn" style="margin-top:8px">No signal. Showing the tips this phone saw last.</div>' : ''}
         ${d.next ? `<div class="vt-next">⏳ Next tip: <b>${fmt(d.next)}, ${fmtTime(d.next)}</b></div>` : '<div class="vt-next">You have read every tip so far. Your teacher may add more!</div>'}</div>
+      ${d.remedies?.length ? `<details class="card vt-rem"${remOpen() ? ' open' : ''}><summary><span class="vt-rem-ic" aria-hidden="true">🍯</span><span class="grow"><b>Cough or sore throat?</b><span class="muted">${d.remedies.length} home remedies families use. Always ask a grown-up first.</span></span><span class="chev" aria-hidden="true">▾</span></summary>
+        <div class="vt-rem-list">${d.remedies.map((t) => `<details class="vt-rem-item"><summary><span aria-hidden="true">${esc(t.emoji)}</span> <b>${esc(t.title)}</b></summary><p class="vt-body">${esc(t.body)}</p>${t.challenge ? `<div class="vt-try">✅ <b>Try it:</b> ${esc(t.challenge)}</div>` : ''}${t.link ? `<a class="btn small" href="${esc(t.link)}" target="_blank" rel="noopener noreferrer">🔗 ${esc(t.linkLabel || 'Read more')}</a>` : ''}</details>`).join('')}</div></details>` : ''}
       ${first ? card(first, true) : '<div class="empty">The first tips arrive soon.</div>'}
       ${rest.length ? `<h3 style="margin:14px 0 6px">Earlier tips</h3>${rest.map((t) => card(t, false)).join('')}` : ''}
       <div class="muted vt-fine">These are general tips for healthy singing, not medical advice. If your throat hurts or your voice stays hoarse, tell a grown-up and see a doctor.</div>`;
