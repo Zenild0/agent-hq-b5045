@@ -3,7 +3,7 @@ import {
   statsHtml, historyHtml, leaveAlertHtml,
 } from './common.js';
 import { icon } from './icons.js';
-import { greetBarHtml, quickGridHtml, storiesHtml, wireHome, nextCardHtml, daysFoldHtml, remarksFoldHtml, guestHomeHtml, eventBoardHtml, occasionPracticesHtml } from './home.js';
+import { greetBarHtml, quickGridHtml, storiesHtml, wireHome, homeBoardHtml, nextCardHtml, daysFoldHtml, remarksFoldHtml, guestHomeHtml, eventBoardHtml, occasionPracticesHtml } from './home.js';
 import { pickPhotos } from './photo.js';
 import { applyLook, lookCardHtml, wireLook, configure } from './theme.js';
 import { initBack, noteVisit, onBackFirst } from './nav.js';
@@ -95,6 +95,7 @@ window.addEventListener('offline', paintNet);
 // Home: next practice, practice days, the child's remarks. Keeps folds open/closed across redraws.
 // Highlight cards that need a little fetching (a new voice tip, the choir challenge, new songs). Fetched once, then the home is redrawn.
 let homeExtra = [], extrasFor = '';
+let homeBoardRange = (() => { try { return localStorage.getItem('choir-hb') === 'year' ? 'year' : 'month'; } catch { return 'month'; } })();
 async function loadHomeExtras() {
   if (!me || me.guest || !code || extrasFor === code) return;
   extrasFor = code;
@@ -134,18 +135,19 @@ function drawHome() {
   const xv = me && code ? xpFor(code).view() : null;
   const stories = me ? [
     xv ? { id: 'games', icon: 'flame', kicker: xv.streak > 0 ? `${xv.streak}-DAY STREAK` : 'START A STREAK', title: xv.goalMet ? 'Daily goal done!' : `${Math.round(xv.goalShare * 100)}% of today's goal`, sub: xv.goalMet ? 'Come back tomorrow' : `${xv.goal - xv.today} XP to go. Tap to sing`, ring: xv.goalShare, a: 25, b: 45 } : null,
-    me.yearRank ? { id: 'board', icon: 'trophy', kicker: 'YOUR RANK', title: `#${me.yearRank} of ${me.yearRanked}`, sub: 'in the choir this year', a: 45, b: 75 } : null,
     ...homeExtra,
   ].filter(Boolean) : [];
   box.innerHTML = (me ? greetBarHtml({ avatar: avatarHtml({ name: me.name, photo: me.head || me.photo }, 'sm'), hello: `${hour < 12 ? '☀️ Good morning' : hour < 17 ? '🌤 Good afternoon' : '🌙 Good evening'}`, name: `Hi, ${esc(me.name.split(' ')[0])}! 👋`, sub: me.standard ? esc(me.standard) : '' }) : '')
     + nextCardHtml(overview.schedule)
     + storiesHtml(stories)
+    + (overview.monthBoard ? homeBoardHtml(overview, me?.id, homeBoardRange) : '')
     + occasionPracticesHtml(me)
     + (me ? trioHtml(me, overview.schedule) : '')
     + quick
     + daysFoldHtml(overview.schedule, me ? me.history || [] : null, days)
     + (me ? remarksFoldHtml(me, rem) : '');
   wireHome(box, { onQuick: (id) => { show(id); scrollTo(0, 0); }, onStory: (id) => { show(id); scrollTo(0, 0); } });
+  box.querySelectorAll('[data-hb]').forEach((b) => b.addEventListener('click', () => { homeBoardRange = b.dataset.hb; try { localStorage.setItem('choir-hb', homeBoardRange); } catch { /* ignore */ } drawHome(); }));
   loadHomeExtras();
 }
 

@@ -1,6 +1,6 @@
 // The parent home screen: next practice, practice days (with the child's attendance), and the child's remarks.
 import { icon } from './icons.js';
-import { esc, fmtPts, fmtDate, avatarHtml, isGood, remarkLabel } from './common.js';
+import { esc, fmtPts, fmtDate, avatarHtml, bobbleHtml, isGood, remarkLabel } from './common.js';
 
 export const fmtTime = (hhmm) => {
   const [h, m] = hhmm.split(':').map(Number);
@@ -247,4 +247,64 @@ export function wireHome(root, { onStory = null, onQuick = null } = {}) {
     const q = e.target.closest('[data-q]'); if (q) { navigator.vibrate?.(8); onQuick?.(q.dataset.q); }
   };
   root.addEventListener('click', root._hkClick);
+}
+
+// ---------- the leaderboard on the children's home: a podium, where you stand, and how to climb ----------
+// rows: the month or year board (already short names, sorted by rank). meId: this child, if signed in.
+export function homeBoardHtml(o, meId, range = 'month') {
+  const rows = (range === 'year' ? o.yearBoard : o.monthBoard) ?? [];
+  const live = rows.filter((r) => r.points > 0);
+  const seg = `<div class="hb-seg" role="group" aria-label="Leaderboard period">${[['month', o.monthLabel?.split(' ')[0] || 'This month'], ['year', 'This year']].map(([id, l]) => `<button type="button" data-hb="${id}" class="${range === id ? 'on' : ''}" aria-pressed="${range === id}">${esc(l)}</button>`).join('')}</div>`;
+  const head = `<div class="hb-top"><div><small>CHOIR LEADERBOARD</small><h3>Who is on top? 🏆</h3></div>${seg}</div>`;
+  if (!live.length) return `<section class="hb">${head}<div class="hb-empty">🎤 The race starts at the next practice. Be there and grab the first points!</div></section>`;
+  const pod = (r, place) => r ? `
+    <div class="hb-p p${place}${r.id === meId ? ' me' : ''}">
+      ${place === 1 ? '<span class="hb-crown" aria-hidden="true">👑</span>' : ''}
+      <div class="hb-face">${bobbleHtml(r, place === 1 ? 66 : 52)}</div>
+      <b class="hb-n">${r.id === meId ? 'You' : esc(r.name)}</b>
+      <span class="hb-pts">${fmtPts(r.points)} pts</span>
+      <div class="hb-block"><span>${r.rank}</span></div>
+    </div>` : '<div class="hb-p empty"></div>';
+  const [a, b, c] = live;
+  const mine = rows.find((r) => r.id === meId);
+  let you = '';
+  if (meId && mine) {
+    const ahead = [...rows].reverse().find((r) => r.points > mine.points);
+    const per = o.settings?.satPoints || 1;
+    if (mine.rank === 1) you = `<div class="hb-you lead"><b>You are leading! 👑</b><span>Keep coming to practice to stay on top.</span></div>`;
+    else if (ahead) {
+      const gap = ahead.points - mine.points, n = Math.max(1, Math.ceil(gap / per));
+      you = `<div class="hb-you"><div class="hb-rank">#${mine.rank}</div><div class="grow"><b>${gap <= per ? 'So close!' : 'You can catch up!'} ${fmtPts(gap)} pt${gap === 1 ? '' : 's'} behind ${esc(ahead.name)}</b><span>${n === 1 ? 'One more practice could catch them.' : `About ${n} practices to catch them.`}</span>
+        <i class="hb-bar"><i style="width:${Math.max(8, Math.min(100, Math.round((100 * mine.points) / Math.max(1, ahead.points))))}%"></i></i></div></div>`;
+    }
+  } else if (meId) you = '<div class="hb-you"><b>Come to practice to join the board!</b><span>Every practice earns points.</span></div>';
+  const rest = live.slice(3, 6);
+  const meBelow = mine && mine.rank > 6 && mine.points > 0 ? mine : null;
+  return `<section class="hb">
+    ${head}
+    <div class="hb-podium">${pod(b, 2)}${pod(a, 1)}${pod(c, 3)}</div>
+    ${you}
+    ${rest.length || meBelow ? `<div class="hb-list">${[...rest, ...(meBelow ? [meBelow] : [])].map((r) => `<div class="hb-row${r.id === meId ? ' me' : ''}"><b>${r.rank}</b>${avatarHtml({ name: r.name, photo: r.head || r.photo }, 'sm')}<span class="grow">${r.id === meId ? 'You' : esc(r.name)}</span><em>${fmtPts(r.points)} pts</em></div>`).join('')}</div>` : ''}
+    <button type="button" class="hb-all" data-q="board">See the full leaderboard ›</button>
+  </section>`;
+}
+
+// The Music Lab leaderboard (this week's XP), with the same podium as the home board. d = the me/xp-board answer.
+export function labBoardHtml(d) {
+  const head = (extra = '') => `<div class="hb-top"><div><small>MUSIC LAB LEADERBOARD</small><h3>This week's stars ⚡</h3></div><span class="hb-chip">Resets Monday</span>${extra}</div>`;
+  if (d.locked) return `<section class="hb lab">${head()}<div class="hb-empty">🔒 The weekly board is for children with the full Music Lab. Your own XP and streak still count below.</div></section>`;
+  const rows = (d.week?.top ?? []).filter((r) => r.xp > 0), meId = d.meId;
+  if (!rows.length) return `<section class="hb lab">${head()}<div class="hb-empty">⚡ Nobody has XP yet this week. Play one round and you are on top!</div></section>`;
+  const pod = (r, place) => (r ? `<div class="hb-p p${place}${r.id === meId ? ' me' : ''}">${place === 1 ? '<span class="hb-crown" aria-hidden="true">👑</span>' : ''}<div class="hb-face">${bobbleHtml(r, place === 1 ? 62 : 48)}</div><b class="hb-n">${r.id === meId ? 'You' : esc(r.name)}</b><span class="hb-pts">${r.xp} XP</span><div class="hb-block"><span>${r.rank}</span></div></div>` : '<div class="hb-p empty"></div>');
+  const [a, b, c] = rows, mine = rows.find((r) => r.id === meId);
+  let you = '';
+  if (mine) {
+    const ahead = [...rows].reverse().find((r) => r.xp > mine.xp);
+    you = mine.rank === 1 ? '<div class="hb-you lead"><b>You are the star of the week! 👑</b><span>Keep your streak going to stay on top.</span></div>'
+      : ahead ? `<div class="hb-you"><div class="hb-rank">#${mine.rank}</div><div class="grow"><b>${ahead.xp - mine.xp} XP behind ${esc(ahead.name)}</b><span>${ahead.xp - mine.xp <= 30 ? 'One good round could do it!' : 'A few rounds this week and you are there.'}</span><i class="hb-bar"><i style="width:${Math.max(8, Math.round((100 * mine.xp) / Math.max(1, ahead.xp)))}%"></i></i></div></div>` : '';
+  } else if (d.week?.me) you = `<div class="hb-you"><div class="hb-rank">#${d.week.me.rank}</div><div class="grow"><b>${d.week.me.xp} XP this week</b><span>Play a round to climb the board.</span></div></div>`;
+  else you = '<div class="hb-you"><b>Not on the board yet this week</b><span>Play one round to join!</span></div>';
+  return `<section class="hb lab">${head()}<div class="hb-podium">${pod(b, 2)}${pod(a, 1)}${pod(c, 3)}</div>${you}
+    ${rows.length > 3 ? `<div class="hb-list">${rows.slice(3, 6).map((r) => `<div class="hb-row${r.id === meId ? ' me' : ''}"><b>${r.rank}</b>${avatarHtml({ name: r.name, photo: r.head || r.photo }, 'sm')}<span class="grow">${r.id === meId ? 'You' : esc(r.name)}</span><em>${r.xp} XP</em></div>`).join('')}</div>` : ''}
+    <button type="button" class="hb-all" data-q="board">See the full Music Lab board ›</button></section>`;
 }
