@@ -640,12 +640,14 @@ function mark(body) {
   store.save();
 }
 
+// Marks everyone who is not marked yet: present (default) or absent. Anyone already marked is left alone.
 function markAllPresent(body) {
   const { name: event, occ } = checkSessionKey(body.date, body.type, body.event);
+  const status = body.status === 'absent' ? 'absent' : 'present';
   const sess = getOrCreateSession(body.date, body.type, event);
   for (const c of rosterOf(body.type, occ)) {
     const e = (sess.entries[c.id] ??= { status: null, remarks: [], note: '' });
-    if (!e.status) e.status = 'present';
+    if (!e.status) e.status = status;
   }
   store.save();
 }

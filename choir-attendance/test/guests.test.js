@@ -119,3 +119,22 @@ test('children and parents see a first name and an initial, the teacher sees the
   assert.equal(s.feeNote ?? (await j('/api/public')).data.settings.feeNote, 'To run the server.');
   assert.equal((await j('/api/teacher/settings', { method: 'PUT', body: { feeNote: 'x'.repeat(500) } })).status, 400);
 });
+
+test('"mark the rest" marks only the children who are not marked yet, present or absent', async () => {
+  const mk = async (name) => (await j('/api/teacher/children', { method: 'POST', body: { name } })).data;
+  const a = await mk('Rest A'), b = await mk('Rest B'), c = await mk('Rest C');
+  const date = '2026-09-12'; // a Saturday
+  const q = `?date=${date}&type=saturday`;
+  await j('/api/teacher/mark', { method: 'PUT', body: { date, type: 'saturday', childId: a.id, status: 'excused', reason: '', remarks: [], note: '' } });
+  assert.equal((await j('/api/teacher/mark-all-present', { method: 'POST', body: { date, type: 'saturday', status: 'absent' } })).status, 200);
+  const st = (await j(`/api/teacher/session${q}`)).data.children;
+  const get = (id) => st.find((x) => x.id === id).status;
+  assert.equal(get(a.id), 'excused', 'someone already marked is left alone');
+  assert.equal(get(b.id), 'absent'); assert.equal(get(c.id), 'absent');
+  // the default is still "present", and only for the unmarked
+  await j('/api/teacher/mark', { method: 'PUT', body: { date, type: 'saturday', childId: b.id, status: null, reason: '', remarks: [], note: '' } });
+  await j('/api/teacher/mark-all-present', { method: 'POST', body: { date, type: 'saturday' } });
+  const st2 = (await j(`/api/teacher/session${q}`)).data.children;
+  assert.equal(st2.find((x) => x.id === b.id).status, 'present');
+  assert.equal(st2.find((x) => x.id === c.id).status, 'absent', 'already absent stays absent');
+});

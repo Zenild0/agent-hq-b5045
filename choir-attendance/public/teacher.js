@@ -592,40 +592,45 @@ async function loadAttendance() {
   renderAttendance();
 }
 
+// ---- the attendance page ----
+let attFilter = 'all', attQuery = '', attFirst = false, attUndo = null;
+const TYPE_CHIPS = [['saturday', 'Saturday', 'satPoints'], ['sunday', 'Sunday', 'sunPoints'], ['practice', 'Practice', 'practicePoints'], ['feast', 'Feast mass', 'feastPoints']];
+const TYPE_LONG = { saturday: 'Saturday practice', sunday: 'Sunday mass', practice: 'Special practice', feast: 'Special mass' };
+
+const attCounts = () => {
+  const n = (k) => view.children.filter((c) => c.status === k).length;
+  return { present: n('present'), absent: n('absent'), excused: n('excused'), none: view.children.filter((c) => !c.status).length, total: view.children.length };
+};
+
 function renderAttendance() {
   const s = view.settings;
   const waiting = isOccasion(type) && view.missingOccasion;
-  const when = date < todayStr() ? `📅 Back-dated entry for ${fmtDate(date)}` : date > todayStr() ? `📅 Future date: ${fmtDate(date)}` : '';
+  const when = date < todayStr() ? `Back-dated entry for ${fmtDate(date)}` : date > todayStr() ? `Future date: ${fmtDate(date)}` : '';
+  const sat = lastWeekday(6), sun = lastWeekday(0), today = todayStr();
+  const dateChip = (id, label, d) => `<button type="button" class="at-chip${date === d ? ' on' : ''}" data-jump="${id}">${label}</button>`;
+  const custom = ![today, sat, sun].includes(date) ? `<span class="at-chip on" aria-current="date">${esc(fmtDate(date).replace(/ \d{4}$/, ''))}</span>` : '';
   $('#attendance').innerHTML = `
-    <div class="card">
-      <div class="row">
-        <input type="date" id="date" value="${date}" aria-label="Date">
-        <button class="btn small" data-jump="today">Today</button>
-        <button class="btn small" data-jump="6">Last Saturday</button>
-        <button class="btn small" data-jump="0">Last Sunday</button>
+    <section class="at-head">
+      <div class="at-dates">
+        ${dateChip('today', 'Today', today)}${sat === today ? '' : dateChip('6', `Sat ${esc(fmtDate(sat).replace(/ \d{4}$/, '').replace(/^\w+,? /, ''))}`, sat)}${sun === today ? '' : dateChip('0', `Sun ${esc(fmtDate(sun).replace(/ \d{4}$/, '').replace(/^\w+,? /, ''))}`, sun)}${custom}
+        <label class="at-cal" aria-label="Pick another date">${icon('schedule')}<input type="date" id="date" value="${date}"></label>
       </div>
-      <div class="row" style="margin-top:10px">
-        <select id="type" aria-label="Session type">
-          <option value="saturday">Saturday practice (${fmtPts(s.satPoints)} pt)</option>
-          <option value="sunday">Sunday mass (${fmtPts(s.sunPoints)} pts)</option>
-          <option value="practice">Special practice – feast (${fmtPts(s.practicePoints)} pt)</option>
-          <option value="feast">Special mass – feast (${fmtPts(s.feastPoints)} pts)</option>
-        </select>
-        ${isOccasion(type) ? (view.occasions.length ? `
-          <select id="event" aria-label="Occasion">
-            ${view.occasions.map((e) => `<option${e === event ? ' selected' : ''}>${esc(e)}</option>`).join('')}
-            <option value="__new">＋ New occasion…</option>
-          </select>` : '<button class="btn small" id="newOcc">＋ Create an occasion</button>') : ''}
-      </div>
-    </div>
+      <div class="at-types" role="tablist" aria-label="Session type">${TYPE_CHIPS.map(([id, label, key]) => `<button type="button" role="tab" class="at-chip${type === id ? ' on' : ''}" data-type="${id}" aria-selected="${type === id}">${label}<small>${fmtPts(s[key])} pt${s[key] === 1 ? '' : 's'}</small></button>`).join('')}</div>
+      ${isOccasion(type) ? `<div class="row" style="margin-top:8px">${view.occasions.length ? `<select id="event" aria-label="Occasion">${view.occasions.map((e) => `<option${e === event ? ' selected' : ''}>${esc(e)}</option>`).join('')}<option value="__new">＋ New occasion…</option></select>` : '<button class="btn small" id="newOcc">＋ Create an occasion</button>'}</div>` : ''}
+    </section>
     ${pendingHtml(view.pending)}
-    ${when ? `<div class="banner">${when}</div>` : ''}
+    ${when ? `<div class="banner">${icon('schedule')} ${esc(when)}</div>` : ''}
     ${waiting ? `<div class="empty">No occasion yet for this year.<br>Create one (Christmas, Easter…) and choose who takes part.<br><br><button class="btn primary" id="newOcc2">＋ Create an occasion</button></div>` : `
-    <div class="row between"><span class="muted" id="sumline">${summaryText()}</span>
-      <button class="btn small" id="allPresent">Mark all present</button></div>
-    <div class="muted legend"><b>P</b> Present · <b>A</b> Absent · <b>ML</b> Medical leave · <b>⋯</b> remarks &amp; notes</div>
-    <div class="att-list">${view.children.length ? view.children.map(childRow).join('') : '<div class="empty">Add children in the Children tab first.</div>'}</div>`}`;
-  $('#type').value = type;
+    <section class="at-prog" id="atProg"></section>
+    <div class="at-tools">
+      <label class="at-search"><span class="sr">Find a child</span>${icon('children')}<input id="atQ" type="search" placeholder="Find a child…" value="${esc(attQuery)}" autocomplete="off"></label>
+      <button class="btn primary at-all" id="allPresent">${icon('check')} All present</button>
+      <details class="at-menu"><summary aria-label="More actions">${icon('more')}</summary>
+        <div class="at-pop"><button type="button" id="restAbsent">Mark the rest absent</button><button type="button" id="shareSum">${icon('save')} Share summary</button><button type="button" id="firstToggle">${attFirst ? '✓ ' : ''}Show unmarked first</button></div></details>
+    </div>
+    <div id="atUndo"></div>
+    <div class="at-hint" id="atHint"></div>
+    <div class="att-list" id="atList"></div>`}`;
   $('#date').addEventListener('change', (e) => {
     if (!e.target.value) return;
     date = e.target.value;
@@ -638,27 +643,97 @@ function renderAttendance() {
     type = '';
     run(loadAttendance);
   }));
-  $('#type').addEventListener('change', (e) => { type = e.target.value; run(loadAttendance); });
+  $('#attendance').querySelectorAll('[data-type]').forEach((b) => b.addEventListener('click', () => { type = b.dataset.type; run(loadAttendance); }));
   $('#event')?.addEventListener('change', (e) => {
     if (e.target.value === '__new') { e.target.value = event; run(() => openOccasion(null, view.season)); return; }
     event = e.target.value;
     run(loadAttendance);
   });
   ['newOcc', 'newOcc2'].forEach((id) => $(`#${id}`)?.addEventListener('click', () => run(() => openOccasion(null, view.season))));
-  $('#allPresent')?.addEventListener('click', () => run(async () => {
-    await call('teacher/mark-all-present', { method: 'POST', body: { date, type, event } });
-    await loadAttendance();
-  }));
-  $('#attendance').querySelectorAll('[data-child]').forEach(wireRow);
+  if (waiting) return;
+  $('#allPresent').addEventListener('click', () => run(() => bulkMark('present')));
+  $('#restAbsent').addEventListener('click', () => { $('.at-menu').open = false; run(() => bulkMark('absent')); });
+  $('#shareSum').addEventListener('click', () => { $('.at-menu').open = false; shareSummary(); });
+  $('#firstToggle').addEventListener('click', () => { attFirst = !attFirst; renderAttendance(); });
+  $('#atQ').addEventListener('input', (e) => { attQuery = e.target.value; paintAttList(); });
+  paintAttProgress(); paintAttList(); paintUndo(); paintTrend();
+  try { if (!localStorage.getItem('choir-att-swipe')) $('#atHint').innerHTML = `<span>Tip: swipe a child right for present, left for absent.</span><button type="button" class="link" id="hintOk">Got it</button>`; } catch { /* private mode */ }
+  $('#hintOk')?.addEventListener('click', () => { try { localStorage.setItem('choir-att-swipe', '1'); } catch { /* ignore */ } $('#atHint').innerHTML = ''; });
+}
+
+// The progress ring and the filter chips: tap a chip to see only those children.
+function paintAttProgress() {
+  const box = $('#atProg'); if (!box) return;
+  const n = attCounts(), marked = n.total - n.none, pct = n.total ? marked / n.total : 0;
+  const chip = (id, label, v, cls) => `<button type="button" class="at-count ${cls}${attFilter === id ? ' on' : ''}" data-f="${id}" aria-pressed="${attFilter === id}"><b>${v}</b><small>${label}</small></button>`;
+  box.innerHTML = `
+    <div class="at-ring" style="--p:${pct}"><b>${marked}</b><small>of ${n.total}</small></div>
+    <div class="at-prog-main">
+      <div class="at-prog-t">${n.none === 0 && n.total ? `Everyone is marked ✓` : `${marked} of ${n.total} marked`}</div>
+      <div class="at-counts">${chip('all', 'All', n.total, 'all')}${chip('present', 'Present', n.present, 'p')}${chip('absent', 'Absent', n.absent, 'a')}${chip('excused', 'Medical', n.excused, 'm')}${chip('none', 'Left', n.none, 'l')}</div>
+      <div class="at-trend" id="atTrend"></div>
+    </div>
+    ${n.none === 0 && n.total ? `<div class="at-done">${icon('check')} ${n.present} present${n.total ? ` · ${Math.round((100 * n.present) / n.total)}%` : ''}. <button type="button" class="link" id="doneShare">Share summary</button></div>` : ''}`;
+  box.querySelectorAll('[data-f]').forEach((b) => b.addEventListener('click', () => { attFilter = attFilter === b.dataset.f ? 'all' : b.dataset.f; paintAttProgress(); paintAttList(); }));
+  $('#doneShare')?.addEventListener('click', shareSummary);
+}
+
+function paintAttList() {
+  const list = $('#atList'); if (!list) return;
+  const q = attQuery.trim().toLowerCase();
+  let items = view.children.filter((c) => (attFilter === 'all' || (attFilter === 'none' ? !c.status : c.status === attFilter)) && (!q || c.name.toLowerCase().includes(q)));
+  if (attFirst) items = [...items.filter((c) => !c.status), ...items.filter((c) => c.status)];
+  list.innerHTML = view.children.length ? (items.map(childRow).join('') || `<div class="empty">${q ? `No child called “${esc(attQuery.trim())}”.` : 'Nobody here.'}</div>`) : '<div class="empty">Add children in the Children tab first.</div>';
+  list.querySelectorAll('[data-child]').forEach(wireRow);
+}
+
+// "Mark all present" or "mark the rest absent": only children who are not marked yet. An Undo bar follows.
+async function bulkMark(status) {
+  const before = view.children.filter((c) => !c.status).map((c) => ({ id: c.id, remarks: c.remarks, note: c.note }));
+  if (!before.length) { flash('Everyone is already marked.', 'ok'); return; }
+  await call('teacher/mark-all-present', { method: 'POST', body: { date, type, event, status } });
+  attUndo = { text: `${before.length} marked ${status}`, until: Date.now() + 9000, undo: async () => {
+    await Promise.all(before.map((b) => call('teacher/mark', { method: 'PUT', body: { date, type, event, childId: b.id, status: null, reason: '', remarks: b.remarks, note: b.note } })));
+  } };
+  await loadAttendance();
+}
+function paintUndo() {
+  const box = $('#atUndo'); if (!box) return;
+  if (!attUndo || Date.now() > attUndo.until) { attUndo = null; box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="at-undo"><span>${esc(attUndo.text)}</span><button type="button" id="undoBtn">Undo</button></div>`;
+  $('#undoBtn').addEventListener('click', () => run(async () => { const u = attUndo; attUndo = null; await u.undo(); await loadAttendance(); }));
+  setTimeout(() => { if (attUndo && Date.now() > attUndo.until) { attUndo = null; const b = $('#atUndo'); if (b) b.innerHTML = ''; } }, Math.max(0, attUndo.until - Date.now()) + 50);
+}
+
+// A short message for the parents' group, from what is marked now.
+function summaryMessage() {
+  const names = (k) => view.children.filter((c) => c.status === k).map((c) => c.name);
+  const p = names('present'), a = names('absent'), m = names('excused'), left = attCounts().none;
+  return [`🎶 ${TYPE_LONG[type] ?? 'Practice'}${isOccasion(type) && event ? ` (${event})` : ''}, ${fmtDate(date)}`,
+    `✅ Present ${p.length}${p.length ? `: ${p.join(', ')}` : ''}`,
+    a.length ? `❌ Absent ${a.length}: ${a.join(', ')}` : '', m.length ? `🏥 Medical leave ${m.length}: ${m.join(', ')}` : '', left ? `⏳ Not marked yet: ${left}` : ''].filter(Boolean).join('\n');
+}
+async function shareSummary() {
+  const text = summaryMessage();
+  try { if (navigator.share) { await navigator.share({ text }); return; } } catch (e) { if (e?.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(text); flash('Summary copied. Paste it in your group.', 'ok'); }
+  catch { window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener'); }
+}
+
+// The last few practices as tiny bars, so a quiet week is easy to see.
+async function paintTrend() {
+  try {
+    const { sessions } = await call('teacher/sessions');
+    const box = $('#atTrend'); if (!box) return;
+    const main = sessions.filter((x) => !['practice', 'feast'].includes(x.type) && x.type === (['saturday', 'sunday'].includes(type) ? type : x.type)).slice(0, 8).reverse();
+    if (main.length < 2) return;
+    const tot = (x) => x.present.length + x.absent.length + x.excused.length + x.unmarked.length || 1;
+    const prev = [...main].reverse().find((x) => x.date < date);
+    box.innerHTML = `<span class="bars" aria-hidden="true">${main.map((x) => `<i class="${x.date === date ? 'cur' : ''}" style="height:${Math.max(8, Math.round((100 * x.present.length) / tot(x)))}%" title="${esc(fmtDate(x.date))}: ${x.present.length} here"></i>`).join('')}</span><small>${prev ? `Last time: ${prev.present.length} here` : 'Recent practices'}</small>`;
+  } catch { /* the page works without it */ }
 }
 
 const openRows = new Set(); // children whose remarks panel is expanded
-
-function summaryText() {
-  const n = (k) => view.children.filter((c) => c.status === k).length;
-  const left = view.children.filter((c) => !c.status).length;
-  return `P ${n('present')} · A ${n('absent')} · ML ${n('excused')} · ${left} not marked`;
-}
 
 function extraHtml(c) {
   return `
@@ -682,7 +757,7 @@ function childRow(c) {
   const open = openRows.has(c.id);
   const hasExtra = c.remarks.length || c.note || c.reason;
   return `
-    <div class="att-row" data-child="${esc(c.id)}">
+    <div class="att-row st-${c.status || 'none'}" data-child="${esc(c.id)}">
       <div class="att-main">
         ${avatarHtml(c, 'sm')}
         <div class="att-name">
@@ -705,8 +780,8 @@ function replaceRow(el, c) {
   const fresh = tmp.firstElementChild;
   el.replaceWith(fresh);
   wireRow(fresh);
-  const sum = $('#sumline');
-  if (sum) sum.textContent = summaryText();
+  paintAttProgress();
+  if (attFilter !== 'all' || attFirst) setTimeout(paintAttList, 350); // a moment to see the tap, then the list follows the filter
 }
 
 function wireRow(el) {
@@ -722,6 +797,18 @@ function wireRow(el) {
     if (c.status !== 'excused') c.reason = '';
     save();
   }));
+  // swipe right = present, swipe left = absent (mostly sideways, so scrolling still works)
+  let sx = 0, sy = 0, st = 0;
+  const main = $('.att-main', el);
+  main.addEventListener('touchstart', (e) => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; st = Date.now(); }, { passive: true });
+  main.addEventListener('touchend', (e) => {
+    if (e.target.closest('button, select, input, textarea')) return;
+    const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+    if (Math.abs(dx) < 80 || Math.abs(dx) < Math.abs(dy) * 2.2 || Date.now() - st > 700) return;
+    const to = dx > 0 ? 'present' : 'absent';
+    if (c.status === to) return;
+    c.status = to; c.reason = ''; navigator.vibrate?.(12); save();
+  }, { passive: true });
   $('[data-more]', el).addEventListener('click', () => {
     if (openRows.has(c.id)) openRows.delete(c.id); else openRows.add(c.id);
     replaceRow(el, c);
