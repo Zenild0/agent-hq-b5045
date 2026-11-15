@@ -9,45 +9,37 @@ const read = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}');
 const write = (v) => { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch { /* storage full */ } };
 const STAR = (n) => '★'.repeat(n) + '☆'.repeat(3 - n);
 
-// ---- the written rhythm: one line per bar (so two bars stay big on a phone), notes placed by time, eighths beamed in pairs ----
+// ---- the written rhythm: one long line that scrolls past a playhead, like a music game ----
+// The count-in sits before the music (4 faint beats), so the first note arrives at the playhead right on time.
+export const BEAT_PX = 72, LEAD_BEATS = BEATS_PER_BAR, TAIL_PX = 260;
+export const stripX = (beat) => 150 + (LEAD_BEATS + beat) * BEAT_PX; // where a beat sits on the strip
 export function rhythmSvg(pattern, marks = []) {
-  const bars = []; let cur = [], t = 0;
-  for (const d of pattern) { cur.push(d); t += Math.abs(d); if (t >= BEATS_PER_BAR - 1e-9) { bars.push(cur); cur = []; t = 0; } }
-  if (cur.length) bars.push(cur);
-  let k = 0;
-  return bars.map((b) => { const n = b.filter((d) => d > 0).length, m = marks.slice(k, k + n); k += n; return barSvg(b, m); }).join('');
-}
-
-function barSvg(pattern, marks = []) {
-  const beats = patternBeats(pattern), bars = beats / BEATS_PER_BAR, W = 320 * bars, L = 18, U = (W - 2 * L) / beats, Y = 58;
-  const xOf = (b) => L + b * U + 12;
-  let svg = `<line x1="${L - 8}" y1="${Y}" x2="${W - 8}" y2="${Y}" class="rl"/>`;
-  for (let b = 1; b < bars; b++) svg += `<line x1="${L + b * BEATS_PER_BAR * U}" y1="${Y - 22}" x2="${L + b * BEATS_PER_BAR * U}" y2="${Y + 22}" class="rl"/>`;
-  svg += `<line x1="${W - 8}" y1="${Y - 22}" x2="${W - 8}" y2="${Y + 22}" class="rl thick"/>`;
+  const beats = patternBeats(pattern), W = stripX(beats) + TAIL_PX, Y = 58;
+  const xOf = (b) => stripX(b) + 10;
+  let svg = `<line x1="${stripX(0) - 14}" y1="${Y}" x2="${stripX(beats) + 4}" y2="${Y}" class="rl"/>`;
+  for (let c = 0; c < LEAD_BEATS; c++) svg += `<circle cx="${xOf(c - LEAD_BEATS)}" cy="${Y}" r="13" class="rcount"/><text x="${xOf(c - LEAD_BEATS)}" y="${Y + 5}" class="rcn">${c + 1}</text>`;
+  svg += `<text x="${xOf(-LEAD_BEATS) - 2}" y="${Y - 26}" class="rci">count in</text>`;
+  for (let bar = 0; bar <= beats / BEATS_PER_BAR; bar++) svg += `<line x1="${stripX(bar * BEATS_PER_BAR) - 14}" y1="${Y - 22}" x2="${stripX(bar * BEATS_PER_BAR) - 14}" y2="${Y + 22}" class="rl${bar === beats / BEATS_PER_BAR ? ' thick' : ''}"/>`;
   for (let b = 0; b < beats; b++) svg += `<text x="${xOf(b)}" y="${Y + 40}" class="rc">${(b % BEATS_PER_BAR) + 1}</text>`;
   let t = 0; const items = [];
-  pattern.forEach((d, i) => { items.push({ d, t, i }); t += Math.abs(d); });
-  const head = (x, open) => `<ellipse cx="${x}" cy="${Y}" rx="7.5" ry="5.6" transform="rotate(-20 ${x} ${Y})" class="${open ? 'rh open' : 'rh'}"/>`;
+  pattern.forEach((d) => { items.push({ d, t }); t += Math.abs(d); });
+  let n = 0;
+  const head = (x, open) => `<ellipse cx="${x}" cy="${Y}" rx="7.5" ry="5.6" transform="rotate(-20 ${x} ${Y})" class="${open ? 'rh open' : 'rh'}" data-n="${n}"/>`;
   const stem = (x) => `<line x1="${x + 6.6}" y1="${Y - 2}" x2="${x + 6.6}" y2="${Y - 34}" class="rs"/>`;
-  let noteNo = 0; const noteX = [];
+  const noteX = [];
   for (let k = 0; k < items.length; k++) {
     const { d, t: at } = items[k], x = xOf(at);
-    if (d < 0) { // rests: a quarter rest zig-zag or a little eighth rest
-      svg += d === -1 ? `<path d="M${x - 3} ${Y - 18} l6 7 -6 6 6 7 -4 -2 -3 6" class="rr"/>` : `<path d="M${x - 4} ${Y - 10} q4 4 8 -2 l-5 16" class="rr"/>`;
-      continue;
-    }
-    noteX.push(x); noteNo++;
-    if (d >= 2) { svg += head(x, true) + stem(x); continue; }
-    svg += head(x, false) + stem(x);
+    if (d < 0) { svg += d === -1 ? `<path d="M${x - 3} ${Y - 18} l6 7 -6 6 6 7 -4 -2 -3 6" class="rr"/>` : `<path d="M${x - 4} ${Y - 10} q4 4 8 -2 l-5 16" class="rr"/>`; continue; }
+    if (d >= 2) { svg += head(x, true) + stem(x); noteX.push(x); n++; continue; }
+    svg += head(x, false) + stem(x); noteX.push(x); n++;
     if (d === 0.5) {
       const nx = items[k + 1];
-      const pair = nx && nx.d === 0.5 && Number.isInteger(at); // two eighths on one beat share a beam
-      if (pair) { const x2 = xOf(nx.t); svg += head(x2, false) + stem(x2) + `<line x1="${x + 6.6}" y1="${Y - 33}" x2="${x2 + 6.6}" y2="${Y - 33}" class="rb"/>`; noteX.push(x2); noteNo++; k++; }
+      if (nx && nx.d === 0.5 && Number.isInteger(at)) { const x2 = xOf(nx.t); svg += head(x2, false) + stem(x2) + `<line x1="${x + 6.6}" y1="${Y - 33}" x2="${x2 + 6.6}" y2="${Y - 33}" class="rb"/>`; noteX.push(x2); n++; k++; }
       else svg += `<path d="M${x + 6.6} ${Y - 34} q8 6 6 16" class="rf"/>`;
     }
   }
   marks.forEach((m, i) => { if (noteX[i] != null) svg += `<circle cx="${noteX[i] + 2}" cy="${Y - 48}" r="6" class="rm ${m.grade}"/>`; });
-  return `<svg class="rsvg" viewBox="0 0 ${W} ${Y + 52}" role="img" aria-label="A rhythm of ${noteNo} notes">${svg}</svg>`;
+  return `<svg class="rsvg" width="${W}" height="${Y + 52}" viewBox="0 0 ${W} ${Y + 52}" role="img" aria-label="A rhythm of ${n} notes">${svg}</svg>`;
 }
 
 // ---- sound ----
@@ -103,14 +95,17 @@ export function mountRhythm(host, { access = null, xp: xpIn = null } = {}) {
       <div class="card rt-play">
         <div class="row between"><b>${lv.emoji} ${esc(lv.name)}</b><button class="btn small" data-a="leave">✕ Leave</button></div>
         <div class="rt-dots">${deck.map((_, k) => `<i class="${k < i ? (state.results[k] >= 55 ? 'ok' : 'bad') : k === i ? 'now' : ''}"></i>`).join('')}</div>
-        <div class="rt-score" id="rtScore">${rhythmSvg(p)}</div>
+        <div class="rt-lanewrap"><div class="rt-lane" id="rtScore">${rhythmSvg(p)}</div><i class="rt-playhead" aria-hidden="true"></i></div>
         <div class="rt-beats" id="rtBeats">${Array.from({ length: BEATS_PER_BAR }, (_, k) => `<i data-b="${k}">${k + 1}</i>`).join('')}</div>
         <div class="rt-msg" id="rtMsg" aria-live="polite">${i === 0 ? esc(lv.how) : 'Listen first, then your turn.'}</div>
         <button type="button" class="rt-pad" id="rtPad" aria-label="Drum: tap here">TAP</button>
         <div class="rt-acts"><button class="btn" data-a="listen">👂 Listen</button><button class="btn primary" data-a="go">🥁 My turn</button></div>
         <div class="rt-acts" id="rtNext" hidden><button class="btn" data-a="again">🔁 Try again</button><button class="btn primary" data-a="next">${i === deck.length - 1 ? 'Finish ✓' : 'Next ▶'}</button></div>
       </div>`;
+    park(-LEAD_BEATS);
   }
+  // Scroll the strip so that `beat` sits under the playhead (a third of the way across).
+  const park = (beat) => { const lane = root.querySelector('#rtLane') ?? root.querySelector('#rtScore'); if (lane) lane.scrollLeft = Math.max(0, stripX(beat) + 10 - lane.clientWidth * 0.32); };
 
   // Count in one bar, then (listen) clap the rhythm with the beat, or (go) keep the beat while the child taps.
   function run(kind) {
@@ -124,7 +119,9 @@ export function mountRhythm(host, { access = null, xp: xpIn = null } = {}) {
     root.querySelectorAll('[data-a="listen"], [data-a="go"]').forEach((b) => { b.disabled = true; });
     root.querySelector('#rtNext').hidden = true;
     root.querySelector('#rtScore').innerHTML = rhythmSvg(p);
+    root.querySelector('#rtScore').classList.add('moving');
     const msg = root.querySelector('#rtMsg'), dots = [...root.querySelectorAll('#rtBeats i')];
+    const heads = [...root.querySelectorAll('#rtScore .rh')], ons = onsets(p);
     const end = start + len * beat;
     const loop = () => {
       if (dead) return;
@@ -133,6 +130,9 @@ export function mountRhythm(host, { access = null, xp: xpIn = null } = {}) {
       else if (now < end) msg.textContent = kind === 'listen' ? '👂 Listen…' : '🥁 Tap the rhythm!';
       const k = Math.floor((now - (now < start ? t0 : start)) / beat) % BEATS_PER_BAR;
       dots.forEach((d, n) => d.classList.toggle('on', now >= t0 && n === k && now < end));
+      const pos = (now - start) / beat; // in beats: negative during the count-in
+      park(Math.min(pos, len));
+      heads.forEach((h, n) => h.classList.toggle('lit', pos >= ons[n] - 0.05 && pos < ons[n] + 0.6));
       if (now < end + beat * 0.6) raf = requestAnimationFrame(loop); else finish(kind);
     };
     raf = requestAnimationFrame(loop);
@@ -140,8 +140,9 @@ export function mountRhythm(host, { access = null, xp: xpIn = null } = {}) {
 
   function finish(kind) {
     root.querySelectorAll('[data-a="listen"], [data-a="go"]').forEach((b) => { b.disabled = false; });
+    root.querySelector('#rtScore')?.classList.remove('moving');
     const msg = root.querySelector('#rtMsg');
-    if (kind === 'listen') { state.phase = 'ready'; msg.textContent = 'Your turn! Press “My turn” and tap the same rhythm.'; return; }
+    if (kind === 'listen') { state.phase = 'ready'; park(-LEAD_BEATS); msg.textContent = 'Your turn! Press “My turn” and tap the same rhythm.'; return; }
     const { deck, i, beat, start } = state, p = deck[i];
     const lag = snd.lag();
     const exp = onsets(p).map((o) => start + o * beat + lag);
@@ -149,6 +150,7 @@ export function mountRhythm(host, { access = null, xp: xpIn = null } = {}) {
     state.best = Math.max(state.best ?? 0, r.accuracy);
     state.phase = 'scored';
     root.querySelector('#rtScore').innerHTML = rhythmSvg(p, r.notes);
+    park(-0.6); // show the marked notes from the start; swipe to see the rest
     msg.innerHTML = `<b>${r.accuracy}%</b> · ${esc(rhythmFeedback(r))}`;
     msg.className = `rt-msg ${r.accuracy >= 75 ? 'ok' : r.accuracy >= 55 ? '' : 'bad'}`;
     if (r.accuracy >= 90) navigator.vibrate?.([20, 40, 20]);

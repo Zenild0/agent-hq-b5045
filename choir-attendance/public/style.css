@@ -1129,7 +1129,13 @@ html[data-theme=dark] .at-head { background: #0E0B1F; }
 .rt-fine { font-size: .78rem; margin: 10px 4px; }
 .rt-play { display: grid; gap: 10px; }
 .rt-dots { display: flex; gap: 6px; } .rt-dots i { flex: 1; height: 6px; border-radius: 3px; background: var(--line); } .rt-dots i.now { background: var(--brand); } .rt-dots i.ok { background: var(--ok); } .rt-dots i.bad { background: var(--bad); }
-.rt-score { overflow-x: auto; padding: 4px 0; } .rsvg { width: 100%; min-width: 280px; height: auto; display: block; }
+.rt-lanewrap { position: relative; border-radius: 18px; background: rgba(127, 127, 160, .08); border: 1px solid var(--line); }
+.rt-lane { overflow-x: auto; scrollbar-width: none; padding: 6px 0 2px; -webkit-overflow-scrolling: touch; } .rt-lane::-webkit-scrollbar { display: none; }
+.rt-lane.moving { overflow-x: hidden; pointer-events: none; }
+.rt-playhead { position: absolute; top: 8px; bottom: 8px; left: 32%; width: 3px; border-radius: 2px; background: #FF8A3D; box-shadow: 0 0 12px rgba(255, 138, 61, .7); pointer-events: none; }
+.rsvg { display: block; max-width: none; height: 110px; width: auto; }
+.rsvg .rh.lit { fill: #FF8A3D; } .rsvg .rh.open.lit { stroke: #FF8A3D; }
+.rsvg .rcount { fill: none; stroke: var(--line); stroke-width: 2; stroke-dasharray: 3 3; } .rsvg .rcn { fill: var(--muted); font: 800 12px var(--font-body); text-anchor: middle; } .rsvg .rci { fill: var(--muted); font: 800 10px var(--font-body); letter-spacing: .08em; text-transform: uppercase; }
 .rsvg .rl { stroke: var(--muted); stroke-width: 1.6; } .rsvg .rl.thick { stroke-width: 3.5; }
 .rsvg .rh { fill: var(--ink); } .rsvg .rh.open { fill: var(--card); stroke: var(--ink); stroke-width: 2; }
 .rsvg .rs, .rsvg .rf { stroke: var(--ink); stroke-width: 2; fill: none; } .rsvg .rb { stroke: var(--ink); stroke-width: 5; }
@@ -1145,3 +1151,4 @@ html[data-theme=dark] .at-head { background: #0E0B1F; }
 .rt-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .rt-acts .btn { min-height: 48px; }
 .rt-result { text-align: center; display: grid; gap: 10px; } .rt-big { font-size: 3rem; } .rt-stars { font-size: 2rem; color: #FFB703; letter-spacing: 4px; }
 @media (prefers-reduced-motion: reduce) { .rt-pad.hit { animation: none; } }
+.rt-play > * { min-width: 0; } .rt-lanewrap { max-width: 100%; overflow: hidden; } .rt-lane { max-width: 100%; }
