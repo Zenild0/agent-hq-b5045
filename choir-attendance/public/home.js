@@ -16,15 +16,15 @@ const daysFrom = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse
 // The next practice, small: a date block, the time, how far away it is, and one line of note. `cta` is an optional button inside the card.
 export function nextCardHtml(sc, cta = '') {
   const n = sc?.next;
-  if (!n) return `<section class="hk-hero" aria-label="Next practice"><div class="hk-date off"><b>–</b></div><div class="hk-hero-main"><div class="t">Next practice</div><div class="s">To be announced</div></div>${cta}</section>`;
+  if (!n) return `<section class="hk-hero" aria-label="Next practice"><div class="hk-date off"><b>–</b></div><div class="hk-hero-main"><div class="hk-time">Next practice</div><div class="s">To be announced</div></div>${cta}</section>`;
   const away = daysFrom(sc.today, n.date);
-  const rel = away === 0 ? 'Today' : away === 1 ? 'Tomorrow' : `In ${away} days`;
   const [, m, d] = ymd(n.date);
   return `
     <section class="hk-hero${away <= 1 ? ' soon' : ''}" aria-label="Next practice">
       <div class="hk-date"><small>${WD[dow(n.date)].slice(0, 3)}</small><b>${d}</b><small>${MONTHS[m - 1].slice(0, 3)}</small></div>
-      <div class="hk-hero-main"><div class="t">${fmtTime(n.time)} <span class="hk-pill">${rel}</span></div>
-        <div class="s">${n.label ? esc(n.label) : 'Next practice'}${n.note ? ` · 📌 ${esc(n.note)}` : ''}</div></div>
+      <div class="hk-hero-main"><div class="k">${away === 0 ? 'TODAY' : away === 1 ? 'TOMORROW' : 'NEXT PRACTICE'} · ${fmtTime(n.time)}</div>
+        <div class="hk-time hk-clock" data-at="${esc(n.date)}T${esc(n.time)}:00+05:30" aria-live="off">…</div>
+        <div class="s">${n.label ? esc(n.label) : 'See you there!'}${n.note ? ` · 📌 ${esc(n.note)}` : ''}</div></div>
       ${cta}
     </section>`;
 }
@@ -35,7 +35,7 @@ export const greetBarHtml = ({ avatar, hello, name, sub = '', right = '' }) =>
 
 // The colourful quick-action grid (like the category grid in a delivery app). items: [{ id, icon, label, hue, badge }]
 export const quickGridHtml = (items) =>
-  `<nav class="hk-grid" aria-label="Quick links">${items.map((i) => `<button type="button" class="hk-q" data-q="${esc(i.id)}"><span class="ic" style="--h:${i.hue ?? 260}" aria-hidden="true">${i.icon}${i.badge ? `<i>${esc(i.badge)}</i>` : ''}</span><b>${esc(i.label)}</b></button>`).join('')}</nav>`;
+  `<nav class="hk-grid" style="--n:${items.length <= 5 ? Math.max(items.length, 1) : 4}" aria-label="Quick links">${items.map((i) => `<button type="button" class="hk-q" data-q="${esc(i.id)}"><span class="ic" style="--h:${i.hue ?? 260}" aria-hidden="true">${i.icon}${i.badge ? `<i>${esc(i.badge)}</i>` : ''}</span><b>${esc(i.label)}</b></button>`).join('')}</nav>`;
 
 // A row of small number chips. items: [{ id, v, l, tone }]
 export const statStripHtml = (items) =>
@@ -178,4 +178,72 @@ export function occasionPracticesHtml(me) {
         <div class="row between" style="padding:6px 0;border-top:1px solid var(--line)">
           <span><b>${WD[dow(p.date)]} ${ymd(p.date)[2]} ${MONTHS[ymd(p.date)[1] - 1].slice(0, 3)}</b> · ${fmtTime(p.time)}<div class="muted">${esc(p.event)}${p.note ? ` · ${esc(p.note)}` : ''}</div></span></div>`).join('')}
     </section>`;
+}
+
+// ---------- highlight cards: a swipeable rail like the banners in a delivery app ----------
+// cards: [{ id, emoji, kicker, title, sub, a, b, ring }]  (a, b = two hues; ring = 0..1 fills a little ring)
+export const storiesHtml = (cards) => (cards.length ? `
+  <section class="hk-stories" aria-label="Highlights">
+    <div class="hk-rail">${cards.map((c) => `<button type="button" class="hk-story" data-story="${esc(c.id)}" style="--a:${c.a ?? 265};--b:${c.b ?? 300}">
+      <span class="e">${c.emoji}</span>${c.ring != null ? `<i class="ring" style="--p:${Math.max(0, Math.min(1, c.ring))}"><b>${Math.round(c.ring * 100)}%</b></i>` : ''}
+      <small>${esc(c.kicker)}</small><b>${esc(c.title)}</b><span class="s">${esc(c.sub)}</span></button>`).join('')}</div>
+    <div class="hk-dots" aria-hidden="true">${cards.map((_, i) => `<i${i === 0 ? ' class="on"' : ''}></i>`).join('')}</div>
+  </section>` : '');
+
+const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const pad = (n) => String(n).padStart(2, '0');
+function tickCountdowns(root) {
+  const now = Date.now();
+  root.querySelectorAll('[data-at]').forEach((el) => {
+    const ms = Date.parse(el.dataset.at) - now;
+    let t;
+    if (Number.isNaN(ms)) t = '';
+    else if (ms <= -2 * 3600000) t = 'Practice is over';
+    else if (ms <= 0) t = 'Happening now 🎶';
+    else {
+      const m = Math.floor(ms / 60000), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), mm = m % 60;
+      t = d >= 1 ? `${d}d ${h}h ${pad(mm)}m` : h >= 1 ? `${h}h ${pad(mm)}m` : `${mm} min`;
+      el.closest('.hk-hero')?.classList.toggle('now', ms < 3600000);
+    }
+    if (el.textContent !== t) el.textContent = t;
+  });
+}
+// A number counts up from zero when the home appears.
+function countUp(root) {
+  root.querySelectorAll('[data-count]').forEach((el) => {
+    const to = Number(el.dataset.count);
+    if (!Number.isFinite(to) || reduced() || to === 0) { el.textContent = el.dataset.count; return; }
+    const t0 = performance.now(), dur = 700;
+    const step = (t) => { const k = Math.min(1, (t - t0) / dur), e = 1 - (1 - k) ** 3; el.textContent = String(Math.round(to * e)); if (k < 1 && el.isConnected) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  });
+}
+// Switches the home on: staggered entrance, live countdown, counting numbers, an auto-advancing rail, a tiny buzz on taps.
+export function wireHome(root, { onStory = null, onQuick = null } = {}) {
+  [...root.children].forEach((el, i) => { el.style.setProperty('--i', i); el.classList.add('hk-in'); });
+  tickCountdowns(root); countUp(root);
+  if (root._hkTimer) clearInterval(root._hkTimer);
+  root._hkTimer = setInterval(() => { if (!root.isConnected) return clearInterval(root._hkTimer); tickCountdowns(root); }, 15000);
+  const rail = root.querySelector('.hk-rail');
+  if (rail) {
+    const cards = [...rail.children], dots = [...root.querySelectorAll('.hk-dots i')];
+    const near = () => { const x = rail.scrollLeft; let best = 0, bd = 1e9; cards.forEach((c, i) => { const d = Math.abs(c.offsetLeft - rail.offsetLeft - x); if (d < bd) { bd = d; best = i; } }); return best; };
+    rail.addEventListener('scroll', () => { const k = near(); dots.forEach((d, i) => d.classList.toggle('on', i === k)); }, { passive: true });
+    let touched = false;
+    rail.addEventListener('pointerdown', () => { touched = true; }, { passive: true });
+    if (cards.length > 1 && !reduced()) {
+      if (rail._hkAuto) clearInterval(rail._hkAuto);
+      rail._hkAuto = setInterval(() => {
+        if (!rail.isConnected || touched) return clearInterval(rail._hkAuto);
+        const k = (near() + 1) % cards.length;
+        rail.scrollTo({ left: cards[k].offsetLeft - rail.offsetLeft, behavior: 'smooth' });
+      }, 4500);
+    }
+  }
+  if (root._hkClick) root.removeEventListener('click', root._hkClick); // the home is redrawn often: never stack listeners
+  root._hkClick = (e) => {
+    const s = e.target.closest('[data-story]'); if (s) { navigator.vibrate?.(8); onStory?.(s.dataset.story); return; }
+    const q = e.target.closest('[data-q]'); if (q) { navigator.vibrate?.(8); onQuick?.(q.dataset.q); }
+  };
+  root.addEventListener('click', root._hkClick);
 }

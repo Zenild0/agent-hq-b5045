@@ -1,5 +1,5 @@
 import { pickPhotos, pickProfilePhoto } from './photo.js';
-import { nextCardHtml, greetBarHtml, quickGridHtml, statStripHtml } from './home.js';
+import { nextCardHtml, greetBarHtml, quickGridHtml, storiesHtml, wireHome } from './home.js';
 import { parseSheet, normaliseSheet, detectKey } from './chordpro.js';
 import { initBack, noteVisit } from './nav.js';
 import { applyLook, lookCardHtml, wireLook, configure } from './theme.js';
@@ -441,6 +441,7 @@ function greeting() {
 
 async function loadHome() {
   const d = await call('teacher/home');
+  const [sp, sq] = await Promise.all([call('teacher/space').catch(() => null), call('teacher/song-queue').catch(() => null)]);
   const sc = d.next ? { today: d.today, next: d.next } : { today: d.today, next: null };
   const p = d.profile;
   const att = [];
@@ -457,12 +458,21 @@ async function loadHome() {
   const renew = d.subs.soon + d.subs.expired;
   if (renew) att.push(`<button class="attn" data-go="games"><i class="dot y"></i><span class="grow"><b>${renew} game subscription${renew === 1 ? '' : 's'} to renew</b><span class="muted">${d.subs.soon ? `${d.subs.soon} soon` : ''}${d.subs.soon && d.subs.expired ? ' · ' : ''}${d.subs.expired ? `${d.subs.expired} expired` : ''}</span></span><span class="muted">›</span></button>`);
   const shown = att.slice(0, 3), more = att.slice(3);
+  const stories = [
+    att.length ? { id: 'attn', emoji: '⚠️', kicker: 'NEEDS YOU', title: `${att.length} to review`, sub: d.lastSession?.unmarked.length ? `${d.lastSession.unmarked.length} not marked last time` : 'Leaves and renewals', a: 8, b: 35 }
+      : { id: 'attn', emoji: '✅', kicker: 'ALL CLEAR', title: 'Nothing needs you', sub: 'Enjoy the day', a: 150, b: 175 },
+    ls ? { id: 'last', emoji: '🎤', kicker: 'LAST PRACTICE', title: `${ls.present} of ${ls.total} came`, sub: fmtDate(ls.date).replace(/ \d{4}$/, ''), ring: ls.total ? ls.present / ls.total : 0, a: 265, b: 300 } : null,
+    { id: 'children', emoji: '🧒', kicker: 'IN THE CHOIR', title: `${d.children} children`, sub: d.attention.length ? `${d.attention.length} on the leave watch list` : 'Everyone is on track', a: 200, b: 235 },
+    sp?.enabled ? { id: 'games', emoji: '🎯', kicker: 'CHOIR CHALLENGE', title: `${sp.challenge.minutes} of ${sp.challenge.goal} min`, sub: 'sung together this week', ring: sp.challenge.pct / 100, a: 35, b: 20 } : null,
+    sq?.on && sq.waiting ? { id: 'chordbook', emoji: '🎶', kicker: 'SONGBOOK', title: `${sq.perWeek} new songs on Friday`, sub: `${sq.waiting} waiting in the queue`, a: 330, b: 295 } : null,
+    d.subs.active ? { id: 'games', emoji: '🔑', kicker: 'FULL GAMES', title: `${d.subs.active} subscribed`, sub: renew ? `${renew} to renew` : 'All up to date', a: 160, b: 190 } : null,
+  ].filter(Boolean);
   $('#home').innerHTML = `
     ${greetBarHtml({ avatar: avatarHtml({ name: p.name || 'Teacher', photo: p.photo }, 'sm'), hello: greeting(), name: `${esc(first)} 👋`, sub: p.instruments ? `🎹 ${esc(p.instruments)}` : '<a href="#" id="addInstr">Add your instruments</a>', right: '<button class="hk-icon" id="editProfile" aria-label="Edit my profile">✎</button>' })}
     ${nextCardHtml(sc, '<button class="hk-cta" id="goAtt">✅ Take attendance</button>')}
-    ${statStripHtml([{ id: 'children', v: d.children, l: 'children', tone: 't1' }, { id: 'last', v: ls ? `${ls.present}/${ls.total}` : '–', l: ls ? `last · ${esc(fmtDate(ls.date).replace(/ \d{4}$/, ''))}` : 'last practice', tone: 't2' }, { id: 'watch', v: d.attention.length, l: 'on leaves', tone: 't3' }])}
+    ${storiesHtml(stories)}
     ${quickGridHtml([
-      { id: 'attendance', icon: '✅', label: 'Attendance', hue: 150 }, { id: 'children', icon: '🧒', label: 'Children', hue: 265 },
+      { id: 'attendance', icon: '✅', label: 'Attendance', hue: 150 }, { id: 'children', icon: '🧒', label: 'Children', hue: 265, badge: d.children },
       { id: 'hymns', icon: '🎵', label: 'Hymns', hue: 330 }, { id: 'schedule', icon: '🗓', label: 'Schedule', hue: 200 },
       { id: 'occasions', icon: '🎪', label: 'Occasions', hue: 25 }, { id: 'games', icon: '🎤', label: 'Games', hue: 285, badge: d.subs.active || '' },
       { id: 'chordbook', icon: '🎸', label: 'Chord Book', hue: 45 }, { id: 'board', icon: '🏆', label: 'Leaderboard', hue: 90 },
@@ -472,12 +482,10 @@ async function loadHome() {
     ${d.top.length ? `<div class="hk-sec"><h3>Top this month</h3></div><div class="hk-top" id="topCard">${[1, 2, 3].map((r) => d.top.filter((t) => t.rank === r)).filter((g) => g.length).map((g) => `<button class="hk-topc" data-open="${esc(g[0].id)}">${['🥇', '🥈', '🥉'][g[0].rank - 1]}<span>${esc(g[0].name.split(' ')[0])}${g.length > 1 ? ` +${g.length - 1}` : ''}<small>${fmtPts(g[0].points)} pts</small></span></button>`).join('')}</div>` : ''}
     <div class="hk-backup${backupAge === null || backupAge > 14 ? ' warn' : ''}"><span aria-hidden="true">💾</span><span class="grow">${d.lastBackup ? `Last backup ${backupAge === 0 ? 'today' : backupAge === 1 ? 'yesterday' : `${backupAge} days ago`}` : 'No backup yet'}</span><button class="btn small ${backupAge === null || backupAge > 14 ? 'primary' : ''}" id="goBackup">Back up</button></div>`;
   $('#goAtt').addEventListener('click', () => showTab('attendance'));
-  $('#home').querySelectorAll('[data-stat]').forEach((b) => b.addEventListener('click', () => {
-    if (b.dataset.stat === 'children') showTab('children');
-    else if (b.dataset.stat === 'last') openRecent();
-    else $('#attnHead').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }));
-  $('#home').querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.q)));
+  wireHome($('#home'), {
+    onQuick: (id) => showTab(id),
+    onStory: (id) => { if (id === 'attn') $('#attnHead').scrollIntoView({ behavior: 'smooth', block: 'start' }); else if (id === 'last') openRecent(); else showTab(id); },
+  });
   $('#addInstr')?.addEventListener('click', (e) => { e.preventDefault(); openProfile(p); });
   $('#unmarkedRow')?.addEventListener('click', () => { date = ls.date; type = ls.type; event = ls.event || ''; showTab('attendance'); });
   $('#home').querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.go)));

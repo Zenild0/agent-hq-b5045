@@ -962,7 +962,7 @@ dialog.hv .hv-lyrics { line-height: 1.75; letter-spacing: .01em; }
 .hk-hero.soon { background: linear-gradient(135deg, #ff6f59, #ff9f43); }
 .hk-date { width: 54px; padding: 6px 0; border-radius: 16px; background: rgba(255, 255, 255, .18); display: grid; justify-items: center; line-height: 1.05; }
 .hk-date small { font-weight: 800; font-size: .62rem; letter-spacing: .08em; text-transform: uppercase; opacity: .9; } .hk-date b { font: 800 1.45rem var(--font-head); }
-.hk-hero-main { min-width: 0; } .hk-hero-main .t { font: 800 1.2rem/1.2 var(--font-head); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hk-hero-main { min-width: 0; } .hk-hero-main .hk-time { font: 800 1.2rem/1.2 var(--font-head); }
 .hk-hero-main .s { font-weight: 700; font-size: .8rem; opacity: .92; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
 .hk-pill { font-size: .68rem; font-weight: 800; padding: 3px 9px; border-radius: 99px; background: rgba(255, 255, 255, .22); }
 .hk-cta { grid-column: 1 / -1; min-height: 46px; border: 0; border-radius: 16px; background: #fff; color: var(--stage-1); font: 800 1rem var(--font-head); cursor: pointer; }
@@ -972,7 +972,7 @@ dialog.hv .hv-lyrics { line-height: 1.75; letter-spacing: .01em; }
 .hk-stat:disabled { cursor: default; } .hk-stat b { font: 800 1.3rem var(--font-head); } .hk-stat small { color: var(--muted); font-weight: 700; font-size: .66rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hk-stat.t1 b { color: var(--brand); } .hk-stat.t2 b { color: #e0307f; } .hk-stat.t3 b { color: #0e8a96; }
 html[data-theme=dark] .hk-stat.t1 b { color: #C8FF3D; } html[data-theme=dark] .hk-stat.t2 b { color: #FF4FA3; } html[data-theme=dark] .hk-stat.t3 b { color: #3DDCFF; }
-.hk-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px 6px; margin: 0 0 14px; }
+.hk-grid { display: grid; grid-template-columns: repeat(var(--n, 4), 1fr); gap: 10px 6px; margin: 0 0 14px; }
 .hk-q { border: 0; background: transparent; color: inherit; display: grid; justify-items: center; gap: 6px; padding: 2px 0; cursor: pointer; font: inherit; min-width: 0; }
 .hk-q .ic { width: 56px; height: 56px; border-radius: 18px; display: grid; place-items: center; font-size: 1.6rem; position: relative; background: linear-gradient(145deg, hsl(var(--h) 85% 92%), hsl(calc(var(--h) + 25) 85% 84%)); box-shadow: 0 2px 0 hsl(var(--h) 60% 75% / .6); }
 html[data-theme=dark] .hk-q .ic { background: linear-gradient(145deg, hsl(var(--h) 45% 30%), hsl(calc(var(--h) + 25) 45% 22%)); box-shadow: none; }
@@ -988,3 +988,29 @@ html[data-theme=dark] .hk-q .ic { background: linear-gradient(145deg, hsl(var(--
 .hk-backup { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 16px; border: 1px dashed var(--line); color: var(--muted); font-weight: 700; font-size: .8rem; margin-bottom: 10px; } .hk-backup.warn { border-color: #ffb020; color: var(--ink); background: rgba(255, 176, 32, .12); }
 .attn { min-height: 48px; padding: 8px 12px; } .attn b { font-size: .88rem; } .attn .muted { font-size: .75rem; }
 @media (prefers-reduced-motion: reduce) { .hk-cta:active, .hk-q:active .ic { transform: none; } }
+
+/* ---------- the home, alive: countdown, highlight rail, entrance, press ---------- */
+@keyframes hk-rise { from { opacity: 0; transform: translateY(14px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes hk-sheen { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
+@keyframes hk-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, .45); } 50% { box-shadow: 0 0 0 10px rgba(255, 255, 255, 0); } }
+.hk-in { animation: hk-rise .5s cubic-bezier(.2, .8, .2, 1) both; animation-delay: calc(var(--i, 0) * 55ms); }
+.hk-hero { background: linear-gradient(120deg, var(--stage-1), var(--stage-2), #8a4dff, var(--stage-2), var(--stage-1)); background-size: 200% 100%; animation: hk-rise .5s both, hk-sheen 14s linear infinite; position: relative; overflow: hidden; }
+.hk-hero::after { content: "♪"; position: absolute; right: 14px; top: -6px; font-size: 5.5rem; line-height: 1; opacity: .09; pointer-events: none; }
+.hk-hero.soon { background-image: linear-gradient(120deg, #ff6f59, #ff9f43, #ffb86b, #ff9f43, #ff6f59); }
+.hk-hero.now .hk-date { animation: hk-pulse 1.8s infinite; }
+.hk-hero-main .k { font: 800 .66rem var(--font-body); letter-spacing: .1em; opacity: .85; }
+.hk-hero-main .hk-time.hk-clock { font: 800 1.55rem/1.1 var(--font-head); letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.hk-stories { margin: 0 -2px 12px; }
+.hk-rail { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; padding: 2px 2px 4px; }
+.hk-rail::-webkit-scrollbar { display: none; }
+.hk-story { flex: none; width: 74%; max-width: 300px; scroll-snap-align: start; position: relative; text-align: left; border: 0; color: #fff; padding: 12px 14px; min-height: 120px; border-radius: 22px; display: grid; align-content: end; gap: 1px; cursor: pointer; font: inherit; overflow: hidden;
+  background: linear-gradient(140deg, hsl(var(--a) 75% 52%), hsl(var(--b) 75% 38%)); box-shadow: 0 8px 20px hsl(var(--a) 70% 30% / .28); transition: transform .15s; }
+.hk-story:active { transform: scale(.97); }
+.hk-story .e { position: absolute; left: 12px; top: 10px; font-size: 1.9rem; filter: drop-shadow(0 2px 3px rgba(0,0,0,.25)); }
+.hk-story small { font: 800 .62rem var(--font-body); letter-spacing: .1em; opacity: .85; } .hk-story > b { font: 800 1.1rem/1.15 var(--font-head); } .hk-story .s { font-weight: 700; font-size: .75rem; opacity: .92; }
+.hk-story .ring { --p: 0; position: absolute; right: 12px; top: 10px; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(#fff calc(var(--p) * 1turn), rgba(255,255,255,.28) 0); }
+.hk-story .ring::before { content: ""; position: absolute; inset: 5px; border-radius: 50%; background: hsl(var(--b) 70% 36%); } .hk-story .ring b { position: relative; font: 800 .68rem var(--font-body); }
+.hk-dots { display: flex; justify-content: center; gap: 5px; margin-top: 8px; } .hk-dots i { width: 6px; height: 6px; border-radius: 3px; background: var(--line); transition: width .25s, background .25s; } .hk-dots i.on { width: 18px; background: var(--brand); }
+html[data-theme=dark] .hk-dots i.on { background: #C8FF3D; }
+.hk-q .ic { transition: transform .15s; } .hk-q:hover .ic { transform: translateY(-2px); }
+@media (prefers-reduced-motion: reduce) { .hk-in, .hk-hero { animation: none; } .hk-hero.now .hk-date { animation: none; } .hk-story, .hk-q .ic { transition: none; } }
