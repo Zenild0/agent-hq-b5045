@@ -1071,3 +1071,12 @@ html[data-theme=dark] .at-head { background: #0E0B1F; }
 .vt-rem-list { display: grid; gap: 8px; margin-top: 12px; }
 .vt-rem-item { border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; } .vt-rem-item > summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; gap: 6px; }
 .vt-rem-item[open] { background: rgba(255, 200, 61, .08); } .vt-rem-item .vt-body { margin: 8px 0; }
+
+/* The payment box: one row per way to pay, each with Copy, then one button that opens a UPI app */
+.paybox { display: grid; gap: 8px; padding: 12px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); }
+.pay-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 14px; background: rgba(127, 127, 160, .1); min-width: 0; }
+.pay-k { flex: none; width: 58px; font-weight: 800; font-size: .72rem; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.pay-v { flex: 1; min-width: 0; font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: all; }
+.pay-row .btn { flex: none; }
+.pay-go { min-height: 46px; display: flex; align-items: center; justify-content: center; border-radius: 16px; font-weight: 800; text-decoration: none; }
+.pay-fine { font-size: .78rem; }

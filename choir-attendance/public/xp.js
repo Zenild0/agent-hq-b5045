@@ -44,7 +44,7 @@ export const BADGES = [
   { id: 'xp500', emoji: '⚡', name: '500 XP', desc: 'Earn 500 XP.' },
   { id: 'reviewer', emoji: '🔁', name: 'Revision master', desc: 'Get 20 revision notes right.' },
   { id: 'reader', emoji: '🎼', name: 'Sight reader', desc: 'Pass a Read the staff quiz.' },
-  { id: 'explorer', emoji: '🧭', name: 'Explorer', desc: 'Try both training games.' },
+  { id: 'explorer', emoji: '🧭', name: 'Explorer', desc: 'Try both Music Lab trainers.' },
 ];
 
 const blank = () => ({ stats: {}, pendingStats: {}, pending: {}, total: 0, byDay: {}, streak: { current: 0, best: 0, last: '', freeze: { week: '', used: false } }, badges: {}, done: {}, counts: { review: 0 }, games: {} });

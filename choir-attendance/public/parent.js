@@ -58,7 +58,7 @@ function clearSaved() {
 
 const app = $('#app');
 
-const TABS = [['home', 'Home', 'home'], ['space', 'Space', 'orbit'], ['board', 'Rank', 'trophy'], ['games', 'Games', 'gamepad'], ['hymns', 'Hymns', 'hymns'], ['child', 'Me', 'user']];
+const TABS = [['home', 'Home', 'home'], ['space', 'Space', 'orbit'], ['board', 'Rank', 'trophy'], ['games', 'Music Lab', 'gamepad'], ['hymns', 'Hymns', 'hymns'], ['child', 'Me', 'user']];
 
 function shell() {
   app.innerHTML = `
@@ -153,7 +153,7 @@ let gameCtl = null, spaceCtl = null;
 function openGame() {
   const box = $('#games');
   gameCtl?.destroy?.(); gameCtl = null;
-  if (!code) { box.innerHTML = '<div class="card"><h2 style="margin-top:0">Training games</h2><p class="muted">Enter your child\'s code in <b>Me</b> first. Scores belong to your child.</p><button class="btn primary" id="gameToChild">Go to My child</button></div>'; $('#gameToChild').addEventListener('click', () => show('child')); return; }
+  if (!code) { box.innerHTML = '<div class="card"><h2 style="margin-top:0">Music Lab</h2><p class="muted">Enter your child\'s code in <b>Me</b> first. Scores belong to your child.</p><button class="btn primary" id="gameToChild">Go to My child</button></div>'; $('#gameToChild').addEventListener('click', () => show('child')); return; }
   box.innerHTML = '<div class="empty">Loading…</div>';
   // loaded only now, so a problem in the game can never stop the rest of the app
   import('./games.js').then((m) => { gameCtl = m.mountGames(box, { code }); }).catch(() => { box.innerHTML = '<div class="alert bad">The game could not load. Please try again.</div>'; });
@@ -203,7 +203,7 @@ function paintRankTabs() {
   if (!box) return;
   const on = overview?.settings?.trainingBoardEnabled && code && me && !me.guest;
   if (!on) { box.innerHTML = ''; $('#attBoard').hidden = false; $('#xpBoard').hidden = true; rankKind = 'attendance'; return; }
-  box.innerHTML = `<div class="seg" role="group" aria-label="Leaderboard">${[['attendance', 'Attendance'], ['xp', 'Training XP']].map(([v, t]) => `<button type="button" data-rank="${v}" class="${rankKind === v ? 'on' : ''}" aria-pressed="${rankKind === v}">${t}</button>`).join('')}</div>`;
+  box.innerHTML = `<div class="seg" role="group" aria-label="Leaderboard">${[['attendance', 'Attendance'], ['xp', 'Music Lab XP']].map(([v, t]) => `<button type="button" data-rank="${v}" class="${rankKind === v ? 'on' : ''}" aria-pressed="${rankKind === v}">${t}</button>`).join('')}</div>`;
   box.querySelectorAll('[data-rank]').forEach((b) => b.addEventListener('click', () => { rankKind = b.dataset.rank; paintRankTabs(); }));
   $('#attBoard').hidden = rankKind !== 'attendance';
   $('#xpBoard').hidden = rankKind !== 'xp';
@@ -221,8 +221,8 @@ async function drawXpBoard() {
   box.innerHTML = '<div class="empty">Loading…</div>';
   try {
     const d = await api('me/xp-board', { code });
-    if (!d.enabled) { box.innerHTML = '<div class="card muted">The Training XP leaderboard is not switched on right now.</div>'; return; }
-    if (d.locked) { box.innerHTML = `<div class="card"><h3 style="margin:0">Training leaderboard</h3><p class="muted">This board is for children with the full version of the training games (₹${esc(d.price ?? 500)} a year). Every child gets a free trial first. Your own XP and streak are always yours, in Training games.</p>${feeNoteHtml(d.note)}</div>`; return; }
+    if (!d.enabled) { box.innerHTML = '<div class="card muted">The Music Lab leaderboard is not switched on right now.</div>'; return; }
+    if (d.locked) { box.innerHTML = `<div class="card"><h3 style="margin:0">Music Lab leaderboard</h3><p class="muted">This board is for children with the full version of Music Lab (₹${esc(d.price ?? 500)} a year). Every child gets a free trial first. Your own XP and streak are always yours, in Music Lab.</p>${feeNoteHtml(d.note)}</div>`; return; }
     const k = xpRange === 'all' ? 'all' : 'week';
     const m = METRICS.find((x) => x[0] === xpMetric) || METRICS[0];
     const board = xpMetric === 'xp' ? d[k] : d.metrics[k][xpMetric];
@@ -232,8 +232,8 @@ async function drawXpBoard() {
     const lead = (key, icon, label, fmt) => { const r = (d.metrics[k][key]?.top ?? [])[0] ?? (key === 'xp' ? d[k].top[0] : null); return r ? `<div class="lead-tile"><span>${icon}</span><small>${label}</small><b>${esc(r.name.split(' ')[0])}</b><small>${fmt(r)}</small></div>` : ''; };
     box.innerHTML = `
       <div class="card ev-card">
-        <div class="row between"><h2 style="margin:0">Training leaderboard</h2></div>
-        <div class="muted">Children with the full version. Practice earns XP, time and accuracy in every training game. The weekly board restarts on Monday.</div>
+        <div class="row between"><h2 style="margin:0">Music Lab leaderboard</h2></div>
+        <div class="muted">Children with the full version. Practice in Music Lab earns XP, time and accuracy. The weekly board restarts on Monday.</div>
         <div class="row" style="margin:8px 0"><button class="pill${k === 'week' ? ' on' : ''}" data-xr="week">This week</button><button class="pill${k === 'all' ? ' on' : ''}" data-xr="all">Last 10 weeks</button></div>
         <div class="lead-strip">${lead('xp', '🏆', 'Top XP', (r) => `${r.xp} XP`)}${lead('accuracy', '🎯', 'Most accurate', (r) => `${r.accuracy}%`)}${lead('time', '⏱', 'Most practice', (r) => m0(r))}${lead('streak', '🔥', 'Longest streak', (r) => `${r.streak} days`)}</div>
         <div class="cb-chips" role="tablist" style="margin:10px 0">${METRICS.map(([id, label]) => `<button data-xm="${id}" class="${xpMetric === id ? 'on' : ''}">${label}</button>`).join('')}</div>

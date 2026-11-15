@@ -353,3 +353,24 @@ export function waLink(phone, text) {
 
 // "Why is there a fee?" in the teacher's own words (edited in Settings), shown wherever a price is shown.
 export const feeNoteHtml = (note) => (note ? `<details class="fee-note"><summary>Why is there a fee?</summary><p>${esc(note)}</p></details>` : '');
+
+// How to pay, the same tidy box everywhere: each way to pay on its own row with a Copy button, and a button that opens a UPI app.
+export function payBoxHtml(pay, { name = '', renew = false } = {}) {
+  if (!pay?.mobile && !pay?.upi) return '<div class="muted">Ask your choir teacher how to pay.</div>';
+  const price = pay.price ?? 500;
+  const link = pay.upi ? `upi://pay?pa=${encodeURIComponent(pay.upi)}&pn=${encodeURIComponent("Children's Choir")}&am=${price}&cu=INR&tn=${encodeURIComponent(`Music Lab${renew ? ' renewal' : ''}${name ? `: ${name}` : ''}`)}` : '';
+  const row = (k, v) => `<div class="pay-row"><span class="pay-k">${k}</span><b class="pay-v">${esc(v)}</b><button type="button" class="btn small" data-copy="${esc(v)}">Copy</button></div>`;
+  return `<div class="paybox">
+    ${pay.mobile ? row('Mobile', pay.mobile) : ''}${pay.upi ? row('UPI ID', pay.upi) : ''}
+    ${link ? `<a class="btn primary pay-go" href="${esc(link)}">Pay ₹${esc(price)} in a UPI app</a>` : ''}
+    <div class="muted pay-fine">Put ${name ? `<b>${esc(name)}</b>'s` : "your child's"} name in the payment note. Your teacher ${renew ? 'renews' : 'unlocks'} it once paid.</div>
+  </div>`;
+}
+// Copy buttons anywhere in the app (a phone that refuses shows the text to select instead).
+if (typeof document !== 'undefined') document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-copy]'); if (!b) return;
+  const text = b.dataset.copy;
+  const done = () => { b.textContent = 'Copied ✓'; setTimeout(() => { b.textContent = 'Copy'; }, 1800); };
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(done, () => { b.textContent = text; });
+  else b.textContent = text;
+});

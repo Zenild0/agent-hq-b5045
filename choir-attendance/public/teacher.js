@@ -95,7 +95,7 @@ function subsPanelHtml(subs) {
 async function loadGamesHub() {
   $('#games').innerHTML = `
     <div id="kidHero"></div>
-    <div class="card"><h2 style="margin:0">Training games</h2>
+    <div class="card"><h2 style="margin:0">Music Lab</h2>
       <div class="muted">This is what every child sees. Try each game yourself. Everyone, guests included, gets every game free for 7 days; one payment then unlocks all of them.</div></div>
     <div class="tg-list">
       <button class="tg-card" data-game="vocals"><span class="tg-n">1</span><span class="grow"><b>Vocal trainer</b><span class="muted">Hear a note, sing it. Levels, daily challenge, badges.</span></span><span>›</span></button>
@@ -137,7 +137,7 @@ async function loadGamesHub() {
     $('#practiceBox').innerHTML = `
       <div class="card">
         <h3 style="margin:0">Practice dashboard</h3>
-        <div class="muted" style="margin-bottom:8px">${r.enabled ? 'Who is practising this week, and how well. Accuracy is how close to the note a child sang while holding it (100% is spot on).' : 'Practice is only recorded here while the Training leaderboard is switched on (More → Settings). Until then each child\'s XP stays on their phone.'}</div>
+        <div class="muted" style="margin-bottom:8px">${r.enabled ? 'Who is practising this week, and how well. Accuracy is how close to the note a child sang while holding it (100% is spot on).' : 'Practice is only recorded here while the Music Lab leaderboard is switched on (More → Settings). Until then each child\'s XP stays on their phone.'}</div>
         ${r.enabled ? `
         <div class="lead-strip">${tile('🏆', 'Top XP', L.xp, (v) => `${v} XP`)}${tile('🎯', 'Most accurate', L.accuracy, (v) => `${v}%`)}${tile('⏱', 'Most practice', L.time, mins)}${tile('🔥', 'Best streak', L.streak, (v) => `${v} days`)}</div>
         <div class="trio" style="margin:8px 0"><div class="tile t1"><small>Practised this week</small><b>${r.practised}/${r.total}</b></div><div class="tile t2"><small>Time sung</small><b>${r.totalMinutes}</b><small>minutes</small></div><div class="tile t3"><small>Quiet 7+ days</small><b>${r.quiet.length}</b></div></div>
@@ -397,7 +397,7 @@ function showTab(name, fromBack = false) {
   const underMore = inGame || MORE_PAGES.some((p) => p.id === name);
   app.querySelectorAll('nav.tabbar button').forEach((x) => x.classList.toggle('on', x.dataset.tab === (underMore ? 'more' : name)));
   $('#backbar').hidden = !underMore;
-  $('#backMore').textContent = inGame ? '‹ Training games' : '‹ More';
+  $('#backMore').textContent = inGame ? '‹ Music Lab' : '‹ More';
   scrollTo(0, 0);
   return run(loaders[name]);
 }
@@ -410,7 +410,7 @@ $('#backMore').addEventListener('click', () => showTab(currentTab === 'vocals' |
 const MORE_PAGES = [
   { id: 'schedule', icon: icon('schedule'), label: 'Schedule', sub: 'Practice days' },
   { id: 'occasions', icon: icon('sparkle'), label: 'Occasions', sub: 'Feasts and events' },
-  { id: 'games', icon: icon('mic'), label: 'Training games', sub: 'Try them, see subscribers' },
+  { id: 'games', icon: icon('mic'), label: 'Music Lab', sub: 'Trainers, Chord Book, subscribers' },
   { id: 'board', icon: 'trophy', label: 'Leaderboard', sub: 'Month and year' },
   { id: 'settings', icon: icon('settings'), label: 'Settings', sub: 'Points, payment, look' },
 ];
@@ -462,7 +462,7 @@ async function loadHome() {
     { id: 'children', icon: 'children', kicker: 'IN THE CHOIR', title: `${d.children} children`, sub: d.attention.length ? `${d.attention.length} on the leave watch list` : 'Everyone is on track', a: 200, b: 235 },
     sp?.enabled ? { id: 'games', icon: 'target', kicker: 'CHOIR CHALLENGE', title: `${sp.challenge.minutes} of ${sp.challenge.goal} min`, sub: 'sung together this week', ring: sp.challenge.pct / 100, a: 35, b: 20 } : null,
     sq?.on && sq.waiting ? { id: 'chordbook', icon: 'book', kicker: 'SONGBOOK', title: `${sq.perWeek} new songs on Friday`, sub: `${sq.waiting} waiting in the queue`, a: 330, b: 295 } : null,
-    d.subs.active ? { id: 'games', icon: 'key', kicker: 'FULL GAMES', title: `${d.subs.active} subscribed`, sub: renew ? `${renew} to renew` : 'All up to date', a: 160, b: 190 } : null,
+    d.subs.active ? { id: 'games', icon: 'key', kicker: 'MUSIC LAB', title: `${d.subs.active} subscribed`, sub: renew ? `${renew} to renew` : 'All up to date', a: 160, b: 190 } : null,
   ].filter(Boolean);
   $('#home').innerHTML = `
     ${greetBarHtml({ avatar: avatarHtml({ name: p.name || 'Teacher', photo: p.photo }, 'sm'), hello: greeting(), name: `${esc(first)} 👋`, sub: p.instruments ? `🎹 ${esc(p.instruments)}` : '<a href="#" id="addInstr">Add your instruments</a>', right: `<button class="hk-icon" id="editProfile" aria-label="Edit my profile">${icon('edit')}</button>` })}
@@ -471,7 +471,7 @@ async function loadHome() {
     ${quickGridHtml([
       { id: 'attendance', icon: 'attendance', label: 'Attendance', hue: 150 }, { id: 'children', icon: 'children', label: 'Children', hue: 265, badge: d.children },
       { id: 'hymns', icon: 'hymns', label: 'Hymns', hue: 330 }, { id: 'schedule', icon: 'schedule', label: 'Schedule', hue: 200 },
-      { id: 'occasions', icon: 'sparkle', label: 'Occasions', hue: 25 }, { id: 'games', icon: 'mic', label: 'Games', hue: 285, badge: d.subs.active || '' },
+      { id: 'occasions', icon: 'sparkle', label: 'Occasions', hue: 25 }, { id: 'games', icon: 'mic', label: 'Music Lab', hue: 285, badge: d.subs.active || '' },
       { id: 'chordbook', icon: 'book', label: 'Chord Book', hue: 45 }, { id: 'board', icon: icon('trophy'), label: 'Leaderboard', hue: 90 },
     ])}
     <div class="hk-sec" id="attnHead"><h3>Needs your attention</h3>${att.length ? `<span class="hk-count">${att.length}</span>` : ''}</div>
@@ -1419,11 +1419,11 @@ async function loadSettings() {
         <label class="chk"><input name="countSundayAbsences" type="checkbox"${s.countSundayAbsences ? ' checked' : ''}> Missing Sunday mass also counts as a leave</label>
         <p class="muted">Feast practices, feast masses and medical absences never count as leaves. Going over the leave limit never removes a child by itself; you decide.</p>`, true)}
       ${sec('Vocals and payment', 'The singing game, its price and how parents pay', `
-        <div class="muted" style="margin-bottom:4px"><b>Training games for parents.</b> Switch each game on when you are ready, one at a time. Everyone, guests included, gets every game free for 7 days; one payment then unlocks all the games.</div>
+        <div class="muted" style="margin-bottom:4px"><b>Music Lab for the children.</b> Switch each game on when you are ready, one at a time. Everyone, guests included, gets every game free for 7 days; one payment then unlocks all the games.</div>
         <label class="chk"><input name="gameEnabled" type="checkbox"${s.gameEnabled ? ' checked' : ''}> 🎤 Vocal trainer (game 1) is on for parents</label>
         <label class="chk"><input name="staffEnabled" type="checkbox"${s.staffEnabled ? ' checked' : ''}> 🎼 Notation trainer (game 2) is on for parents</label>
         <label class="chk"><input name="chordsEnabled" type="checkbox"${s.chordsEnabled ? ' checked' : ''}> 🎸 Chord Book (game 4) is on for parents</label>
-        <label class="chk"><input name="trainingBoardEnabled" type="checkbox"${s.trainingBoardEnabled ? ' checked' : ''}> 🏆 Training XP leaderboard (shown only to children with a paid year; off until you switch it on)</label>
+        <label class="chk"><input name="trainingBoardEnabled" type="checkbox"${s.trainingBoardEnabled ? ' checked' : ''}> 🏆 Music Lab leaderboard (shown only to children with a paid year; off until you switch it on)</label>
         <label class="chk"><input name="spaceEnabled" type="checkbox"${s.spaceEnabled ? ' checked' : ''}> 🌟 Choir Space (a safe, friendly feed, weekly challenge and avatars for children whose parent ticked the box. No chat, no photos, no voices)</label>
         <label class="field">Choir challenge: minutes the whole choir sings together each week<input name="spaceTarget" type="number" min="10" max="5000" step="10" value="${s.spaceTarget ?? 500}"></label>
         <div class="muted" style="margin:8px 0">The first levels stay free. Parents pay you directly, then you unlock their child for a year (Children → the child → Vocals game), and that opens all the games. After 365 days they pay again.</div>

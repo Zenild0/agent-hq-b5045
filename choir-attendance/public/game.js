@@ -1,7 +1,7 @@
 // The singing game inside the parent app: a journey up the piano, levels with three stages each,
 // daily challenge, weekly boards, badges and a warm-up room.
 // Loaded only when the game opens, so a problem here can never stop the rest of the app.
-import { api, esc, feeNoteHtml } from './common.js';
+import { api, esc, feeNoteHtml, payBoxHtml } from './common.js';
 import { openAudio, micMessage, INSTRUMENTS, getInstrument, setInstrument } from './audio.js';
 import { createPlayer } from './player.js';
 import { mountWarmup } from './warmup.js';
@@ -115,21 +115,13 @@ export function mountGame(host, { code = '', preview = false, teacher = false, x
     const until = state.paidUntil ? fmtDay(state.paidUntil) : '';
     const renew = state.expired || state.renewSoon;
     const head = state.expired ? `Renew the full game · ₹${esc(price)} a year` : state.renewSoon ? `Renew your full game · ₹${esc(price)} for another year` : `Unlock the full game · ₹${esc(price)} a year`;
-    const upiLink = p.upi ? `upi://pay?pa=${encodeURIComponent(p.upi)}&pn=${encodeURIComponent("Children's Choir")}&am=${price}&cu=INR&tn=${encodeURIComponent(`Choir game${renew ? ' renewal' : ''}: ${kid}`)}` : '';
     return `
       <div class="card gm-unlock">
         <h3 style="margin:0">${head}</h3>
         ${state.expired ? `<div class="gm-new">Your year of the full game ended on ${esc(until)}. Your progress, scores and badges are safe and will be waiting.</div>` : state.renewSoon ? `<div class="gm-new">Your full game runs until ${esc(until)}. Renewing adds another year.</div>` : ''}
         <div>Level 1 is free, and the Warm-up is free for 3 sessions. The full game adds <b>Level 2 to Legend</b>, the <b>daily Legend challenge</b>, the <b>weekly leaderboards</b> and <b>unlimited Warm-up</b>.</div>
         <div class="gm-note">This paid feature is to cover the expenses of building and maintaining this app. It is a vocal training feature.<br>Thank you for your support in helping to make this a better app for the kids. 🙏</div>
-        ${p.mobile || p.upi ? `
-          <div class="gm-pay">
-            <div><b>Pay ₹${esc(price)} using either:</b></div>
-            ${p.mobile ? `<div>Mobile number <b>${esc(p.mobile)}</b> <button class="btn small" data-copy="${esc(p.mobile)}">Copy number</button></div>` : ''}
-            ${p.upi ? `<div>UPI ID <b>${esc(p.upi)}</b> <button class="btn small" data-copy="${esc(p.upi)}">Copy UPI ID</button></div>
-              <a class="btn small primary" href="${esc(upiLink)}">Open my UPI app</a>` : ''}
-            <div><b>Please send ${esc(kid) || "your child's name"}'s name</b> with the payment (as the payment note, or by message), so your child can be unlocked.</div>
-          </div>` : '<div class="muted">Please ask your choir teacher how to pay.</div>'}
+        ${payBoxHtml({ ...p, price }, { name: kid, renew })}
         ${feeNoteHtml(p.note)}
         <div class="muted">After you pay, your choir teacher will ${renew ? 'renew' : 'unlock'} the full game for your child (one year each time).</div>
       </div>`;
@@ -343,12 +335,6 @@ export function mountGame(host, { code = '', preview = false, teacher = false, x
   }
 
   root.addEventListener('click', (e) => {
-    const cp = e.target.closest('[data-copy]');
-    if (cp) { // copy a number or UPI ID; if the phone refuses, show it to select
-      const text = cp.dataset.copy;
-      navigator.clipboard?.writeText(text).then(() => { cp.textContent = 'Copied ✓'; }, () => { cp.textContent = text; });
-      return;
-    }
     const inst = e.target.closest('[data-inst]');
     if (inst) { setInstrument(inst.dataset.inst); return home(); }
     const b = e.target.closest('[data-a], [data-lv], [data-play]');

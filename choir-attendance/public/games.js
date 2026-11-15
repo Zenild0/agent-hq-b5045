@@ -2,7 +2,7 @@
 //   1. Vocal trainer (sing the note you hear)    2. Notation trainer (read the note on the staff)    3. Rhythm trainer (soon)
 // Everyone gets the full version of every game free for a few days (7 days, for choir members and guests),
 // and one payment unlocks all the games. The server keeps the days; this screen only shows them.
-import { api, esc, feeNoteHtml } from './common.js';
+import { api, esc, feeNoteHtml, payBoxHtml } from './common.js';
 import { RANGES, getRange, setRange } from './audio.js';
 import { xpFor, xpCardHtml, badgesHtml } from './xp.js';
 import { newestTip } from './voicetips.js';
@@ -10,7 +10,7 @@ import { newestTip } from './voicetips.js';
 const CACHE = 'choir-cache:games-access';
 const fmtDay = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
-// The big "SING" home that every child sees at the top of Training games. The teacher's page uses the same piece,
+// The big "SING" home that every child sees at the top of Music Lab. The teacher's page uses the same piece,
 // so what the teacher sees is what a child sees.
 export function kidHeroHtml(v, g) {
   const first = g.vocals ? 'vocals' : g.notation ? 'notation' : null;
@@ -57,13 +57,13 @@ export function mountGames(host, { code }) {
 
   const banner = () => {
     const a = access;
-    if (a.paid) return `<div class="alert ok"><b>Full version active</b> · every training game is open until ${fmtDay(a.paidUntil)}.</div>`;
+    if (a.paid) return `<div class="alert ok"><b>Full version active</b> · everything in Music Lab is open until ${fmtDay(a.paidUntil)}.</div>`;
     if (a.trial.active) return `<div class="alert ok">🎁 <b>Free trial: ${a.trial.daysLeft} day${a.trial.daysLeft === 1 ? '' : 's'} left.</b> Every level of every game is open. After that, one payment unlocks all the games.${feeNoteHtml(a.pay?.note ?? a.feeNote)}</div>`;
     const pay = a.pay;
     return `<div class="card gm-unlock">
-      <h3 style="margin:0">${a.trial.started ? 'Your free trial has ended' : 'Free to try'} · unlock all games for ₹${esc(pay?.price ?? 500)} a year</h3>
-      <div class="muted">One payment opens every level of every training game, now and as new ones arrive. The first levels stay free.</div>
-      ${pay?.mobile || pay?.upi ? `<div class="gm-pay"><span>Pay your choir teacher${pay.mobile ? ` on <b>${esc(pay.mobile)}</b>` : ''}${pay.upi ? ` (UPI: <b>${esc(pay.upi)}</b>)` : ''}. They will unlock it for you.</span></div>` : '<div class="muted">Ask your choir teacher how to pay.</div>'}
+      <h3 style="margin:0">${a.trial.started ? 'Your free trial has ended' : 'Free to try'} · unlock Music Lab for ₹${esc(pay?.price ?? 500)} a year</h3>
+      <div class="muted">One payment opens everything in Music Lab, now and as new things arrive. The first levels stay free.</div>
+      ${payBoxHtml(pay)}
       ${feeNoteHtml(pay?.note)}
     </div>`;
   };
@@ -75,7 +75,7 @@ export function mountGames(host, { code }) {
     const hero = kidHeroHtml(xp.view(), g);
     root.innerHTML = `
       ${hero}
-      <div class="card"><h2 style="margin:0">Training games</h2>
+      <div class="card"><h2 style="margin:0">Music Lab</h2>
         <div class="muted">Short, fun practice that makes you a better singer and music reader.</div>
         <div class="gm-note" style="margin-top:8px">🎧 Use headphones for the best results, so the phone's sound does not mix with your voice.</div></div>
       ${xpCardHtml(xp.view())}
@@ -102,7 +102,7 @@ export function mountGames(host, { code }) {
     root.innerHTML = '<div class="empty">Loading…</div>';
     try {
       await loadAccess(); // refresh the trial days and payment status each time a game opens
-      root.innerHTML = '<div class="games-bar"><button class="btn small" data-g="hub">‹ Training games</button></div><div id="gbox"></div>';
+      root.innerHTML = '<div class="games-bar"><button class="btn small" data-g="hub">‹ Music Lab</button></div><div id="gbox"></div>';
       const box = root.querySelector('#gbox');
       if (which === 'vocals') {
         const m = await import('./game.js'); ctl = m.mountGame(box, { code, xp });
