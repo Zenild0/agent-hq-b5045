@@ -2,6 +2,7 @@ import {
   $, api, esc, fmtPts, headerHtml, footerHtml, renderBoard, achieversHtml, avatarHtml,
   statsHtml, historyHtml, leaveAlertHtml,
 } from './common.js';
+import { icon } from './icons.js';
 import { greetBarHtml, quickGridHtml, storiesHtml, wireHome, nextCardHtml, daysFoldHtml, remarksFoldHtml, guestHomeHtml, eventBoardHtml, occasionPracticesHtml } from './home.js';
 import { pickPhotos } from './photo.js';
 import { applyLook, lookCardHtml, wireLook, configure } from './theme.js';
@@ -57,14 +58,7 @@ function clearSaved() {
 
 const app = $('#app');
 
-const TABS = [
-  ['home', 'Home', 'M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z'],
-  ['space', 'Space', 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8'],
-  ['board', 'Rank', 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3'],
-  ['games', 'Games', 'M6 11h4M8 9v4M15 12h.01M18 10h.01M17.3 5H6.7a4 4 0 0 0-4 3.4l-1 6A3 3 0 0 0 4.6 18a3 3 0 0 0 2.4-1.2L8 15h8l1 1.8a3 3 0 0 0 2.4 1.2 3 3 0 0 0 3.2-3.6l-1-6A4 4 0 0 0 17.3 5z'],
-  ['hymns', 'Hymns', 'M9 18V5l11-2v13M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3zM20 16a3 3 0 1 1-3-3 3 3 0 0 1 3 3z'],
-  ['child', 'Me', 'M20 21a8 8 0 0 0-16 0M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z'],
-];
+const TABS = [['home', 'Home', 'home'], ['space', 'Space', 'orbit'], ['board', 'Rank', 'trophy'], ['games', 'Games', 'gamepad'], ['hymns', 'Hymns', 'hymns'], ['child', 'Me', 'user']];
 
 function shell() {
   app.innerHTML = `
@@ -80,7 +74,7 @@ function shell() {
       <section id="child" hidden></section>
     </main>
     ${footerHtml()}
-    <nav class="tabbar" aria-label="Main">${TABS.map(([id, label, d]) => `<button data-tab="${id}"${id === 'games' ? ' id="gamesTab" hidden' : id === 'space' ? ' id="spaceTab" hidden' : ''}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>${label}</button>`).join('')}</nav>`;
+    <nav class="tabbar" aria-label="Main">${TABS.map(([id, label, ic]) => `<button data-tab="${id}"${id === 'games' ? ' id="gamesTab" hidden' : id === 'space' ? ' id="spaceTab" hidden' : ''}>${icon(ic)}${label}</button>`).join('')}</nav>`;
   app.querySelectorAll('nav.tabbar button').forEach((b) => b.addEventListener('click', () => { show(b.dataset.tab); scrollTo(0, 0); }));
 }
 
@@ -105,13 +99,13 @@ async function loadHomeExtras() {
   if (!me || me.guest || !code || extrasFor === code) return;
   extrasFor = code;
   const out = [];
-  try { const { newestTip } = await import('./voicetips.js'); const t = await newestTip(code); if (t?.isNew) out.push({ id: 'games', emoji: '💧', kicker: 'NEW VOICE TIP', title: 'Look after your voice', sub: 'Tap to read it in Games', a: 200, b: 230 }); } catch { /* optional */ }
+  try { const { newestTip } = await import('./voicetips.js'); const t = await newestTip(code); if (t?.isNew) out.push({ id: 'games', icon: 'drop', kicker: 'NEW VOICE TIP', title: 'Look after your voice', sub: 'Tap to read it in Games', a: 200, b: 230 }); } catch { /* optional */ }
   if (overview?.settings?.spaceEnabled) {
     try {
       const s = await api('me/space', { code });
-      if (s.challenge) out.push({ id: 'space', emoji: '🎯', kicker: 'CHOIR CHALLENGE', title: `${s.challenge.minutes} of ${s.challenge.goal} min`, sub: s.challenge.mine ? `You added ${s.challenge.mine} min. Thank you!` : 'Your minutes count for everyone', ring: s.challenge.pct / 100, a: 15, b: 40 });
+      if (s.challenge) out.push({ id: 'space', icon: 'target', kicker: 'CHOIR CHALLENGE', title: `${s.challenge.minutes} of ${s.challenge.goal} min`, sub: s.challenge.mine ? `You added ${s.challenge.mine} min. Thank you!` : 'Your minutes count for everyone', ring: s.challenge.pct / 100, a: 15, b: 40 });
       const songs = (s.feed || []).find((p) => p.kind === 'songs' && Date.now() - Date.parse(p.at) < 7 * 86400000);
-      if (songs) out.push({ id: 'space', emoji: '🎶', kicker: 'NEW SONGS', title: `${songs.n} new songs`, sub: 'are in the Chord Book', a: 330, b: 295 });
+      if (songs) out.push({ id: 'space', icon: 'book', kicker: 'NEW SONGS', title: `${songs.n} new songs`, sub: 'are in the Chord Book', a: 330, b: 295 });
     } catch { /* not open for this child yet */ }
   }
   if (out.length) { homeExtra = out; drawHome(); }
@@ -134,13 +128,13 @@ function drawHome() {
     });
     return;
   }
-  const ICONS = { games: ['🎤', 'Sing', 285], space: ['🌟', 'Space', 45], board: ['🏆', 'Rank', 90], hymns: ['🎵', 'Hymns', 330], child: ['🙂', 'Me', 200] };
+  const ICONS = { games: ['mic', 'Sing', 285], space: ['orbit', 'Space', 45], board: ['trophy', 'Rank', 90], hymns: ['hymns', 'Hymns', 330], child: ['user', 'Me', 200] };
   const quick = me ? quickGridHtml([...app.querySelectorAll('nav.tabbar button')].filter((b) => !b.hidden && ICONS[b.dataset.tab]).map((b) => ({ id: b.dataset.tab, icon: ICONS[b.dataset.tab][0], label: ICONS[b.dataset.tab][1], hue: ICONS[b.dataset.tab][2] }))) : '';
   const hour = new Date().getHours();
   const xv = me && code ? xpFor(code).view() : null;
   const stories = me ? [
-    xv ? { id: 'games', emoji: '🔥', kicker: xv.streak > 0 ? `${xv.streak}-DAY STREAK` : 'START A STREAK', title: xv.goalMet ? 'Daily goal done!' : `${Math.round(xv.goalShare * 100)}% of today's goal`, sub: xv.goalMet ? 'Come back tomorrow' : `${xv.goal - xv.today} XP to go. Tap to sing`, ring: xv.goalShare, a: 25, b: 45 } : null,
-    me.yearRank ? { id: 'board', emoji: '🏆', kicker: 'YOUR RANK', title: `#${me.yearRank} of ${me.yearRanked}`, sub: 'in the choir this year', a: 45, b: 75 } : null,
+    xv ? { id: 'games', icon: 'flame', kicker: xv.streak > 0 ? `${xv.streak}-DAY STREAK` : 'START A STREAK', title: xv.goalMet ? 'Daily goal done!' : `${Math.round(xv.goalShare * 100)}% of today's goal`, sub: xv.goalMet ? 'Come back tomorrow' : `${xv.goal - xv.today} XP to go. Tap to sing`, ring: xv.goalShare, a: 25, b: 45 } : null,
+    me.yearRank ? { id: 'board', icon: 'trophy', kicker: 'YOUR RANK', title: `#${me.yearRank} of ${me.yearRanked}`, sub: 'in the choir this year', a: 45, b: 75 } : null,
     ...homeExtra,
   ].filter(Boolean) : [];
   box.innerHTML = (me ? greetBarHtml({ avatar: avatarHtml({ name: me.name, photo: me.head || me.photo }, 'sm'), hello: `${hour < 12 ? '☀️ Good morning' : hour < 17 ? '🌤 Good afternoon' : '🌙 Good evening'}`, name: `Hi, ${esc(me.name.split(' ')[0])}! 👋`, sub: me.standard ? esc(me.standard) : '' }) : '')

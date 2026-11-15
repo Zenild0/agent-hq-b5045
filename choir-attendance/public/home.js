@@ -1,4 +1,5 @@
 // The parent home screen: next practice, practice days (with the child's attendance), and the child's remarks.
+import { icon } from './icons.js';
 import { esc, fmtPts, fmtDate, avatarHtml, isGood, remarkLabel } from './common.js';
 
 export const fmtTime = (hhmm) => {
@@ -35,7 +36,7 @@ export const greetBarHtml = ({ avatar, hello, name, sub = '', right = '' }) =>
 
 // The colourful quick-action grid (like the category grid in a delivery app). items: [{ id, icon, label, hue, badge }]
 export const quickGridHtml = (items) =>
-  `<nav class="hk-grid" style="--n:${items.length <= 5 ? Math.max(items.length, 1) : 4}" aria-label="Quick links">${items.map((i) => `<button type="button" class="hk-q" data-q="${esc(i.id)}"><span class="ic" style="--h:${i.hue ?? 260}" aria-hidden="true">${i.icon}${i.badge ? `<i>${esc(i.badge)}</i>` : ''}</span><b>${esc(i.label)}</b></button>`).join('')}</nav>`;
+  `<nav class="hk-grid" style="--n:${items.length <= 5 ? Math.max(items.length, 1) : 4}" aria-label="Quick links">${items.map((i) => `<button type="button" class="hk-q" data-q="${esc(i.id)}"><span class="ic" style="--h:${i.hue ?? 260}" aria-hidden="true">${icon(i.icon)}${i.badge ? `<i>${esc(i.badge)}</i>` : ''}</span><b>${esc(i.label)}</b></button>`).join('')}</nav>`;
 
 // A row of small number chips. items: [{ id, v, l, tone }]
 export const statStripHtml = (items) =>
@@ -185,7 +186,7 @@ export function occasionPracticesHtml(me) {
 export const storiesHtml = (cards) => (cards.length ? `
   <section class="hk-stories" aria-label="Highlights">
     <div class="hk-rail">${cards.map((c) => `<button type="button" class="hk-story" data-story="${esc(c.id)}" style="--a:${c.a ?? 265};--b:${c.b ?? 300}">
-      <span class="e">${c.emoji}</span>${c.ring != null ? `<i class="ring" style="--p:${Math.max(0, Math.min(1, c.ring))}"><b>${Math.round(c.ring * 100)}%</b></i>` : ''}
+      <span class="e">${icon(c.icon)}</span>${c.ring != null ? `<i class="ring" style="--p:${Math.max(0, Math.min(1, c.ring))}"><b>${Math.round(c.ring * 100)}%</b></i>` : ''}
       <small>${esc(c.kicker)}</small><b>${esc(c.title)}</b><span class="s">${esc(c.sub)}</span></button>`).join('')}</div>
     <div class="hk-dots" aria-hidden="true">${cards.map((_, i) => `<i${i === 0 ? ' class="on"' : ''}></i>`).join('')}</div>
   </section>` : '');

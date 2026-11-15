@@ -1,4 +1,5 @@
 import { pickPhotos, pickProfilePhoto } from './photo.js';
+import { icon } from './icons.js';
 import { nextCardHtml, greetBarHtml, quickGridHtml, storiesHtml, wireHome } from './home.js';
 import { parseSheet, normaliseSheet, detectKey } from './chordpro.js';
 import { initBack, noteVisit } from './nav.js';
@@ -45,12 +46,8 @@ app.innerHTML = `
   </main>
   ${footerHtml()}
   <nav class="tabbar" aria-label="Main">${[
-    ['home', 'Home', 'M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z'],
-    ['attendance', 'Attendance', 'M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9'],
-    ['children', 'Children', 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8'],
-    ['hymns', 'Hymns', 'M9 18V5l11-2v13M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3zM20 16a3 3 0 1 1-3-3 3 3 0 0 1 3 3z'],
-    ['more', 'More', 'M5 12h.01M12 12h.01M19 12h.01'],
-  ].map(([id, label, d]) => `<button data-tab="${id}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>${label}</button>`).join('')}</nav>`;
+    ['home', 'Home', 'home'], ['attendance', 'Attendance', 'attendance'], ['children', 'Children', 'children'], ['hymns', 'Hymns', 'hymns'], ['more', 'More', 'more'],
+  ].map(([id, label, ic]) => `<button data-tab="${id}">${icon(ic)}${label}</button>`).join('')}</nav>`;
 
 const flash = (text, kind = 'bad') => {
   $('#msg').innerHTML = text ? `<div class="alert ${kind}">${esc(text)}</div>` : '';
@@ -411,11 +408,11 @@ $('#backMore').addEventListener('click', () => showTab(currentTab === 'vocals' |
 // ======================= Home and More =======================
 
 const MORE_PAGES = [
-  { id: 'schedule', icon: '📅', label: 'Schedule', sub: 'Practice days' },
-  { id: 'occasions', icon: '🎄', label: 'Occasions', sub: 'Feasts and events' },
-  { id: 'games', icon: '🎮', label: 'Training games', sub: 'Try them, see subscribers' },
-  { id: 'board', icon: '🏆', label: 'Leaderboard', sub: 'Month and year' },
-  { id: 'settings', icon: '⚙️', label: 'Settings', sub: 'Points, payment, look' },
+  { id: 'schedule', icon: icon('schedule'), label: 'Schedule', sub: 'Practice days' },
+  { id: 'occasions', icon: icon('sparkle'), label: 'Occasions', sub: 'Feasts and events' },
+  { id: 'games', icon: icon('mic'), label: 'Training games', sub: 'Try them, see subscribers' },
+  { id: 'board', icon: 'trophy', label: 'Leaderboard', sub: 'Month and year' },
+  { id: 'settings', icon: icon('settings'), label: 'Settings', sub: 'Points, payment, look' },
 ];
 
 function loadMore() {
@@ -423,7 +420,7 @@ function loadMore() {
     <h2>More</h2>
     <div class="more-grid">
       ${MORE_PAGES.map((p) => `<button class="more-tile" data-go="${p.id}"><span class="mi">${p.icon}</span><b>${p.label}</b><span class="muted">${p.sub}</span></button>`).join('')}
-      <button class="more-tile" data-go="settings" data-backup="1"><span class="mi">💾</span><b>Backup</b><span class="muted">Download or restore</span></button>
+      <button class="more-tile" data-go="settings" data-backup="1"><span class="mi">${icon('save')}</span><b>Backup</b><span class="muted">Download or restore</span></button>
     </div>
     <div class="muted">Everything else lives here, one tap away. The main tabs stay in the bar.</div>`;
   $('#more').querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', async () => {
@@ -459,28 +456,28 @@ async function loadHome() {
   if (renew) att.push(`<button class="attn" data-go="games"><i class="dot y"></i><span class="grow"><b>${renew} game subscription${renew === 1 ? '' : 's'} to renew</b><span class="muted">${d.subs.soon ? `${d.subs.soon} soon` : ''}${d.subs.soon && d.subs.expired ? ' · ' : ''}${d.subs.expired ? `${d.subs.expired} expired` : ''}</span></span><span class="muted">›</span></button>`);
   const shown = att.slice(0, 3), more = att.slice(3);
   const stories = [
-    att.length ? { id: 'attn', emoji: '⚠️', kicker: 'NEEDS YOU', title: `${att.length} to review`, sub: d.lastSession?.unmarked.length ? `${d.lastSession.unmarked.length} not marked last time` : 'Leaves and renewals', a: 8, b: 35 }
-      : { id: 'attn', emoji: '✅', kicker: 'ALL CLEAR', title: 'Nothing needs you', sub: 'Enjoy the day', a: 150, b: 175 },
-    ls ? { id: 'last', emoji: '🎤', kicker: 'LAST PRACTICE', title: `${ls.present} of ${ls.total} came`, sub: fmtDate(ls.date).replace(/ \d{4}$/, ''), ring: ls.total ? ls.present / ls.total : 0, a: 265, b: 300 } : null,
-    { id: 'children', emoji: '🧒', kicker: 'IN THE CHOIR', title: `${d.children} children`, sub: d.attention.length ? `${d.attention.length} on the leave watch list` : 'Everyone is on track', a: 200, b: 235 },
-    sp?.enabled ? { id: 'games', emoji: '🎯', kicker: 'CHOIR CHALLENGE', title: `${sp.challenge.minutes} of ${sp.challenge.goal} min`, sub: 'sung together this week', ring: sp.challenge.pct / 100, a: 35, b: 20 } : null,
-    sq?.on && sq.waiting ? { id: 'chordbook', emoji: '🎶', kicker: 'SONGBOOK', title: `${sq.perWeek} new songs on Friday`, sub: `${sq.waiting} waiting in the queue`, a: 330, b: 295 } : null,
-    d.subs.active ? { id: 'games', emoji: '🔑', kicker: 'FULL GAMES', title: `${d.subs.active} subscribed`, sub: renew ? `${renew} to renew` : 'All up to date', a: 160, b: 190 } : null,
+    att.length ? { id: 'attn', icon: 'alert', kicker: 'NEEDS YOU', title: `${att.length} to review`, sub: d.lastSession?.unmarked.length ? `${d.lastSession.unmarked.length} not marked last time` : 'Leaves and renewals', a: 8, b: 35 }
+      : { id: 'attn', icon: 'check', kicker: 'ALL CLEAR', title: 'Nothing needs you', sub: 'Enjoy the day', a: 150, b: 175 },
+    ls ? { id: 'last', icon: 'mic', kicker: 'LAST PRACTICE', title: `${ls.present} of ${ls.total} came`, sub: fmtDate(ls.date).replace(/ \d{4}$/, ''), ring: ls.total ? ls.present / ls.total : 0, a: 265, b: 300 } : null,
+    { id: 'children', icon: 'children', kicker: 'IN THE CHOIR', title: `${d.children} children`, sub: d.attention.length ? `${d.attention.length} on the leave watch list` : 'Everyone is on track', a: 200, b: 235 },
+    sp?.enabled ? { id: 'games', icon: 'target', kicker: 'CHOIR CHALLENGE', title: `${sp.challenge.minutes} of ${sp.challenge.goal} min`, sub: 'sung together this week', ring: sp.challenge.pct / 100, a: 35, b: 20 } : null,
+    sq?.on && sq.waiting ? { id: 'chordbook', icon: 'book', kicker: 'SONGBOOK', title: `${sq.perWeek} new songs on Friday`, sub: `${sq.waiting} waiting in the queue`, a: 330, b: 295 } : null,
+    d.subs.active ? { id: 'games', icon: 'key', kicker: 'FULL GAMES', title: `${d.subs.active} subscribed`, sub: renew ? `${renew} to renew` : 'All up to date', a: 160, b: 190 } : null,
   ].filter(Boolean);
   $('#home').innerHTML = `
-    ${greetBarHtml({ avatar: avatarHtml({ name: p.name || 'Teacher', photo: p.photo }, 'sm'), hello: greeting(), name: `${esc(first)} 👋`, sub: p.instruments ? `🎹 ${esc(p.instruments)}` : '<a href="#" id="addInstr">Add your instruments</a>', right: '<button class="hk-icon" id="editProfile" aria-label="Edit my profile">✎</button>' })}
-    ${nextCardHtml(sc, '<button class="hk-cta" id="goAtt">✅ Take attendance</button>')}
+    ${greetBarHtml({ avatar: avatarHtml({ name: p.name || 'Teacher', photo: p.photo }, 'sm'), hello: greeting(), name: `${esc(first)} 👋`, sub: p.instruments ? `🎹 ${esc(p.instruments)}` : '<a href="#" id="addInstr">Add your instruments</a>', right: `<button class="hk-icon" id="editProfile" aria-label="Edit my profile">${icon('edit')}</button>` })}
+    ${nextCardHtml(sc, `<button class="hk-cta" id="goAtt">${icon('attendance')} Take attendance</button>`)}
     ${storiesHtml(stories)}
     ${quickGridHtml([
-      { id: 'attendance', icon: '✅', label: 'Attendance', hue: 150 }, { id: 'children', icon: '🧒', label: 'Children', hue: 265, badge: d.children },
-      { id: 'hymns', icon: '🎵', label: 'Hymns', hue: 330 }, { id: 'schedule', icon: '🗓', label: 'Schedule', hue: 200 },
-      { id: 'occasions', icon: '🎪', label: 'Occasions', hue: 25 }, { id: 'games', icon: '🎤', label: 'Games', hue: 285, badge: d.subs.active || '' },
-      { id: 'chordbook', icon: '🎸', label: 'Chord Book', hue: 45 }, { id: 'board', icon: '🏆', label: 'Leaderboard', hue: 90 },
+      { id: 'attendance', icon: 'attendance', label: 'Attendance', hue: 150 }, { id: 'children', icon: 'children', label: 'Children', hue: 265, badge: d.children },
+      { id: 'hymns', icon: 'hymns', label: 'Hymns', hue: 330 }, { id: 'schedule', icon: 'schedule', label: 'Schedule', hue: 200 },
+      { id: 'occasions', icon: 'sparkle', label: 'Occasions', hue: 25 }, { id: 'games', icon: 'mic', label: 'Games', hue: 285, badge: d.subs.active || '' },
+      { id: 'chordbook', icon: 'book', label: 'Chord Book', hue: 45 }, { id: 'board', icon: icon('trophy'), label: 'Leaderboard', hue: 90 },
     ])}
     <div class="hk-sec" id="attnHead"><h3>Needs your attention</h3>${att.length ? `<span class="hk-count">${att.length}</span>` : ''}</div>
     ${att.length ? `<div class="attn-list">${shown.join('')}</div>${more.length ? `<details class="hk-more"><summary>Show ${more.length} more</summary><div class="attn-list">${more.join('')}</div></details>` : ''}` : '<div class="hk-clear">✓ All clear. Nothing needs you right now.</div>'}
     ${d.top.length ? `<div class="hk-sec"><h3>Top this month</h3></div><div class="hk-top" id="topCard">${[1, 2, 3].map((r) => d.top.filter((t) => t.rank === r)).filter((g) => g.length).map((g) => `<button class="hk-topc" data-open="${esc(g[0].id)}">${['🥇', '🥈', '🥉'][g[0].rank - 1]}<span>${esc(g[0].name.split(' ')[0])}${g.length > 1 ? ` +${g.length - 1}` : ''}<small>${fmtPts(g[0].points)} pts</small></span></button>`).join('')}</div>` : ''}
-    <div class="hk-backup${backupAge === null || backupAge > 14 ? ' warn' : ''}"><span aria-hidden="true">💾</span><span class="grow">${d.lastBackup ? `Last backup ${backupAge === 0 ? 'today' : backupAge === 1 ? 'yesterday' : `${backupAge} days ago`}` : 'No backup yet'}</span><button class="btn small ${backupAge === null || backupAge > 14 ? 'primary' : ''}" id="goBackup">Back up</button></div>`;
+    <div class="hk-backup${backupAge === null || backupAge > 14 ? ' warn' : ''}"><span aria-hidden="true">${icon('save')}</span><span class="grow">${d.lastBackup ? `Last backup ${backupAge === 0 ? 'today' : backupAge === 1 ? 'yesterday' : `${backupAge} days ago`}` : 'No backup yet'}</span><button class="btn small ${backupAge === null || backupAge > 14 ? 'primary' : ''}" id="goBackup">Back up</button></div>`;
   $('#goAtt').addEventListener('click', () => showTab('attendance'));
   wireHome($('#home'), {
     onQuick: (id) => showTab(id),
