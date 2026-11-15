@@ -1184,3 +1184,4 @@ html[data-theme=dark] .at-head { background: #0E0B1F; }
 .lv-warn .lv-ic, .lv-bad .lv-ic { animation: lv-nudge 2.4s ease-in-out 1s 2; }
 @keyframes lv-nudge { 0%, 100% { transform: none; } 20% { transform: rotate(-10deg); } 40% { transform: rotate(8deg); } 60% { transform: rotate(-4deg); } }
 @media (prefers-reduced-motion: reduce) { .lv-ic { animation: none !important; } }
+.at-out { font-size: .78rem; font-weight: 700; margin: 6px 4px 10px; }

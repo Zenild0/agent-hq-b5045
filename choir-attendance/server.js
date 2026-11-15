@@ -9,7 +9,7 @@ import {
   REMARKS, isValidRemark, shortName, STATUSES, EXCUSE_REASONS, TYPES, EVENTS, OCCASION_TYPES, isValidDate, defaultType, seasonOf, seasonRange,
   seasonLabel, prizeInfo, firstSeason, childStats, scoreboard, monthRange, monthLabel, pointsFor,
   isLeave, remarkDeduction, remarkBonus, sessionKey, photoUrl, headUrl, monthlyAchievers, yearlyAchievers, occasions, seasonsWithData,
-  compareNames, findOccasion, slug,
+  compareNames, findOccasion, slug, isOut,
 } from './lib/logic.js';
 import { openStore, newCode } from './lib/store.js';
 import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, setPaid, resetWarmups, resetAllWarmups, grantTrialToAll, isPaid, hasFull, trialOf, startTrial, TRIAL_DAYS, paidUntilOf, daysLeft, wasPaid, warmupsLeft, useWarmup, GameError, PaywallError } from './lib/game.js';
@@ -579,10 +579,13 @@ function checkSessionKey(date, type, event, opts) {
 }
 
 // Regular sessions: the main group. Occasions: exactly the people picked for that occasion.
-function rosterOf(type, occ) {
+// Who is expected at a session. With a date, a child the teacher marked "not continuing this year" (on or before that
+// date) is left off; earlier practices of the year still list them, and next April's new year has no decision yet.
+function rosterOf(type, occ, date = null) {
   const { db } = store;
-  if (OCCASION_TYPES.includes(type)) return (occ?.members ?? []).map((id) => db.children.find((c) => c.id === id)).filter((c) => c?.active);
-  return db.children.filter((c) => c.active && !c.guest);
+  const here = (c) => c?.active && !(date && isOut(c, seasonOf(date), date));
+  if (OCCASION_TYPES.includes(type)) return (occ?.members ?? []).map((id) => db.children.find((c) => c.id === id)).filter(here);
+  return db.children.filter((c) => !c.guest && here(c));
 }
 
 // Children over the leave limit whom the teacher has not decided about yet.
@@ -604,7 +607,8 @@ function sessionView(date, type, eventName) {
     occasions: db.occasions.filter((o) => o.season === season).map((o) => o.name).sort(),
     missingOccasion: OCCASION_TYPES.includes(type) && !occ,
     pending: pendingDecisions(season),
-    children: sessionPeople(type, occ, sess).map((c) => {
+    hiddenOut: rosterOf(type, occ).filter((c) => isOut(c, season, date) && !sess?.entries[c.id]?.status).map((c) => c.name).sort(),
+    children: sessionPeople(type, occ, sess, date).map((c) => {
       const e = sess?.entries[c.id] || {};
       const st = childStats(db, c.id, season);
       return {
@@ -619,8 +623,8 @@ function sessionView(date, type, eventName) {
 
 // Who is on an attendance list: the roster, plus anyone already marked in this very session (e.g. someone who has
 // since left an occasion), so a past practice always shows everyone who was marked.
-function sessionPeople(type, occ, sess) {
-  const list = rosterOf(type, occ);
+function sessionPeople(type, occ, sess, date = sess?.date ?? null) {
+  const list = rosterOf(type, occ, date);
   if (!sess) return list;
   const extra = Object.entries(sess.entries).filter(([id, e]) => e.status && !list.some((c) => c.id === id))
     .map(([id]) => store.db.children.find((c) => c.id === id)).filter((c) => c?.active);
@@ -636,7 +640,7 @@ function getOrCreateSession(date, type, event) {
 function mark(body) {
   const { db } = store;
   const { name: event, occ } = checkSessionKey(body.date, body.type, body.event);
-  if (!sessionPeople(body.type, occ, store.db.sessions[sessionKey(body.date, body.type, event)]).some((c) => c.id === body.childId)) {
+  if (!sessionPeople(body.type, occ, store.db.sessions[sessionKey(body.date, body.type, event)], body.date).some((c) => c.id === body.childId)) {
     throw new HttpError(400, OCCASION_TYPES.includes(body.type) ? 'That child is not part of this occasion' : 'That child is not in the main group');
   }
   const status = body.status ?? null;
@@ -656,7 +660,7 @@ function markAllPresent(body) {
   const { name: event, occ } = checkSessionKey(body.date, body.type, body.event);
   const status = body.status === 'absent' ? 'absent' : 'present';
   const sess = getOrCreateSession(body.date, body.type, event);
-  for (const c of rosterOf(body.type, occ)) {
+  for (const c of rosterOf(body.type, occ, body.date)) {
     const e = (sess.entries[c.id] ??= { status: null, remarks: [], note: '' });
     if (!e.status) e.status = status;
   }
@@ -1525,7 +1529,7 @@ function recentSessions(limit = 15) {
     .map((x) => {
       const pick = (...st) => Object.entries(x.entries).filter(([, e]) => st.includes(e.status)).map(([id]) => name(id)).sort((a, b) => a.localeCompare(b));
       const occasion = OCCASION_TYPES.includes(x.type);
-      const unmarked = occasion ? [] : roster.filter((c) => !x.entries[c.id]?.status).map((c) => c.name).sort((a, b) => a.localeCompare(b));
+      const unmarked = occasion ? [] : roster.filter((c) => !x.entries[c.id]?.status && !isOut(c, seasonOf(x.date), x.date)).map((c) => c.name).sort((a, b) => a.localeCompare(b));
       return { date: x.date, type: x.type, event: x.event || '', present: pick('present'), absent: pick('absent'), excused: pick('excused'), unmarked };
     });
 }

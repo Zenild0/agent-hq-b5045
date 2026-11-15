@@ -115,9 +115,20 @@ test('medical absence keeps a reason and is never a leave; going over the limit 
   assert.equal((await j('/api/teacher/session?date=2026-10-03&type=saturday')).data.pending.length, 0);
   await j(`/api/teacher/children/${ben.id}/decision`, { method: 'PUT', body: { season: 2026, status: 'out' } });
   assert.ok(!(await j('/api/public?season=2026')).data.yearBoard.some((r) => r.name === 'Ben F.'), 'hidden only after the teacher says so');
+  // not continuing: off the attendance list from the decision on, but past practices and next year are untouched
+  const names = async (date) => (await j(`/api/teacher/session?date=${date}&type=saturday`)).data;
+  const later = await names('2027-01-09');
+  assert.ok(!later.children.some((c) => c.name === 'Ben Fernandes'), 'not on the next attendance list');
+  assert.deepEqual(later.hiddenOut, ['Ben Fernandes'], 'the teacher is told who is left off');
+  assert.equal((await j('/api/teacher/mark', { method: 'PUT', body: { date: '2027-01-09', type: 'saturday', childId: ben.id, status: 'present' } })).status, 400);
+  await j('/api/teacher/mark-all-present', { method: 'POST', body: { date: '2027-01-16', type: 'saturday' } });
+  assert.ok(!(await names('2027-01-16')).children.some((c) => c.name === 'Ben Fernandes'), 'All present does not mark him');
+  assert.ok((await names('2026-08-08')).children.some((c) => c.name === 'Ben Fernandes'), 'a practice before the decision still shows him');
+  assert.ok((await names('2027-04-10')).children.some((c) => c.name === 'Ben Fernandes'), 'next April he is back on the list');
   assert.equal((await j(`/api/teacher/children/${ben.id}/decision`, { method: 'PUT', body: { status: 'banana' } })).status, 400);
   await j(`/api/teacher/children/${ben.id}/decision`, { method: 'PUT', body: { season: 2026, status: null } });
   assert.ok((await j('/api/public?season=2026')).data.yearBoard.some((r) => r.name === 'Ben F.'));
+  assert.ok((await names('2027-01-23')).children.some((c) => c.name === 'Ben Fernandes'), 'undoing the decision puts him back');
 });
 
 test('teacher can add many children at once; duplicates and bad lines are skipped', async () => {

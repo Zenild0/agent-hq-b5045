@@ -651,7 +651,8 @@ function renderAttendance() {
     </div>
     <div id="atUndo"></div>
     <div class="at-hint" id="atHint"></div>
-    <div class="att-list" id="atList"></div>`}`;
+    <div class="att-list" id="atList"></div>
+    ${view.hiddenOut?.length ? `<div class="muted at-out">Not on this list (not continuing this year): ${esc(view.hiddenOut.join(', '))}. Open a child in Children to change that.</div>` : ''}`}`;
   $('#date').addEventListener('change', (e) => {
     if (!e.target.value) return;
     date = e.target.value;
