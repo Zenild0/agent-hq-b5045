@@ -57,6 +57,12 @@ export function mountSpace(host, { code }) {
     </details>`;
   };
 
+  // The group switcher: one rounded track, the chosen group lifts out of it. Long event names are cut with "…".
+  const switchHtml = (groups, on) => `<div class="sp-switch${groups.length > 2 ? ' many' : ''}" role="tablist" aria-label="Groups">${groups.map((g) => {
+    const main = g.id === 'main';
+    return `<button type="button" role="tab" class="sp-seg${g.id === on ? ' on' : ''}" data-group="${esc(g.id)}" aria-selected="${g.id === on}" title="${esc(g.label)}"><span class="sp-seg-ic" aria-hidden="true">${main ? '🎶' : '✨'}</span><span class="sp-seg-tx"><b>${esc(g.label)}</b><small>${main ? 'Whole choir' : 'Event'}${g.n ? ` · ${g.n} ${g.n === 1 ? 'singer' : 'singers'}` : ''}</small></span></button>`;
+  }).join('')}</div>`;
+
   function paint() {
     if (dead) return;
     if (!data.enabled) { root.innerHTML = '<div class="card muted">Choir Space is not open right now.</div>'; return; }
@@ -65,8 +71,8 @@ export function mountSpace(host, { code }) {
     if (data.needConsent) { root.innerHTML = '<div class="card"><h3 style="margin:0">Choir Space</h3><p class="muted">A parent needs to tick the box in <b>Me</b> first. Then you can join your friends here.</p></div>'; return; }
     const m = data.me;
     root.innerHTML = `
-      <div class="sp-top"><div><small>${esc(data.groups.find((g) => g.id === data.group)?.label ?? 'Treble Makers')}</small><h2>Choir Space</h2></div><span class="sp-chip fire">🔥 ${m.streak}</span><span class="sp-chip">⚡ ${m.xp}</span></div>
-      ${data.groups.length > 1 ? `<div class="sp-groups" role="tablist" aria-label="Groups">${data.groups.map((g) => `<button type="button" role="tab" class="sp-group${g.id === data.group ? ' on' : ''}" data-group="${esc(g.id)}" aria-selected="${g.id === data.group}">${g.id === 'main' ? '🎶' : '✨'} ${esc(g.label)}</button>`).join('')}</div>` : ''}
+      <div class="sp-top"><div><small>${data.groups.length > 1 ? 'Treble Makers' : esc(data.groups[0]?.label ?? 'Treble Makers')}</small><h2>Choir Space</h2></div><span class="sp-chip fire">🔥 ${m.streak}</span><span class="sp-chip">⚡ ${m.xp}</span></div>
+      ${data.groups.length > 1 ? switchHtml(data.groups, data.group) : ''}
       ${data.stories.length ? `<div class="sp-stories" aria-label="Friends practising">${data.stories.map((s) => `<div class="sp-story">${avatarEl(s.avatar, 52)}<small>${s.id === m.id ? 'You' : esc(s.name.split(' ')[0])}${s.streak > 1 ? ` 🔥${s.streak}` : ''}</small></div>`).join('')}</div>` : ''}
       ${challengeHtml(data.challenge)}
       <div class="sp-feed">${data.feed.length ? data.feed.map(postHtml).join('') : '<div class="card muted">Nothing here yet. Practise in Games and your streaks and long practice days will show up for your friends to cheer.</div>'}</div>
@@ -75,14 +81,17 @@ export function mountSpace(host, { code }) {
   }
 
   async function load() {
-    root.innerHTML = '<div class="empty">Loading…</div>';
-    try { data = await api(`me/space${group ? `?group=${encodeURIComponent(group)}` : ''}`, { code }); paint(); }
-    catch (e) { root.innerHTML = `<div class="card"><div class="alert bad">${esc(e.message)}</div></div>`; }
+    if (data) root.classList.add('sp-busy'); else root.innerHTML = '<div class="empty">Loading…</div>';
+    try { data = await api(`me/space${group ? `?group=${encodeURIComponent(group)}` : ''}`, { code }); root.classList.remove('sp-busy'); paint(); }
+    catch (e) { root.classList.remove('sp-busy'); root.innerHTML = `<div class="card"><div class="alert bad">${esc(e.message)}</div></div>`; }
   }
 
   root.addEventListener('click', async (e) => {
     const gb = e.target.closest('[data-group]');
-    if (gb) { group = gb.dataset.group; try { localStorage.setItem('choir-space-group', group); } catch { /* ignore */ } load(); return; }
+    if (gb) {
+      if (gb.classList.contains('on')) return;
+      root.querySelectorAll('.sp-seg').forEach((b) => { const on = b === gb; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
+      group = gb.dataset.group; try { localStorage.setItem('choir-space-group', group); } catch { /* ignore */ } load(); return; }
     const go = e.target.closest('[data-go]');
     if (go) { document.querySelector(`nav.tabbar [data-tab="${go.dataset.go}"]`)?.click(); return; }
     const r = e.target.closest('[data-react]');

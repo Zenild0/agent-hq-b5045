@@ -408,7 +408,7 @@ function spaceView(child, wanted = '') {
   const stories = groupKids(group).map((c) => ({ id: c.id, name: shortName(c.name), avatar: avatarFor(c), streak: xpOf(c.id)?.streak ?? 0, week: statsOf(xpOf(c.id), day, 'week').minutes }))
     .filter((s) => s.week > 0 || s.streak > 0).sort((a, b) => b.streak - a.streak || b.week - a.week).slice(0, 8);
   return {
-    enabled: true, locked: false, reactions: REACTIONS, groups, group,
+    enabled: true, locked: false, reactions: REACTIONS, groups: groups.map((g) => ({ ...g, n: groupKids(g.id).length })), group,
     me: { id: child.id, name: shortName(child.name), avatar: avatarFor(child), xp: x?.total ?? 0, streak: x?.streak ?? 0, badges: BADGES, frames: FRAMES, colours: COLOURS },
     challenge: spaceChallenge(child.id, group), stories, feed: spaceFeed(child.id, group),
   };
