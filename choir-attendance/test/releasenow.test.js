@@ -15,7 +15,8 @@ writeFileSync(file, JSON.stringify({
 }));
 process.env.CHOIR_DATA = file;
 delete process.env.CHOIR_PIN;
-const { server, releaseEverythingNow } = await import('../server.js');
+const { server, releaseEverythingNow, addNewSongs } = await import('../server.js');
+const { NEW_CHORDS } = await import('../lib/freechords3.js');
 let base;
 before(() => new Promise((ok) => server.listen(0, () => { base = `http://localhost:${server.address().port}`; ok(); })));
 after(() => server.close());
@@ -33,4 +34,19 @@ test('waiting tips and queued songs are published at once, and only once', async
   const songs = (await get('/api/teacher/chords')).songs.map((s) => s.title);
   for (const i of [1, 2, 3]) assert.ok(songs.includes(`Queued Song ${i}`));
   assert.deepEqual(releaseEverythingNow(), { tips: 0, songs: 0 }, 'a second start changes nothing');
+});
+
+test('the new batch of public-domain songs is in the Chord Book and, as words only, in the hymn list, once', async () => {
+  const chords = (await get('/api/teacher/chords')).songs;
+  const hymns = (await get('/api/hymns')).hymns ?? (await get('/api/teacher/hymns')).hymns;
+  for (const f of NEW_CHORDS) {
+    const c = chords.find((x) => x.title === f.title);
+    assert.ok(c, `${f.title} is in the Chord Book`);
+    const h = hymns.find((x) => x.title === f.title);
+    assert.ok(h, `${f.title} is in the hymn list`);
+    assert.equal(c.hymnId, h.id, 'the chord sheet is linked to its hymn');
+    assert.doesNotMatch(h.lyrics, /\[|\{/, 'the hymn list shows words only');
+  }
+  assert.match(hymns.find((x) => x.title === 'Panis Angelicus').lyrics, /^Verse:\nPanis angelicus\nFit panis hominum;/);
+  assert.deepEqual(addNewSongs(), { songs: 0, hymns: 0 }, 'a second start adds nothing');
 });

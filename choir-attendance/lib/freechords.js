@@ -4,6 +4,7 @@
 const S = (id, title, key, category, body, kind = 'hymn') => ({ id, title, key, kind, category, body: body.trim() });
 
 import { MORE_CHORDS } from './freechords2.js';
+import { NEW_CHORDS } from './freechords3.js';
 
 const BASE_CHORDS = [
   S('amazing-grace', 'Amazing Grace', 'G', 'Recessional', `
@@ -544,4 +545,4 @@ With a [G]moo-moo here, and a [C]moo-moo there,
 [G]Old MacDonald had a farm, E-I-E-I-[D]O. [G]`, 'song'),
 ];
 
-export const FREE_CHORDS = [...BASE_CHORDS, ...MORE_CHORDS];
+export const FREE_CHORDS = [...BASE_CHORDS, ...MORE_CHORDS, ...NEW_CHORDS];
