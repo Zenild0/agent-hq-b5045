@@ -3,8 +3,7 @@
 // These are general, kid-friendly habits from choir and voice-teaching sources, not medical advice: a sore or hoarse
 // voice that does not settle should be seen by a doctor, and every tip that touches food or drink says to check with a parent.
 
-export const START_FRIDAY = '2026-11-20'; // the first weekly tip appears on this Friday at 6 pm IST
-export const OPEN_AT_START = 4;           // tips that are open from the first day, so the page is never empty
+export const START_FRIDAY = '2026-11-20'; // tips added later than the built-in list appear weekly from this Friday at 6 pm IST
 const FRIDAY_UTC = '12:30:00Z';           // 6:00 pm in India
 const WEEK_MS = 7 * 86400000;
 
@@ -55,6 +54,9 @@ export const REMEDIES = [
   T('see-doctor', '🩺', 'Home remedy', 'When to see a doctor', 'Home remedies help you feel more comfortable, but they do not treat an infection. Tell a grown-up and see a doctor if you have a fever for more than 2 days, a very painful throat or trouble swallowing, trouble breathing or a wheeze, earache or a rash, a sore throat that lasts more than a week, a cough that lasts more than 3 weeks, or a hoarse voice for more than 2 weeks.', { link: 'https://www.nhs.uk/conditions/cough/', linkLabel: 'Cough (NHS)' }),
 ];
 
+// The teacher asked (19 Nov 2026) for every built-in tip to be published at once instead of one a week.
+// Any tip added to the end of the list later still comes out weekly, one per Friday after START_FRIDAY.
+export const OPEN_AT_START = 26;
 // When the weekly tips appear: the first weekly tip on START_FRIDAY, the next a week later, and so on.
 export const releaseAt = (index) => (index < OPEN_AT_START ? 0 : Date.parse(`${START_FRIDAY}T${FRIDAY_UTC}`) + (index - OPEN_AT_START) * WEEK_MS);
 

@@ -321,14 +321,14 @@ function openChordEditor(song, r, preset = {}) {
   }));
 }
 
-// ---- Voice Care Corner: a new tip every Friday at 6 pm; the teacher can add their own ----
+// ---- Voice Care Corner: every built-in tip is open; the teacher can add their own (now or Friday 6 pm) ----
 const tipDate = (iso) => new Date(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' });
 async function loadTipsBox() {
   const d = await call('teacher/voice-tips').catch(() => null);
   if (!d || !$('#tipsBox')) return;
   $('#tipsBox').innerHTML = `
     <div class="card"><div class="row between"><div><h3 style="margin:0">💧 Voice Care Corner</h3>
-      <div class="muted">A new tip appears for every child on Friday at 6 pm. ${d.published} published so far${d.remaining ? `, ${d.remaining} more are ready to come` : ''}.</div></div>
+      <div class="muted">${d.remaining ? `A new tip appears for every child on Friday at 6 pm. ${d.published} published so far, ${d.remaining} more are ready to come.` : `All ${d.published} tips are published for every child. Your own tips can go out now or on Friday at 6 pm.`}</div></div>
       <button class="btn small primary" id="addTip">＋ Add a tip</button></div>
       ${d.next ? `<div class="vt-next">⏳ Next tip: <b>${esc(tipDate(d.next))}, 6 pm</b></div>` : ''}
       ${d.upcoming.length ? `<div class="muted" style="margin-top:6px"><b>Coming up:</b> ${d.upcoming.slice(0, 3).map((t) => `${esc(tipDate(t.at))}: ${esc(t.emoji)} ${esc(t.title)}`).join(' · ')}</div>` : ''}

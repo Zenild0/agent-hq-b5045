@@ -37,20 +37,16 @@ test('cough and sore-throat home remedies are open at any time, with the honey w
   assert.equal(tipsAt(at('2026-11-14T00:00:00Z')).remedies.length, REMEDIES.length, 'all open before the first Friday');
 });
 
-test('a few tips are open from day one, then one more appears every Friday at 6 pm India time', () => {
+test('every built-in tip is open now; a tip added to the end of the list later comes out the next Friday at 6 pm', () => {
   assert.equal(START_FRIDAY, '2026-11-20');
   assert.equal(new Date(at('2026-11-20T12:30:00Z') + 330 * 60000).getUTCDay(), 5, 'that is a Friday');
-  assert.equal(tipsAt(at('2026-11-14T00:00:00Z')).tips.length, OPEN_AT_START);
-  assert.equal(tipsAt(at('2026-11-20T12:29:00Z')).tips.length, OPEN_AT_START, 'a minute before 6 pm: nothing new yet');
-  assert.equal(tipsAt(at('2026-11-20T12:30:00Z')).tips.length, OPEN_AT_START + 1, 'at 6 pm the new tip is out');
-  assert.equal(tipsAt(at('2026-11-26T12:30:00Z')).tips.length, OPEN_AT_START + 1, 'nothing more mid-week');
-  assert.equal(tipsAt(at('2026-11-27T12:30:00Z')).tips.length, OPEN_AT_START + 2);
-  assert.equal(releaseAt(OPEN_AT_START + 1) - releaseAt(OPEN_AT_START), 7 * 86400000);
-  const r = tipsAt(at('2026-11-14T00:00:00Z'));
-  assert.equal(r.next, at('2026-11-20T12:30:00Z'));
-  assert.equal(r.remaining, VOICE_TIPS.length - OPEN_AT_START);
-  assert.equal(tipsAt(at('2035-01-01T00:00:00Z')).tips.length, VOICE_TIPS.length);
-  assert.equal(tipsAt(at('2035-01-01T00:00:00Z')).next, null);
+  assert.equal(OPEN_AT_START, VOICE_TIPS.length, 'the teacher asked for all of them at once');
+  const now = tipsAt(at('2026-11-19T00:00:00Z'));
+  assert.equal(now.tips.length, VOICE_TIPS.length);
+  assert.equal(now.next, null);
+  assert.equal(now.remaining, 0);
+  assert.equal(releaseAt(OPEN_AT_START), at('2026-11-20T12:30:00Z'), 'a new tip added later: the first Friday');
+  assert.equal(releaseAt(OPEN_AT_START + 1) - releaseAt(OPEN_AT_START), 7 * 86400000, 'and one a week after that');
   // the next Friday evening, from a Wednesday, from Friday before 6 pm, and from Friday after 6 pm
   assert.equal(nextFridayEvening(at('2026-11-18T06:00:00Z')), at('2026-11-20T12:30:00Z'));
   assert.equal(nextFridayEvening(at('2026-11-20T05:00:00Z')), at('2026-11-20T12:30:00Z'));
@@ -79,5 +75,5 @@ test('children see the open tips, the newest first, and the teacher can add thei
   const gone = await j(`/api/teacher/voice-tips/${add.data.own.find((t) => t.title === 'Warm water first').id}`, { method: 'DELETE' });
   assert.equal(gone.data.own.length, 1);
   const t = (await j('/api/teacher/voice-tips')).data;
-  assert.ok(t.upcoming.length >= 1 && t.published >= OPEN_AT_START);
+  assert.ok(t.upcoming.length === 0 && t.published >= OPEN_AT_START);
 });

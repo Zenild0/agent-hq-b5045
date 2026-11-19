@@ -1883,6 +1883,21 @@ async function serveStatic(req, res, pathname) {
 const STARTED_AT = new Date().toISOString();
 let BUILD = ''; // the build this server started from
 try { BUILD = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: here, timeout: 3000 }).toString().trim(); } catch { /* not a git checkout */ }
+// One-time (19 Nov 2026): the teacher asked for everything that was waiting to be published to go out now:
+// their own tips set for a later Friday, and every song still in the release queue. Runs once per data file.
+export function releaseEverythingNow(now = Date.now()) {
+  const { db } = store;
+  if (db.releasedAllNov2026) return { tips: 0, songs: 0 };
+  let tips = 0;
+  for (const t of db.voiceTips) if (t.publishAt > now) { t.publishAt = now; tips += 1; }
+  const songs = db.chordQueue.length ? releaseBatch(db.chordQueue.length, now) : 0;
+  db.releasedAllNov2026 = true;
+  store.save();
+  return { tips, songs };
+}
+try { const r = releaseEverythingNow(); if (r.tips || r.songs) console.log(`Published now: ${r.tips} waiting tip(s), ${r.songs} queued song(s)`); }
+catch (e) { console.error('Could not publish the waiting items:', e.message); }
+
 export const server = createServer(async (req, res) => {
   // Basic hardening on every response: no type sniffing, no framing, no referrer leaks, and only this site may use the camera and microphone.
   res.setHeader('x-content-type-options', 'nosniff');
