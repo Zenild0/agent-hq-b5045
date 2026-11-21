@@ -1,10 +1,15 @@
-// A third batch of public-domain hymns, carols and children's songs (added November 2026).
+// A third batch of public-domain Catholic hymns, carols, Mass parts (Latin chant) and children's songs (November 2026).
+// Chosen for a Catholic parish choir: Eucharistic, Marian, seasonal and Mass-part music sung in Catholic churches.
 // Words and tunes are old enough to be free for anyone to use, in India and elsewhere. Chords are simple and
 // common: check them against your own hymn book. This batch also goes straight into the Chord Book and, as words
 // only, into the hymn list (once, see addNewSongs in server.js).
 const S = (id, title, key, category, body, kind = 'hymn') => ({ id, title, key, kind, category, body: body.trim() });
 
 export const NOV_2026_BATCH = 'nov2026';
+export const CATHOLIC_BATCH = 'nov2026-catholic';
+// Songs from the first version of this batch that are not Catholic church music. They are taken out of the Chord Book and
+// the hymn list again, but only where they are still exactly as they were added (no recording, notes unchanged).
+export const REMOVED_TITLES = ['Here We Come A-wassailing', 'Jolly Old Saint Nicholas', "The Church's One Foundation", 'To God Be the Glory', 'Count Your Blessings', 'Shall We Gather at the River', 'Leaning on the Everlasting Arms', 'Sweet Hour of Prayer', 'Jesus Wants Me for a Sunbeam', 'O How I Love Jesus', 'Down by the Riverside', 'Do, Lord'];
 
 export const NEW_CHORDS = [
   // ---- Christmas and Advent ----
@@ -112,29 +117,6 @@ Nous at[Bb]tendions cet [C]heureux [F]temps.`),
 [F]Love to God and [Bb]all men,
 [F]Love for plea and [C]gift and [F]sign.`),
 
-  S('here-we-come-a-wassailing', 'Here We Come A-wassailing', 'G', 'Christmas', `
-{Verse 1}
-[G]Here we come a-[C]wassailing
-A[G]mong the leaves so [D]green;
-[G]Here we come a-[C]wand'ring
-So [G]fair to [D]be [G]seen.
-{Chorus}
-[C]Love and joy come [G]to you,
-And to [C]you your wassail [D]too;
-And God [G]bless you and [C]send you a [G]happy New [Em]Year,
-And [C]God send [G]you a [D]happy New [G]Year.`),
-
-  S('jolly-old-saint-nicholas', 'Jolly Old Saint Nicholas', 'C', 'Christmas', `
-{Verse 1}
-[C]Jolly old Saint [G]Nicholas,
-[C]Lean your ear this [G]way!
-[C]Don't you tell a [F]single soul
-[C]What I'm [G]going to [C]say;
-[C]Christmas Eve is [G]coming soon;
-[C]Now, you dear old [G]man,
-[C]Whisper what you'll [F]bring to me;
-[C]Tell me [G]if you [C]can.`, 'song'),
-
   S('lo-how-a-rose', "Lo, How a Rose E'er Blooming", 'F', 'Advent', `
 {Verse 1}
 [F]Lo, how a [C]Rose e'er [Dm]bloom[F]ing
@@ -199,41 +181,6 @@ The [F]river running [C]by,
 The [F]sunset and the [Bb]morning
 That [F]brightens [C]up the [F]sky.`),
 
-  S('churchs-one-foundation', "The Church's One Foundation", 'D', 'Entrance', `
-{Verse 1}
-The [D]Church's one foun[G]da[D]tion
-Is [A]Jesus [D]Christ, her [A]Lord;
-She [D]is His new cre[G]a[D]tion
-By [Em]water [A]and the [D]word:
-From [Bm]heaven He [F#m]came and [Bm]sought her
-To [G]be His [D]holy [A]bride;
-With [D]His own [G]blood He [D]bought her,
-And [G]for her [A]life He [D]died.`),
-
-  S('to-god-be-the-glory', 'To God Be the Glory', 'G', 'Entrance', `
-{Verse 1}
-To [G]God be the glory, great [C]things He hath [G]done;
-So loved He the world that He [A]gave us His [D]Son,
-Who [G]yielded His life an a[C]tonement for [G]sin,
-And [C]opened the [G]life-gate that [D]all may go [G]in.
-{Chorus}
-Praise the [D]Lord, praise the [G]Lord, let the earth hear His [D]voice!
-Praise the [G]Lord, praise the [C]Lord, let the [G]people re[D]joice!
-O [G]come to the Father, through [C]Jesus the [G]Son,
-And [C]give Him the [G]glory, great [D]things He hath [G]done.`),
-
-  S('count-your-blessings', 'Count Your Blessings', 'G', 'Recessional', `
-{Verse 1}
-When up[G]on life's billows you are [C]tempest-[G]tossed,
-When you are dis[A]couraged, thinking [D]all is lost,
-[G]Count your many blessings, [C]name them one by [G]one,
-And it [C]will sur[G]prise you what the [D]Lord hath [G]done.
-{Chorus}
-[G]Count your blessings, name them one by one;
-[D]Count your blessings, see what [G]God hath done;
-[G]Count your blessings, [C]name them one by [G]one;
-[C]Count your [G]many blessings, see what [D]God hath [G]done.`),
-
   S('lead-kindly-light', 'Lead, Kindly Light', 'D', 'Recessional', `
 {Verse 1}
 [D]Lead, kindly [G]Light, a[D]mid the en[A]circling [D]gloom,
@@ -242,41 +189,6 @@ The [D]night is [G]dark, and [D]I am [A]far from [D]home;
 Lead [G]Thou me [A]on.
 [D]Keep Thou my [G]feet; I [D]do not [A]ask to [Bm]see
 The [G]distant [D]scene; one [A]step e[D]nough for [A]me.`),
-
-  S('shall-we-gather', 'Shall We Gather at the River', 'D', 'Recessional', `
-{Verse 1}
-[D]Shall we gather [G]at the [D]river,
-Where bright angel [E]feet have [A]trod,
-With its [D]crystal tide for[G]ever
-[D]Flowing [A]by the throne of [D]God?
-{Chorus}
-[D]Yes, we'll gather at the river,
-The [G]beautiful, the [D]beautiful [A]river;
-[D]Gather with the [G]saints at the [D]river
-That [D]flows by the [A]throne of [D]God.`),
-
-  S('leaning-on-the-everlasting-arms', 'Leaning on the Everlasting Arms', 'G', 'Recessional', `
-{Verse 1}
-What a [G]fellowship, what a joy divine,
-[C]Leaning on the [G]ever[D]lasting [G]arms;
-What a blessedness, what a peace is mine,
-[A]Leaning on the [D]everlasting arms.
-{Chorus}
-[G]Leaning, leaning,
-[C]Safe and secure from [G]all a[D]larms;
-[G]Leaning, leaning,
-[C]Leaning on the [G]ever[D]lasting [G]arms.`),
-
-  S('sweet-hour-of-prayer', 'Sweet Hour of Prayer', 'D', 'Recessional', `
-{Verse 1}
-[D]Sweet hour of prayer! [G]sweet hour of [D]prayer!
-That calls me from a [A]world of [D]care,
-And bids me at my [G]Father's [D]throne
-Make all my wants and [A]wishes [D]known.
-In [A]seasons of dis[D]tress and grief,
-My [A]soul has often [D]found re[A]lief,
-And [D]oft escaped the [G]tempter's [D]snare
-By Thy re[G]turn, [D]sweet [A]hour of [D]prayer!`),
 
   // ---- Lent and Easter ----
   S('all-glory-laud', 'All Glory, Laud and Honour', 'C', 'Lent', `
@@ -414,7 +326,171 @@ O [Bb]clemens, O [F]pia, O [Bb]dulcis [C]Virgo Ma[F]ria.`),
 [Em]Resurrexit [C]sicut [G]dixit, [D]alle[G]luia;
 [G]Ora pro [C]nobis [G]Deum, [D]alle[G]luia.`),
 
-  // ---- Children's songs and spirituals ----
+  // ---- Mass parts in Latin (the old chant settings; the Latin words are free for anyone to use) ----
+  S('kyrie-chant', 'Kyrie Eleison (chant)', 'D', 'LHM', `
+{Kyrie}
+[D]Kyrie, e[G]le[D]ison. [A]Kyrie, e[D]leison.
+{Christe}
+[D]Christe, e[G]le[D]ison. [A]Christe, e[D]leison.
+{Kyrie}
+[D]Kyrie, e[G]le[D]ison. [A]Kyrie, e[G]lei[D]son.`),
+
+  S('gloria-de-angelis', 'Gloria (Missa de Angelis)', 'D', 'Gloria', `
+{Gloria}
+[D]Gloria in ex[A]celsis [D]Deo.
+Et in [G]terra pax [D]hominibus [A]bonae volun[D]tatis.
+[D]Laudamus te. [A]Benedicimus te.
+[D]Adoramus te. [G]Glorifi[A]camus [D]te.
+[D]Gratias agimus tibi propter [A]magnam gloriam [D]tuam.
+Domine [G]Deus, Rex cae[D]lestis, Deus [A]Pater omni[D]potens.
+[D]Domine Fili uni[A]genite, Jesu [D]Christe.
+Domine [G]Deus, Agnus [D]Dei, [A]Filius [D]Patris.
+[D]Qui tollis peccata mundi, [A]miserere [D]nobis.
+Qui tollis peccata mundi, [G]suscipe depreca[A]tionem [D]nostram.
+[D]Qui sedes ad dexteram Patris, [A]miserere [D]nobis.
+[D]Quoniam tu solus sanctus. [A]Tu solus Dominus.
+Tu [G]solus Altissimus, [D]Jesu [A]Chris[D]te.
+Cum [G]Sancto Spiritu, in [D]gloria Dei [A]Pa[D]tris. [G]A[D]men.`),
+
+  S('alleluia-chant', 'Alleluia (Gospel acclamation)', 'G', 'Acclamation', `
+{Alleluia}
+[G]Alle[C]lu[G]ia, [D]alle[G]luia,
+[G]alle[Em]lu[C]ia, [D]alle[G]luia.`),
+
+  S('sanctus-chant', 'Sanctus (chant)', 'D', 'Holy', `
+{Sanctus}
+[D]Sanctus, [G]Sanctus, [D]Sanctus
+[A]Dominus Deus [D]Sabaoth.
+[D]Pleni sunt caeli et [G]terra [D]gloria [A]tua.
+[D]Hosanna in ex[A]cel[D]sis.
+{Benedictus}
+[D]Benedictus qui [G]venit in [D]nomine [A]Domini.
+[D]Hosanna in ex[A]cel[D]sis.`),
+
+  S('agnus-dei-chant', 'Agnus Dei (chant)', 'D', 'Peace', `
+{Agnus Dei}
+[D]Agnus Dei, qui [G]tollis pec[D]cata [A]mundi:
+[D]mise[G]rere [A]no[D]bis.
+[D]Agnus Dei, qui [G]tollis pec[D]cata [A]mundi:
+[D]mise[G]rere [A]no[D]bis.
+[D]Agnus Dei, qui [G]tollis pec[D]cata [A]mundi:
+[D]dona [G]nobis [A]pa[D]cem.`),
+
+  // ---- More Communion and Eucharistic hymns ----
+  S('o-lord-i-am-not-worthy', 'O Lord, I Am Not Worthy', 'F', 'Communion', `
+{Verse 1}
+O [F]Lord, I am not [C]worthy
+That [F]Thou shouldst come to [C]me;
+But [F]speak the words of [Bb]comfort,
+My [F]spirit [C]healed shall [F]be.
+{Verse 2}
+And [F]humbly I'll re[C]ceive Thee,
+The [F]Bridegroom of my [C]soul,
+No [F]more by sin to [Bb]grieve Thee,
+Or [F]fly Thy [C]sweet con[F]trol.`),
+
+  S('jesus-my-lord-my-god', 'Jesus, My Lord, My God, My All', 'G', 'Communion', `
+{Verse 1}
+[G]Jesus, my Lord, my [D]God, my [G]all,
+How [C]can I love Thee [G]as I [D]ought?
+And [G]how revere this [D]wondrous [G]gift,
+So [C]far sur[G]passing [D]hope or [G]thought?
+{Chorus}
+Sweet [C]Sacrament, we [G]Thee a[D]dore;
+O [G]make us love Thee [C]more and [D]more.
+O [G]make us [C]love Thee [D]more and [G]more.`),
+
+  S('o-bread-of-heaven', 'O Bread of Heaven', 'D', 'Communion', `
+{Verse 1}
+O [D]Bread of Heaven, be[A]neath this [D]veil
+Thou [G]dost my very [D]God con[A]ceal;
+My [D]Jesus, dearest [A]treasure, [D]hail!
+I [G]love Thee and, a[D]doring, [A]kneel;
+Each [D]loving soul by [G]Thee is [D]fed
+With [G]Thine own self in [A]form of [D]bread.`),
+
+  S('sweet-heart-of-jesus', 'Sweet Heart of Jesus', 'F', 'Communion', `
+{Verse 1}
+Sweet [F]Heart of Jesus, [Bb]fount of love and [F]mercy,
+To[F]day we come Thy [C]blessing to im[F]plore;
+O [F]touch our hearts, so [Bb]cold and so un[F]grateful,
+And [F]make them, Lord, Thine [C]own for ever[F]more.
+{Chorus}
+Sweet [Bb]Heart of [F]Jesus, we im[C]plore,
+O [F]make us [Bb]love Thee [C]more and [F]more.`),
+
+  // ---- Holy Spirit, St Joseph and Lent ----
+  S('come-holy-ghost', 'Come, Holy Ghost, Creator Blest', 'D', 'Entrance', `
+{Verse 1}
+[D]Come, Holy [G]Ghost, Cre[D]ator [A]blest,
+And [D]in our [G]hearts take [A]up Thy [D]rest;
+Come [D]with Thy [G]grace and [D]heavenly [A]aid
+To [D]fill the [G]hearts which [A]Thou hast [D]made.`),
+
+  S('veni-creator', 'Veni Creator Spiritus', 'D', 'Entrance', `
+{Verse 1}
+[D]Veni, Cre[G]ator [D]Spiri[A]tus,
+[D]mentes tu[G]orum [A]visi[D]ta,
+[D]imple su[G]perna [D]grati[A]a,
+[D]quae tu cre[G]asti [A]pecto[D]ra.`),
+
+  S('hail-holy-joseph', 'Hail, Holy Joseph, Hail', 'G', 'Recessional', `
+{Verse 1}
+[G]Hail, holy Joseph, [D]hail!
+[G]Chaste spouse of Mary, [D]hail!
+[G]Pure as the [C]lily [G]flower
+In [C]Eden's [G]peaceful [D]vale.
+[G]Hail, holy Joseph, [D]hail!
+[G]Father of Christ es[D]teemed!
+[G]Father be [C]thou to [G]those
+Thy [C]foster [D]Son re[G]deemed.`),
+
+  S('attende-domine', 'Attende Domine', 'Dm', 'Lent', `
+{Refrain}
+At[Dm]tende, Domine, et [Gm]mise[Dm]rere,
+qui[F]a pecca[C]vimus [Dm]tibi.`),
+
+  S('parce-domine', 'Parce Domine', 'Dm', 'Lent', `
+{Refrain}
+[Dm]Parce, Domine, [Gm]parce [Dm]populo tuo:
+ne in ae[F]ternum i[C]rascaris [Dm]nobis.`),
+
+  S('ye-sons-and-daughters', 'Ye Sons and Daughters (O Filii et Filiae)', 'D', 'Easter', `
+{Refrain}
+[D]Alle[A]luia, [D]alle[A]luia, [D]alle[G]lu[A]i[D]a!
+{Verse 1}
+Ye [D]sons and daughters, [A]let us [D]sing!
+The [D]King of heaven, the [G]glorious [A]King,
+O'er [D]death to[G]day rose [A]triumph[D]ing.
+[D]Alle[G]lu[A]i[D]a!`),
+
+  // ---- More for Our Lady ----
+  S('daily-daily-sing-to-mary', 'Daily, Daily Sing to Mary', 'F', 'Marian', `
+{Verse 1}
+[F]Daily, daily [C]sing to [F]Mary,
+Sing, my soul, her [C]praises [F]due;
+All her feasts, her [C]actions [F]worship,
+With the heart's de[C]votion [F]true.
+[Bb]Lost in wond'ring [F]contem[C]plation
+[F]Be her majes[G]ty con[C]fessed:
+[F]Call her Mother, [C]call her [F]Virgin,
+[Bb]Happy [F]Mother, [C]Virgin [F]blest.`),
+
+  S('o-purest-of-creatures', 'O Purest of Creatures', 'D', 'Marian', `
+{Verse 1}
+O [D]purest of creatures! Sweet [A]Mother, sweet [D]Maid;
+The one spotless womb wherein [E]Jesus was [A]laid.
+Dark [D]night hath come down on us, [G]Mother, and [D]we
+Look [G]out for thy [D]shining, sweet [A]Star of the [D]Sea.`),
+
+  S('ave-maris-stella', 'Ave Maris Stella', 'Dm', 'Marian', `
+{Verse 1}
+[Dm]Ave, maris [C]stella,
+[F]Dei mater [C]alma,
+[Dm]atque semper [Gm]virgo,
+[F]felix cae[C]li [Dm]porta.`),
+
+  // ---- Children's songs ----
   S('whole-world-in-his-hands', "He's Got the Whole World in His Hands", 'F', 'Spirituals', `
 {Chorus}
 He's got the [F]whole world in His hands,
@@ -432,53 +508,4 @@ He's got [C]everybody here in His hands,
 He's got [F]everybody here in His hands,
 He's [C]got the whole world in His [F]hands.`, 'song'),
 
-  S('jesus-wants-me-for-a-sunbeam', 'Jesus Wants Me for a Sunbeam', 'G', 'Children', `
-{Verse 1}
-[G]Jesus wants me for a sunbeam,
-To [D]shine for Him each [G]day;
-In every way try to please Him,
-At [A]home, at school, at [D]play.
-{Chorus}
-A [G]sunbeam, a [C]sunbeam,
-[G]Jesus wants me for a [D]sunbeam;
-A [G]sunbeam, a [C]sunbeam,
-I'll [G]be a [D]sunbeam for [G]Him.`, 'song'),
-
-  S('o-how-i-love-jesus', 'O How I Love Jesus', 'G', 'Children', `
-{Verse 1}
-There [G]is a name I [C]love to [G]hear,
-I love to sing its [D]worth;
-It [G]sounds like music [C]in my [G]ear,
-The [D]sweetest name on [G]earth.
-{Chorus}
-O how I [C]love [G]Jesus,
-O how I love [D]Jesus,
-O how I [C]love [G]Jesus,
-Be[D]cause He first loved [G]me!`, 'song'),
-
-  S('down-by-the-riverside', 'Down by the Riverside', 'G', 'Spirituals', `
-{Verse 1}
-Gonna [G]lay down my burden, down by the riverside,
-[D]Down by the riverside, [G]down by the riverside;
-Gonna [G]lay down my burden, down by the riverside,
-And [D]study war no [G]more.
-{Chorus}
-I ain't gonna [C]study war no more,
-[G]Ain't gonna study war no more,
-[D]Ain't gonna study war no [G]more;
-I ain't gonna [C]study war no more,
-[G]Ain't gonna study war no more,
-[D]Ain't gonna study war no [G]more.`, 'song'),
-
-  S('do-lord', 'Do, Lord', 'G', 'Spirituals', `
-{Chorus}
-Do, Lord, oh [G]do, Lord, oh do remember me,
-Do, Lord, oh [C]do, Lord, oh do remember [G]me,
-Do, Lord, oh [G]do, Lord, oh do remember me,
-[D]Way beyond the [G]blue.
-{Verse 1}
-I've got a [G]home in glory land that outshines the sun,
-I've got a [C]home in glory land that outshines the [G]sun,
-I've got a [G]home in glory land that outshines the sun,
-[D]Way beyond the [G]blue.`, 'song'),
 ];

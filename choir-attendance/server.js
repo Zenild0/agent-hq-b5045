@@ -14,7 +14,7 @@ import {
 import { openStore, newCode } from './lib/store.js';
 import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, setPaid, resetWarmups, resetAllWarmups, grantTrialToAll, isPaid, hasFull, trialOf, startTrial, TRIAL_DAYS, paidUntilOf, daysLeft, wasPaid, warmupsLeft, useWarmup, GameError, PaywallError } from './lib/game.js';
 import { FREE_CHORDS } from './lib/freechords.js';
-import { NEW_CHORDS, NOV_2026_BATCH } from './lib/freechords3.js';
+import { NEW_CHORDS, CATHOLIC_BATCH, REMOVED_TITLES } from './lib/freechords3.js';
 import { VOICE_TIPS, tipsAt, releaseAt, nextFridayEvening } from './lib/voicetips.js';
 import { parseSongs } from './lib/songimport.js';
 import { REACTIONS, MAX_POSTS, BIG_DAY_SECS, streakMark, cleanAvatar, avatarOf, challengeView, BADGES, FRAMES, COLOURS } from './lib/space.js';
@@ -1888,18 +1888,25 @@ try { BUILD = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: here,
 // the hymn list (words only, linked to the chord sheet). A title that is already there is left alone.
 const wordsOnly = (sheet) => sheet.split('\n').map((l) => { const sec = /^\{([^:}]+)\}$/.exec(l.trim()); return sec ? `\n${sec[1]}:` : l.replace(/\[[^\]]*\]/g, '').replace(/ {2,}/g, ' ').trim(); })
   .join('\n').trim();
-export function addNewSongs(batch = NOV_2026_BATCH, list = NEW_CHORDS, now = Date.now()) {
+const ADDED_NOTE = 'Public domain. The chords are in the Chord Book.';
+export function addNewSongs(batch = CATHOLIC_BATCH, list = NEW_CHORDS, now = Date.now(), remove = REMOVED_TITLES) {
   const { db } = store;
   db.contentBatches ??= [];
   if (db.contentBatches.includes(batch)) return { songs: 0, hymns: 0 };
   const same = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
-  let songs = 0, hymns = 0;
+  let songs = 0, hymns = 0, removed = 0;
+  // Take out songs an earlier batch added that should not be there, only if nobody has changed them since.
+  for (const h of db.hymns.filter((x) => remove.some((t) => same(t, x.title)) && x.notes === ADDED_NOTE && !x.audioExt)) {
+    db.hymns = db.hymns.filter((x) => x.id !== h.id);
+    db.chords = db.chords.filter((c) => c.hymnId !== h.id);
+    removed += 1;
+  }
   for (const f of list) {
     let hymn = db.hymns.find((h) => same(h.title, f.title));
     if (!hymn) {
       let cat = hymnCats().find((c) => same(c.id, f.category) || same(c.label, f.category));
       if (!cat) { cat = { id: f.category, label: f.category }; hymnCats().push(cat); }
-      hymn = { ...newHymn(), title: f.title, category: cat.id, lyrics: wordsOnly(f.body).slice(0, 6000), notes: 'Public domain. The chords are in the Chord Book.' };
+      hymn = { ...newHymn(), title: f.title, category: cat.id, lyrics: wordsOnly(f.body).slice(0, 6000), notes: ADDED_NOTE };
       db.hymns.push(hymn); hymns += 1;
     }
     if (!db.chords.some((c) => same(c.title, f.title))) {
@@ -1912,9 +1919,9 @@ export function addNewSongs(batch = NOV_2026_BATCH, list = NEW_CHORDS, now = Dat
   db.contentBatches.push(batch);
   if (songs && db.settings.spaceEnabled) addPost({ kind: 'songs', n: songs, key: `songs:${new Date(now).toISOString().slice(0, 10)}:${batch}` });
   store.save();
-  return { songs, hymns };
+  return { songs, hymns, removed };
 }
-try { const r = addNewSongs(); if (r.songs || r.hymns) console.log(`Added ${r.songs} song(s) to the Chord Book and ${r.hymns} hymn(s) to the list`); }
+try { const r = addNewSongs(); if (r.songs || r.hymns || r.removed) console.log(`Added ${r.songs} song(s) to the Chord Book and ${r.hymns} hymn(s) to the list; took out ${r.removed} that are not Catholic church music`); }
 catch (e) { console.error('Could not add the new songs:', e.message); }
 
 // One-time (19 Nov 2026): the teacher asked for everything that was waiting to be published to go out now:

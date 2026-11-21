@@ -545,4 +545,10 @@ With a [G]moo-moo here, and a [C]moo-moo there,
 [G]Old MacDonald had a farm, E-I-E-I-[D]O. [G]`, 'song'),
 ];
 
-export const FREE_CHORDS = [...BASE_CHORDS, ...MORE_CHORDS, ...NEW_CHORDS];
+// This is a Catholic parish choir: evangelical gospel songs and revival hymns that are not sung at Mass are left out of
+// the picker (they stay in the files above in case they are ever wanted). Songs a teacher already saved are not touched.
+const NOT_FOR_MASS = new Set(['come-thou-fount', 'it-is-well', 'just-as-i-am', 'blessed-assurance', 'onward-christian-soldiers', 'i-need-thee-every-hour',
+  'softly-and-tenderly', 'old-rugged-cross', 'trust-and-obey', 'standing-on-promises', 'tell-me-the-old-story', 'i-love-to-tell-the-story', 'blest-be-the-tie',
+  'he-leadeth-me', 'up-from-the-grave', 'jesus-bids-us-shine', 'savior-like-a-shepherd', 'take-my-life', 'great-is-thy-faithfulness', 'o-for-a-thousand-tongues',
+  'jesus-lover-of-my-soul', 'rock-of-ages']);
+export const FREE_CHORDS = [...BASE_CHORDS, ...MORE_CHORDS, ...NEW_CHORDS].filter((f) => !NOT_FOR_MASS.has(f.id));

@@ -49,4 +49,19 @@ test('the new batch of public-domain songs is in the Chord Book and, as words on
   }
   assert.match(hymns.find((x) => x.title === 'Panis Angelicus').lyrics, /^Verse:\nPanis angelicus\nFit panis hominum;/);
   assert.deepEqual(addNewSongs(), { songs: 0, hymns: 0 }, 'a second start adds nothing');
+  for (const t of ['Count Your Blessings', 'Do, Lord']) assert.ok(!hymns.some((x) => x.title === t), `${t} is not in this Catholic batch`);
+  assert.ok(hymns.some((x) => x.title === 'Kyrie Eleison (chant)' && x.category === 'LHM'), 'the Kyrie goes in the Lord Have Mercy group');
+});
+
+test('songs from the first version of the batch are taken out again, unless the teacher changed them', async () => {
+  const find = async (t) => (await get('/api/hymns')).hymns.find((x) => x.title === t);
+  const kept = await find('Ave Verum Corpus');
+  const put = await fetch(`${base}/api/teacher/hymns/${kept.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ notes: 'We sing this in Lent' }) });
+  assert.equal(put.status, 200);
+  const r = addNewSongs('test-remove', [], Date.now(), ['Panis Angelicus', 'Ave Verum Corpus']);
+  assert.equal(r.removed, 1);
+  assert.equal(await find('Panis Angelicus'), undefined, 'an untouched one is taken out');
+  assert.ok(await find('Ave Verum Corpus'), 'one the teacher changed stays');
+  const chords = (await get('/api/teacher/chords')).songs.map((x) => x.title);
+  assert.ok(!chords.includes('Panis Angelicus') && chords.includes('Ave Verum Corpus'), 'its chord sheet goes with it');
 });
