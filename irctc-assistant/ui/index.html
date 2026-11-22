@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IRCTC Assistant</title>
+<style>
+  :root { --bg:#fafaf7; --fg:#1d1d1b; --mut:#6b6b66; --card:#fff; --bd:#dcdcd4; --acc:#1f5fbf; --warn:#a15c00; --bad:#b3261e; --ok:#1b7f3b; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161614; --fg:#ecece6; --mut:#9a9a92; --card:#1f1f1c; --bd:#34342f; --acc:#7aa8ff; --warn:#e0a040; --bad:#ff8a80; --ok:#6fd08c; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; } h2 { font-size: 15px; margin: 0 0 10px; }
+  .sub { color: var(--mut); margin: 0 0 18px; }
+  section { background:var(--card); border:1px solid var(--bd); border-radius:10px; padding:16px; margin-bottom:14px; }
+  input, select, button, textarea { font: inherit; color: inherit; background: var(--bg); border:1px solid var(--bd); border-radius:8px; padding:8px 10px; }
+  input[type=text] { width: 100%; }
+  button { cursor:pointer; } button.primary { background: var(--acc); color:#fff; border-color: var(--acc); } button:disabled { opacity:.5; cursor:not-allowed; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:8px; }
+  .pill { display:inline-block; padding:2px 8px; border:1px solid var(--bd); border-radius:99px; margin:2px 4px 2px 0; }
+  .bad { color: var(--bad); } .warn { color: var(--warn); } .ok { color: var(--ok); } .mut { color: var(--mut); }
+  #log { font: 13px/1.5 ui-monospace, monospace; max-height: 320px; overflow:auto; white-space: pre-wrap; }
+  #log .human { color: var(--warn); font-weight: 600; }
+  table { width:100%; border-collapse: collapse; } td { padding:3px 4px; } td input { width:100%; }
+  .privacy { font-size: 13px; color: var(--mut); }
+</style>
+</head>
+<body>
+<main>
+  <h1>IRCTC Assistant</h1>
+  <p class="sub">Tell me the train. I'll arm for the 8 AM opening and fill the forms. <b>You</b> type the password, captcha and OTP, and approve the UPI payment.</p>
+
+  <section>
+    <h2>1. Which train?</h2>
+    <input type="text" id="text" placeholder="12951 from Mumbai Central to New Delhi on 25 Dec 3A" autocomplete="off">
+    <div class="row"><button id="check">Check</button><span class="mut">Station names or codes (NDLS, BCT); classes SL 3A 2A 1A 3E CC EC 2S; quota ladies / senior.</span></div>
+    <div id="plan" style="margin-top:10px"></div>
+  </section>
+
+  <section>
+    <h2>2. Who is travelling? <span class="mut">(saved on this computer only)</span></h2>
+    <table id="ps"></table>
+    <div class="row">
+      <button id="addp">+ Passenger</button>
+      <label>Mobile <input type="text" id="mobile" size="12" maxlength="10" inputmode="numeric" style="width:130px"></label>
+      <label><input type="checkbox" id="o_auto"> auto-upgrade</label>
+      <label><input type="checkbox" id="o_conf"> only if berths confirmed</label>
+      <label><input type="checkbox" id="o_wl"> accept RAC/waitlist</label>
+      <button id="savep">Save</button><span id="saved" class="ok"></span>
+    </div>
+    <p class="privacy">No password, card, UPI ID, OTP or captcha field exists here, and the storage layer refuses to save anything that looks like one.</p>
+  </section>
+
+  <section>
+    <h2>3. Arm it</h2>
+    <div class="row">
+      <label><input type="radio" name="mode" value="auto" checked> Assistant (fills forms in a browser window)</label>
+      <label><input type="radio" name="mode" value="assist"> Alerts only (no automation on IRCTC)</label>
+    </div>
+    <div class="row" id="riskrow"><label><input type="checkbox" id="risk"> I understand IRCTC's terms restrict automated tools and that my IRCTC account is at my own risk.</label></div>
+    <div class="row"><button class="primary" id="arm">Arm</button><button id="stop">Stop</button><span id="armmsg" class="bad"></span></div>
+  </section>
+
+  <section>
+    <h2>Live log <span id="state" class="mut"></span></h2>
+    <div id="log" aria-live="polite"></div>
+  </section>
+
+  <section>
+    <h2>Past bookings</h2>
+    <div id="hist" class="mut">None yet.</div>
+  </section>
+</main>
+<script>
+const T = new URLSearchParams(location.search).get('t');
+const api = (p, body) => fetch(p + '?t=' + T, body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) }).then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error); return j; });
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+let profile;
+
+function renderPs() {
+  $('ps').innerHTML = '<tr class="mut"><td>Name</td><td>Age</td><td>M/F/T</td><td>Berth</td><td></td></tr>' + profile.passengers.map((p, i) =>
+    `<tr><td><input data-i="${i}" data-k="name" value="${esc(p.name)}"></td><td><input data-i="${i}" data-k="age" value="${esc(p.age)}" size="3"></td>
+     <td><select data-i="${i}" data-k="gender">${['M','F','T'].map(g => `<option ${g===p.gender?'selected':''}>${g}</option>`).join('')}</select></td>
+     <td><select data-i="${i}" data-k="berth">${['NP','LB','MB','UB','SL','SU'].map(g => `<option ${g===p.berth?'selected':''}>${g}</option>`).join('')}</select></td>
+     <td><button data-del="${i}">✕</button></td></tr>`).join('');
+}
+function collect() {
+  document.querySelectorAll('#ps [data-k]').forEach(el => { profile.passengers[el.dataset.i][el.dataset.k] = el.dataset.k === 'age' ? Number(el.value) : el.value; });
+  profile.contact = { mobile: $('mobile').value.trim() };
+  profile.options = { ...profile.options, autoUpgrade: $('o_auto').checked, confirmBerthsOnly: $('o_conf').checked, acceptWaitlist: $('o_wl').checked };
+}
+function renderProfile() {
+  renderPs(); $('mobile').value = profile.contact.mobile; $('o_auto').checked = profile.options.autoUpgrade; $('o_conf').checked = profile.options.confirmBerthsOnly; $('o_wl').checked = profile.options.acceptWaitlist;
+  $('risk').checked = profile.riskAcknowledged;
+}
+$('ps').onclick = (e) => { if (e.target.dataset.del !== undefined) { collect(); profile.passengers.splice(+e.target.dataset.del, 1); renderPs(); } };
+$('addp').onclick = () => { collect(); profile.passengers.push({ name: '', age: 30, gender: 'M', berth: 'NP' }); renderPs(); };
+$('savep').onclick = async () => { collect(); try { profile = (await api('/api/profile', profile)).profile; renderProfile(); $('saved').textContent = ' saved'; setTimeout(() => $('saved').textContent = '', 1500); } catch (e) { $('saved').className = 'bad'; $('saved').textContent = ' ' + e.message; } };
+document.querySelectorAll('[name=mode]').forEach(r => r.onchange = () => $('riskrow').style.display = document.querySelector('[name=mode]:checked').value === 'auto' ? '' : 'none');
+
+$('check').onclick = async () => {
+  try {
+    const p = await api('/api/plan', { text: $('text').value }); const r = p.request;
+    const pills = [['Train', r.trainNo], ['From', r.from], ['To', r.to], ['Date', r.date], ['Class', r.travelClass], ['Quota', r.quota]].map(([k, v]) => `<span class="pill"><span class="mut">${k}</span> ${esc(v ?? '?')}</span>`).join('');
+    $('plan').innerHTML = pills + (p.openAtText ? `<div>Booking opens <b>${p.openAtText}</b>${p.openNow ? ' <span class="ok">(already open)</span>' : ''}</div>` : '')
+      + p.problems.map(x => `<div class="bad">• ${esc(x)}</div>`).join('') + p.warnings.map(x => `<div class="warn">• ${esc(x)}</div>`).join('');
+  } catch (e) { $('plan').innerHTML = `<div class="bad">${esc(e.message)}</div>`; }
+};
+$('arm').onclick = async () => {
+  $('armmsg').textContent = '';
+  try { await api('/api/arm', { text: $('text').value, mode: document.querySelector('[name=mode]:checked').value, acceptRisk: $('risk').checked }); }
+  catch (e) { $('armmsg').textContent = e.message; }
+};
+$('stop').onclick = () => api('/api/stop', {});
+
+function addLog(e) {
+  const d = document.createElement('div'); if (e.needsHuman) d.className = 'human';
+  d.textContent = `${e.t.slice(11, 19)}  ${e.stage.padEnd(10)} ${e.message}`; $('log').appendChild(d); $('log').scrollTop = 1e9;
+  if (e.needsHuman) document.title = '⚠ Your turn - IRCTC Assistant'; else if (e.stage === 'finished' || e.stage === 'error') document.title = 'IRCTC Assistant';
+  if (['finished', 'error'].includes(e.stage)) refresh();
+}
+async function refresh() {
+  const s = await api('/api/state'); profile = s.profile; renderProfile();
+  $('state').textContent = s.running ? `- running (${s.running.mode})` : '';
+  $('hist').innerHTML = s.history.length ? s.history.slice().reverse().map(h => `<div>${esc(h.at.slice(0, 10))} · ${esc(h.train)} ${esc(h.from)}→${esc(h.to)} on ${esc(h.date)} ${esc(h.class)} · PNR <b>${esc(h.pnr ?? 'see browser')}</b></div>`).join('') : 'None yet.';
+  return s;
+}
+refresh().then(s => { $('log').textContent = ''; s.events.forEach(addLog); new EventSource('/api/events?t=' + T).onmessage = (m) => addLog(JSON.parse(m.data)); });
+</script>
+</body>
+</html>
