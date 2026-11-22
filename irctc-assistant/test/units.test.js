@@ -72,3 +72,11 @@ test('profile round-trips, drops unknown keys, file is private', () => {
   assert.equal(loadHistory().length, 1);
   assert.throws(() => saveProfile({ passengers: [{ name: 'asha@okaxis', age: 3, gender: 'M' }] }), /Refusing/);
 });
+
+test('selectors never point at password, captcha, OTP or UPI-ID fields', () => {
+  const src = fs.readFileSync(new URL('../src/selectors.js', import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, ''); // comments may *mention* these fields; code may not target them
+  const forbidden = [/password/i, /\bpwd\b/i, /captcha/i, /\botp\b/i, /\bvpa\b/i, /upi\s*id/i, /userid|username|user\s*name/i, /\bpin\b/i, /\bcvv\b/i];
+  for (const re of forbidden) assert.doesNotMatch(src, re, `selectors.js targets a secret field (${re})`);
+});

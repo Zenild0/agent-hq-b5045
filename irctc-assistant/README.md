@@ -26,11 +26,12 @@ payment page. **You** type the password, captcha and OTP, and approve the paymen
   polite retries (≥1.5 s apart, max 12) — but your IRCTC account is still **at your own risk**. If you want zero
   automation on the IRCTC site, use **alerts-only mode** (`--assist`): timer, 10-minute "log in now" alert, an
   "it's open" alert, and a copy-ready booking sheet.
-* **The IRCTC selectors are unverified.** They live in `src/selectors.js`, written from knowledge of IRCTC's Angular
-  site, and could not be tested against the live site (it needs a real account and captcha). If any step fails, the
-  assistant does **not** crash — it tells you "YOUR TURN" for that one step, waits for you to do it by hand, and
-  carries on from the next page. Rehearse first with `npm run demo`, then do a real run for a ticket you can afford
-  to fumble, before relying on it for a rush booking.
+* **The IRCTC selectors have not been run against the live site.** They live in `src/selectors.js`. Each one is
+  tagged `[corroborated]` (the same selector appears in public IRCTC automation recorded on the live site in 2026),
+  `[partial]` or `[UNVERIFIED]`; see "Before your first real run" below. If any step fails, the assistant does
+  **not** crash — it tells you "YOUR TURN" for that one step, waits for you to do it by hand, and carries on from the
+  next page. Rehearse first with `npm run demo`, then do a real run for a ticket you can afford to fumble, before
+  relying on it for a rush booking.
 * Your computer must stay **on, awake, online and logged in** at 08:00. This does not run in the cloud or "for"
   you while you sleep — nobody else can enter your password or captcha.
 
@@ -64,7 +65,7 @@ Requires Node 20+ and Google Chrome (or Edge). Nothing else.
 cd irctc-assistant
 npm install
 npm run doctor        # checks Node, Chrome, clock sync, saved passengers
-npm test              # 9 tests, incl. a full mock-IRCTC run (needs Chromium; set IRCTC_BROWSER_PATH if not auto-found)
+npm test              # 10 tests, incl. a full mock-IRCTC run (needs Chromium; set IRCTC_BROWSER_PATH if not auto-found)
 npm run demo          # rehearse the full flow against a local fake IRCTC
 ```
 
@@ -107,3 +108,22 @@ src/job.js               orchestrate  src/schedule.js   08:00 IST maths, precise
 src/driver.js            Playwright   src/selectors.js  ALL IRCTC page knowledge (tune here)
 src/store.js             safe storage src/mock/         fake IRCTC for demo + tests
 ```
+
+## Before your first real run
+
+Do one unhurried booking (not an 08:00 rush) and watch for these. Anything that falls back to "YOUR TURN" means the
+selector named here needs fixing in `src/selectors.js`.
+
+1. **Search form**: a welcome / language pop-up may block typing into From/To; class dropdown id (`#jClass` vs
+   `#journeyClass`); whether the date field accepts typed `DD/MM/YYYY`; quota option wording (General, Ladies,
+   Lower Berth/Sr. Citizen).
+2. **Results**: the class box is found by "(3A)"-style text; the date cell is found by text like "25 Dec" (format
+   unconfirmed).
+3. **Passengers**: gender and berth are native `<select>`s (if they are PrimeNG dropdowns the step falls back to you);
+   auto-upgrade and "book only if confirmed" checkboxes; the travel-insurance "No" radio; the "BHIM/UPI" payment-mode
+   option on this page.
+4. **Confirmation**: the final URL (`/nget/booking-confirm` expected) and that the PNR is read from the page.
+
+The login, captcha, OTP and UPI-ID fields are not on this list on purpose: the app never targets them, and
+`npm test` fails if `src/selectors.js` ever does.
+
