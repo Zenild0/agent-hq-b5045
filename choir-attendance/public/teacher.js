@@ -1,6 +1,6 @@
 import { pickPhotos, pickProfilePhoto } from './photo.js';
 import { icon } from './icons.js';
-import { nextCardHtml, greetBarHtml, quickGridHtml, storiesHtml, wireHome } from './home.js';
+import { nextCardHtml, greetBarHtml, storiesHtml, wireHome } from './home.js';
 import { parseSheet, normaliseSheet, detectKey } from './chordpro.js';
 import { initBack, noteVisit } from './nav.js';
 import { applyLook, lookCardHtml, wireLook, configure } from './theme.js';
@@ -24,11 +24,23 @@ function lastWeekday(dow) { // most recent Saturday (6) / Sunday (0), today incl
   return iso(d);
 }
 
+// Design A: five tabs, one job each. A tab with more than one page shows a small switch on top.
+const GROUPS = [
+  { id: 'today', label: 'Today', icon: 'home', pages: [['home', 'Today']] },
+  { id: 'choir', label: 'Choir', icon: 'children', pages: [['children', 'Children'], ['board', 'Leaderboard']] },
+  { id: 'mark', label: 'Mark', icon: 'attendance', fab: true, pages: [['attendance', 'Mark'], ['schedule', 'Schedule'], ['occasions', 'Occasions']] },
+  { id: 'library', label: 'Library', icon: 'hymns', pages: [['hymns', 'Hymns'], ['chordbook', 'Chord Book'], ['games', 'Music Lab']] },
+  { id: 'manage', label: 'Manage', icon: 'settings', pages: [['settings', 'Settings']] },
+];
+const GAME_PAGES = ['vocals', 'staffgame', 'rhythm', 'ear']; // opened from Music Lab, with a ‹ Music Lab button
+const groupOf = (page) => (GAME_PAGES.includes(page) ? GROUPS[3] : page === 'more' ? GROUPS[4] : GROUPS.find((g) => g.pages.some(([p]) => p === page)) ?? GROUPS[0]);
+
 const app = $('#app');
 app.innerHTML = `
   ${headerHtml("Children's Choir ZD", 'Teacher area · <a href="/">Parent view</a>')}
   <main>
-    <div id="backbar" hidden><button class="btn small" id="backMore">‹ More</button></div>
+    <div id="backbar" hidden><button class="btn small" id="backMore">‹ Music Lab</button></div>
+    <div id="subnav" hidden></div>
     <div id="msg" aria-live="polite"></div>
     <section id="home"></section>
     <section id="more" hidden></section>
@@ -47,9 +59,7 @@ app.innerHTML = `
     <section id="settings" hidden></section>
   </main>
   ${footerHtml()}
-  <nav class="tabbar" aria-label="Main">${[
-    ['home', 'Home', 'home'], ['attendance', 'Attendance', 'attendance'], ['children', 'Children', 'children'], ['hymns', 'Hymns', 'hymns'], ['more', 'More', 'more'],
-  ].map(([id, label, ic]) => `<button data-tab="${id}">${icon(ic)}${label}</button>`).join('')}</nav>`;
+  <nav class="tabbar" aria-label="Main">${GROUPS.map((g) => `<button data-tab="${g.pages[0][0]}" data-group="${g.id}"${g.fab ? ` class="fab" aria-label="${g.label}"` : ''}>${g.fab ? `<span class="fab-in">${icon(g.icon)}</span>` : icon(g.icon)}<span class="tl">${g.label}</span></button>`).join('')}</nav>`;
 
 const flash = (text, kind = 'bad') => {
   $('#msg').innerHTML = text ? `<div class="alert ${kind}">${esc(text)}</div>` : '';
@@ -415,16 +425,18 @@ function showTab(name, fromBack = false) {
   if (name !== 'ear' && earTest) { earTest.destroy?.(); earTest = null; $('#ear').innerHTML = ''; }
   if (name !== 'vocals' && vocals) { vocals.destroy?.(); vocals = null; $('#vocals').innerHTML = ''; } // stops the microphone
   tabs.forEach((t) => { $(`#${t}`).hidden = t !== name; });
-  const inGame = name === 'vocals' || name === 'staffgame' || name === 'chordbook' || name === 'rhythm' || name === 'ear'; // these sit under Training games
-  const underMore = inGame || MORE_PAGES.some((p) => p.id === name);
-  app.querySelectorAll('nav.tabbar button').forEach((x) => x.classList.toggle('on', x.dataset.tab === (underMore ? 'more' : name)));
-  $('#backbar').hidden = !underMore;
-  $('#backMore').textContent = inGame ? '‹ Music Lab' : '‹ More';
+  const g = groupOf(name), inGame = GAME_PAGES.includes(name);
+  app.querySelectorAll('nav.tabbar button').forEach((x) => x.classList.toggle('on', x.dataset.group === g.id));
+  $('#backbar').hidden = !inGame;
+  const sub = $('#subnav');
+  sub.hidden = inGame || g.pages.length < 2;
+  sub.innerHTML = sub.hidden ? '' : `<div class="me-seg" role="tablist" aria-label="${esc(g.label)}">${g.pages.map(([p, l]) => `<button type="button" role="tab" data-sub="${p}" class="${p === name ? 'on' : ''}" aria-selected="${p === name}">${l}</button>`).join('')}</div>`;
+  sub.querySelectorAll('[data-sub]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.sub)));
   scrollTo(0, 0);
   return run(loaders[name]);
 }
 app.querySelectorAll('nav.tabbar button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
-$('#backMore').addEventListener('click', () => showTab(currentTab === 'vocals' || currentTab === 'staffgame' || currentTab === 'chordbook' || currentTab === 'rhythm' || currentTab === 'ear' ? 'games' : 'more'));
+$('#backMore').addEventListener('click', () => showTab('games'));
 
 
 // ======================= Home and More =======================
@@ -490,12 +502,6 @@ async function loadHome() {
     ${greetBarHtml({ avatar: avatarHtml({ name: p.name || 'Teacher', photo: p.photo }, 'sm'), hello: greeting(), name: `${esc(first)} 👋`, sub: p.instruments ? `🎹 ${esc(p.instruments)}` : '<a href="#" id="addInstr">Add your instruments</a>', right: `<button class="hk-icon" id="editProfile" aria-label="Edit my profile">${icon('edit')}</button>` })}
     ${nextCardHtml(sc, `<button class="hk-cta" id="goAtt">${icon('attendance')} Take attendance</button>`)}
     ${storiesHtml(stories)}
-    ${quickGridHtml([
-      { id: 'attendance', icon: 'attendance', label: 'Attendance', hue: 150 }, { id: 'children', icon: 'children', label: 'Children', hue: 265, badge: d.children },
-      { id: 'hymns', icon: 'hymns', label: 'Hymns', hue: 330 }, { id: 'schedule', icon: 'schedule', label: 'Schedule', hue: 200 },
-      { id: 'occasions', icon: 'sparkle', label: 'Occasions', hue: 25 }, { id: 'games', icon: 'mic', label: 'Music Lab', hue: 285, badge: d.subs.active || '' },
-      { id: 'chordbook', icon: 'book', label: 'Chord Book', hue: 45 }, { id: 'board', icon: icon('trophy'), label: 'Leaderboard', hue: 90 },
-    ])}
     <div class="hk-sec" id="attnHead"><h3>Needs your attention</h3>${att.length ? `<span class="hk-count">${att.length}</span>` : ''}</div>
     ${att.length ? `<div class="attn-list">${shown.join('')}</div>${more.length ? `<details class="hk-more"><summary>Show ${more.length} more</summary><div class="attn-list">${more.join('')}</div></details>` : ''}` : '<div class="hk-clear">✓ All clear. Nothing needs you right now.</div>'}
     ${d.top.length ? `<div class="hk-sec"><h3>Top this month</h3></div><div class="hk-top" id="topCard">${[1, 2, 3].map((r) => d.top.filter((t) => t.rank === r)).filter((g) => g.length).map((g) => `<button class="hk-topc" data-open="${esc(g[0].id)}">${['🥇', '🥈', '🥉'][g[0].rank - 1]}<span>${esc(g[0].name.split(' ')[0])}${g.length > 1 ? ` +${g.length - 1}` : ''}<small>${fmtPts(g[0].points)} pts</small></span></button>`).join('')}</div>` : ''}
