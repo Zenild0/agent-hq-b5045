@@ -65,3 +65,15 @@ test('songs from the first version of the batch are taken out again, unless the 
   const chords = (await get('/api/teacher/chords')).songs.map((x) => x.title);
   assert.ok(!chords.includes('Panis Angelicus') && chords.includes('Ave Verum Corpus'), 'its chord sheet goes with it');
 });
+
+test('the whole free library goes into the Chord Book and the hymn list, without nursery rhymes', async () => {
+  const chords = (await get('/api/teacher/chords')).songs.map((s) => s.title);
+  const hymns = (await get('/api/hymns')).hymns.map((h) => h.title);
+  for (const t of ['Hail, Redeemer, King Divine', 'On This Day, O Beautiful Mother', 'Immaculate Mary (Lourdes Hymn)', 'Holy God, We Praise Thy Name']) {
+    assert.ok(chords.includes(t), `${t} has chords`);
+    assert.ok(hymns.includes(t), `${t} is in the hymn list`);
+  }
+  assert.ok(chords.includes('Jingle Bells') && !hymns.includes('Jingle Bells'), 'a secular Christmas song gets chords only');
+  assert.ok(!chords.includes('Twinkle, Twinkle, Little Star'), 'no nursery rhymes');
+  assert.ok(!chords.includes('Blessed Assurance'), 'no evangelical gospel songs');
+});

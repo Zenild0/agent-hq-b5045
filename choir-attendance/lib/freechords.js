@@ -5,6 +5,7 @@ const S = (id, title, key, category, body, kind = 'hymn') => ({ id, title, key, 
 
 import { MORE_CHORDS } from './freechords2.js';
 import { NEW_CHORDS } from './freechords3.js';
+import { MORE_CATHOLIC } from './freechords4.js';
 
 const BASE_CHORDS = [
   S('amazing-grace', 'Amazing Grace', 'G', 'Recessional', `
@@ -551,4 +552,10 @@ const NOT_FOR_MASS = new Set(['come-thou-fount', 'it-is-well', 'just-as-i-am', '
   'softly-and-tenderly', 'old-rugged-cross', 'trust-and-obey', 'standing-on-promises', 'tell-me-the-old-story', 'i-love-to-tell-the-story', 'blest-be-the-tie',
   'he-leadeth-me', 'up-from-the-grave', 'jesus-bids-us-shine', 'savior-like-a-shepherd', 'take-my-life', 'great-is-thy-faithfulness', 'o-for-a-thousand-tongues',
   'jesus-lover-of-my-soul', 'rock-of-ages']);
-export const FREE_CHORDS = [...BASE_CHORDS, ...MORE_CHORDS, ...NEW_CHORDS].filter((f) => !NOT_FOR_MASS.has(f.id));
+export const FREE_CHORDS = [...BASE_CHORDS, ...MORE_CHORDS, ...NEW_CHORDS, ...MORE_CATHOLIC].filter((f) => !NOT_FOR_MASS.has(f.id));
+
+// What goes straight into the Chord Book and the hymn list (see addNewSongs in server.js): the whole library except the
+// nursery rhymes. Secular Christmas songs get a chord sheet for concerts but are not put in the hymn list.
+const NURSERY = new Set(['twinkle-twinkle', 'row-row-row-your-boat', 'mary-had-a-little-lamb', 'old-macdonald']);
+export const CHORDS_ONLY = new Set(['jingle-bells', 'we-wish-you-a-merry-christmas', 'deck-the-halls', 'o-christmas-tree', 'up-on-the-housetop']);
+export const CHOIR_LIBRARY = FREE_CHORDS.filter((f) => !NURSERY.has(f.id));

@@ -71,7 +71,7 @@ function migrate(db) {
 }
 
 // Tiny JSON-file store. Writes are atomic (tmp file + rename).
-const blank = () => ({ settings: { ...DEFAULT_SETTINGS }, children: [], sessions: {}, occasions: [], hymns: [], chords: [], space: { posts: [] }, chordQueue: [], songDrip: { on: false, perWeek: 10, next: 0, released: 0 }, chordRequests: [], voiceTips: [], contentBatches: ['nov2026', 'nov2026-catholic'], codesShortened: false, latePolicyV2: true, schedule: defaultSchedule(istNow().date), game: emptyGame() });
+const blank = () => ({ settings: { ...DEFAULT_SETTINGS }, children: [], sessions: {}, occasions: [], hymns: [], chords: [], space: { posts: [] }, chordQueue: [], songDrip: { on: false, perWeek: 10, next: 0, released: 0 }, chordRequests: [], voiceTips: [], contentBatches: ['nov2026', 'nov2026-catholic', 'dec2026-library'], codesShortened: false, latePolicyV2: true, schedule: defaultSchedule(istNow().date), game: emptyGame() });
 // contentBatches: song batches already added. A new install starts with them marked (the teacher picks from the free
 // library); an existing data file without the list gets each new batch once (see addNewSongs in server.js).
 const withDefaults = (saved) => ({ ...blank(), ...saved, contentBatches: saved.contentBatches ?? [], settings: { ...DEFAULT_SETTINGS, ...saved.settings } });

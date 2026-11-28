@@ -13,7 +13,7 @@ import {
 } from './lib/logic.js';
 import { openStore, newCode } from './lib/store.js';
 import { applyRound, applyDaily, weeklyBoard, dailyBoard, dailySeed, dailyStreak, maxPlayable, emptyKid, weekKeyOf, istDate, setPaid, resetWarmups, resetAllWarmups, grantTrialToAll, isPaid, hasFull, trialOf, startTrial, TRIAL_DAYS, paidUntilOf, daysLeft, wasPaid, warmupsLeft, useWarmup, GameError, PaywallError } from './lib/game.js';
-import { FREE_CHORDS } from './lib/freechords.js';
+import { FREE_CHORDS, CHOIR_LIBRARY, CHORDS_ONLY } from './lib/freechords.js';
 import { NEW_CHORDS, CATHOLIC_BATCH, REMOVED_TITLES } from './lib/freechords3.js';
 import { VOICE_TIPS, tipsAt, releaseAt, nextFridayEvening } from './lib/voicetips.js';
 import { parseSongs } from './lib/songimport.js';
@@ -1889,11 +1889,15 @@ try { BUILD = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: here,
 const wordsOnly = (sheet) => sheet.split('\n').map((l) => { const sec = /^\{([^:}]+)\}$/.exec(l.trim()); return sec ? `\n${sec[1]}:` : l.replace(/\[[^\]]*\]/g, '').replace(/ {2,}/g, ' ').trim(); })
   .join('\n').trim();
 const ADDED_NOTE = 'Public domain. The chords are in the Chord Book.';
-export function addNewSongs(batch = CATHOLIC_BATCH, list = NEW_CHORDS, now = Date.now(), remove = REMOVED_TITLES) {
+export const LIBRARY_BATCH = 'dec2026-library';
+export function addNewSongs(batch = CATHOLIC_BATCH, list = NEW_CHORDS, now = Date.now(), remove = REMOVED_TITLES, { chordsOnly = new Set() } = {}) {
   const { db } = store;
   db.contentBatches ??= [];
   if (db.contentBatches.includes(batch)) return { songs: 0, hymns: 0 };
-  const same = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  // Titles match whatever the punctuation, and with or without a note in brackets ("Immaculate Mary (Lourdes Hymn)").
+  const norm = (t) => String(t).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const bare = (t) => norm(String(t).replace(/\([^)]*\)/g, ''));
+  const same = (a, b) => norm(a) === norm(b) || bare(a) === bare(b);
   let songs = 0, hymns = 0, removed = 0;
   // Take out songs an earlier batch added that should not be there, only if nobody has changed them since.
   for (const h of db.hymns.filter((x) => remove.some((t) => same(t, x.title)) && x.notes === ADDED_NOTE && !x.audioExt)) {
@@ -1903,7 +1907,7 @@ export function addNewSongs(batch = CATHOLIC_BATCH, list = NEW_CHORDS, now = Dat
   }
   for (const f of list) {
     let hymn = db.hymns.find((h) => same(h.title, f.title));
-    if (!hymn) {
+    if (!hymn && !chordsOnly.has(f.id)) {
       let cat = hymnCats().find((c) => same(c.id, f.category) || same(c.label, f.category));
       if (!cat) { cat = { id: f.category, label: f.category }; hymnCats().push(cat); }
       hymn = { ...newHymn(), title: f.title, category: cat.id, lyrics: wordsOnly(f.body).slice(0, 6000), notes: ADDED_NOTE };
@@ -1911,7 +1915,7 @@ export function addNewSongs(batch = CATHOLIC_BATCH, list = NEW_CHORDS, now = Dat
     }
     if (!db.chords.some((c) => same(c.title, f.title))) {
       const item = { id: randomUUID().slice(0, 8), title: '', key: '', kind: 'hymn', category: '', hymnId: '', body: '', updated: now, addedOn: today() };
-      try { applyChord(item, { title: f.title, key: f.key, kind: f.kind, category: f.category, body: f.body, hymnId: hymn.id }); } catch { continue; }
+      try { applyChord(item, { title: f.title, key: f.key, kind: f.kind, category: f.category, body: f.body, hymnId: hymn?.id ?? '' }); } catch { continue; }
       db.chords.push(item); songs += 1;
       db.chordRequests = db.chordRequests.filter((r) => r.key !== titleKey(item.title));
     }
@@ -1922,6 +1926,9 @@ export function addNewSongs(batch = CATHOLIC_BATCH, list = NEW_CHORDS, now = Dat
   return { songs, hymns, removed };
 }
 try { const r = addNewSongs(); if (r.songs || r.hymns || r.removed) console.log(`Added ${r.songs} song(s) to the Chord Book and ${r.hymns} hymn(s) to the list; took out ${r.removed} that are not Catholic church music`); }
+catch (e) { console.error('Could not add the new songs:', e.message); }
+// December 2026: the whole free library (Catholic hymns, carols, chant) goes into the Chord Book and the hymn list.
+try { const r = addNewSongs(LIBRARY_BATCH, CHOIR_LIBRARY, Date.now(), [], { chordsOnly: CHORDS_ONLY }); if (r.songs || r.hymns) console.log(`Library: added ${r.songs} chord sheet(s) and ${r.hymns} hymn(s)`); }
 catch (e) { console.error('Could not add the new songs:', e.message); }
 
 // One-time (19 Nov 2026): the teacher asked for everything that was waiting to be published to go out now:
