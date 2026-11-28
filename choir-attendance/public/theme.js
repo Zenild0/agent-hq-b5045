@@ -1,25 +1,26 @@
 // Look and feel, kept only on this phone or computer.
-//  - theme: Light (the original cream look), Bright (lavender to pink) or Dark. Default: Dark.
+//  - theme: Light, Bright (lavender to coral) or Dark. Default: Dark for the children's app, Light for the teacher area.
 //  - lens (parent app only): Kid view (bold, playful) or Parent view (calmer, larger text, nothing moving).
 // The teacher area has its own saved choice, so changing one never changes the other.
 const THEMES = ['light', 'bright', 'dark'];
 let KEY_T = 'choir-theme';
 let useLens = true;
+let DEFAULT_T = 'dark';
 const KEY_L = 'choir-lens';
 const get = (k, ok, dflt) => { try { const v = localStorage.getItem(k); return ok.includes(v) ? v : dflt; } catch { return dflt; } };
 const put = (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } };
 
-export const getTheme = () => get(KEY_T, THEMES, 'dark'); // an older saved "auto" simply becomes Dark
+export const getTheme = () => get(KEY_T, THEMES, DEFAULT_T); // an older saved "auto" simply becomes the default
 export const getLens = () => get(KEY_L, ['kid', 'parent'], 'kid');
 
-export function configure({ key, lens }) { KEY_T = key; useLens = lens; }
+export function configure({ key, lens, theme = 'dark' }) { KEY_T = key; useLens = lens; DEFAULT_T = theme; }
 
 export function applyLook() {
   const t = getTheme();
   const root = document.documentElement;
   root.dataset.theme = t;
   if (useLens) root.dataset.lens = getLens(); else delete root.dataset.lens;
-  document.querySelector('meta[name=theme-color]')?.setAttribute('content', t === 'dark' ? '#0E0B1F' : t === 'bright' ? '#6C4DFF' : '#3a1fa8');
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', t === 'dark' ? '#0D0A1F' : t === 'bright' ? '#6C4DFF' : '#4B2FD6');
 }
 
 export const setTheme = (t) => { put(KEY_T, t); applyLook(); };

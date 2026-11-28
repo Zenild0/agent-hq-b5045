@@ -5,7 +5,7 @@ import { parseSheet, normaliseSheet, detectKey } from './chordpro.js';
 import { initBack, noteVisit } from './nav.js';
 import { applyLook, lookCardHtml, wireLook, configure } from './theme.js';
 
-configure({ key: 'choir-theme-teacher', lens: false }); // the teacher area keeps its own colour choice
+configure({ key: 'choir-theme-teacher', lens: false, theme: 'light' }); // the teacher area keeps its own colour choice; light unless changed
 applyLook();
 import { waLink,
   $, api, esc, fmtPts, fmtDate, typeLabel, headerHtml, footerHtml, avatarHtml, leaveBadge,

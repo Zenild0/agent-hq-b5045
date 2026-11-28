@@ -36,7 +36,7 @@ export const greetBarHtml = ({ avatar, hello, name, sub = '', right = '' }) =>
 
 // The colourful quick-action grid (like the category grid in a delivery app). items: [{ id, icon, label, hue, badge }]
 export const quickGridHtml = (items) =>
-  `<nav class="hk-grid" style="--n:${items.length <= 5 ? Math.max(items.length, 1) : 4}" aria-label="Quick links">${items.map((i) => `<button type="button" class="hk-q" data-q="${esc(i.id)}"><span class="ic" style="--h:${i.hue ?? 260}" aria-hidden="true">${icon(i.icon)}${i.badge ? `<i>${esc(i.badge)}</i>` : ''}</span><b>${esc(i.label)}</b></button>`).join('')}</nav>`;
+  `<nav class="hk-grid" style="--n:${items.length <= 5 ? Math.max(items.length, 1) : 4}" aria-label="Quick links">${items.map((i) => `<button type="button" class="hk-q" data-q="${esc(i.id)}"><span class="ic" style="--h:${snapHue(i.hue ?? 260)}" aria-hidden="true">${icon(i.icon)}${i.badge ? `<i>${esc(i.badge)}</i>` : ''}</span><b>${esc(i.label)}</b></button>`).join('')}</nav>`;
 
 // A row of small number chips. items: [{ id, v, l, tone }]
 export const statStripHtml = (items) =>
@@ -181,11 +181,15 @@ export function occasionPracticesHtml(me) {
     </section>`;
 }
 
+// Palette A (Midnight Violet): every tile and card uses one of five hues, so the app reads as one product.
+const PALETTE_HUES = [252, 349, 42, 162, 207]; // violet, coral, gold, mint, sky
+export const snapHue = (h) => { const n = ((Number(h) || 0) % 360 + 360) % 360; return PALETTE_HUES.reduce((best, p) => (Math.min(Math.abs(p - n), 360 - Math.abs(p - n)) < Math.min(Math.abs(best - n), 360 - Math.abs(best - n)) ? p : best)); };
+
 // ---------- highlight cards: a swipeable rail like the banners in a delivery app ----------
 // cards: [{ id, emoji, kicker, title, sub, a, b, ring }]  (a, b = two hues; ring = 0..1 fills a little ring)
 export const storiesHtml = (cards) => (cards.length ? `
   <section class="hk-stories" aria-label="Highlights">
-    <div class="hk-rail">${cards.map((c) => `<button type="button" class="hk-story" data-story="${esc(c.id)}" style="--a:${c.a ?? 265};--b:${c.b ?? 300}">
+    <div class="hk-rail">${cards.map((c) => `<button type="button" class="hk-story" data-story="${esc(c.id)}" style="--a:${snapHue(c.a ?? 265)};--b:${snapHue(c.a ?? 265) - 16}">
       <span class="e">${icon(c.icon)}</span>${c.ring != null ? `<i class="ring" style="--p:${Math.max(0, Math.min(1, c.ring))}"><b>${Math.round(c.ring * 100)}%</b></i>` : ''}
       <small>${esc(c.kicker)}</small><b>${esc(c.title)}</b><span class="s">${esc(c.sub)}</span></button>`).join('')}</div>
     <div class="hk-dots" aria-hidden="true">${cards.map((_, i) => `<i${i === 0 ? ' class="on"' : ''}></i>`).join('')}</div>
