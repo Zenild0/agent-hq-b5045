@@ -1200,3 +1200,21 @@ html[data-theme=dark] .sp-seg.on { background: linear-gradient(135deg, #5B3DF5, 
 html[data-theme=dark] .sp-seg.on b { color: #0D0A1F; } html[data-theme=dark] .sp-seg.on .sp-seg-ic { background: rgba(14, 11, 31, .1); }
 @media (prefers-reduced-motion: reduce) { .sp-seg { transition: none; } }
 .sp-busy > :not(.sp-top):not(.sp-switch) { opacity: .45; pointer-events: none; transition: opacity .15s; }
+
+/* ---------- Design A: children's tab bar with the big Sing button in the middle ---------- */
+nav.tabbar button .tl { line-height: 1; }
+nav.tabbar button.fab { flex: 0 0 76px; position: relative; color: var(--brand); }
+nav.tabbar button.fab .fab-in { width: 62px; height: 62px; margin-top: -30px; border-radius: 50%; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(145deg, #7B5CFF, #5235E0); box-shadow: 0 10px 22px rgba(108, 77, 255, .45), 0 0 0 5px var(--card); transition: transform .15s; }
+nav.tabbar button.fab .fab-in .ico, nav.tabbar button.fab .fab-in svg { width: 30px; height: 30px; color: #fff; }
+nav.tabbar button.fab:active .fab-in { transform: scale(.94); }
+nav.tabbar button.fab.on .fab-in { box-shadow: 0 10px 26px rgba(108, 77, 255, .6), 0 0 0 5px var(--card), 0 0 0 8px rgba(108, 77, 255, .35); }
+nav.tabbar button.fab.on .ico { transform: none; }
+html[data-theme=dark] nav.tabbar button.fab { color: #A894FF; }
+@media (prefers-reduced-motion: reduce) { nav.tabbar button.fab .fab-in { transition: none; } }
+
+/* one switch style for Me (Profile · Leaderboard · Achievers) and Songs (Hymns · Chord Book) */
+.me-seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; padding: 4px; margin: 4px 0 12px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.me-seg button { min-height: 42px; border: 0; border-radius: 14px; background: transparent; color: var(--muted); font: 800 .85rem var(--font-body); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.me-seg button.on { background: linear-gradient(135deg, var(--stage-1), var(--stage-2)); color: #fff; box-shadow: 0 4px 12px rgba(58, 31, 168, .28); }
+#homeSpace:not(:empty) { margin-top: 18px; }

@@ -26,7 +26,7 @@ export function kidHeroHtml(v, g) {
         </div></div>`;
 }
 
-export function mountGames(host, { code }) {
+export function mountGames(host, { code, start = null }) {
   const root = document.createElement('div'); // its own container, so listeners from an earlier visit never pile up
   host.replaceChildren(root);
   const xp = xpFor(code); // XP, streak and badges are kept on this phone; they are also sent to the server when the teacher has switched the leaderboard on
@@ -106,7 +106,7 @@ export function mountGames(host, { code }) {
       if (!box || view !== 'hub' || !d.enabled) return;
       const { labBoardHtml } = await import('./home.js');
       box.innerHTML = labBoardHtml(d);
-      box.querySelector('[data-q="board"]')?.addEventListener('click', () => document.querySelector('nav.tabbar [data-tab="board"]')?.click());
+      box.querySelector('[data-q="board"]')?.addEventListener('click', () => (window.choirGo ? window.choirGo('board') : document.querySelector('nav.tabbar [data-tab="board"]')?.click()));
     } catch { /* offline: the hub works without it */ }
   }
 
@@ -142,7 +142,7 @@ export function mountGames(host, { code }) {
 
   (async () => {
     root.innerHTML = '<div class="empty">Loading…</div>';
-    try { await loadAccess(); hub(); } catch (e) { root.innerHTML = `<div class="card"><div class="alert bad">${esc(e.message)}</div></div>`; }
+    try { await loadAccess(); if (start) open(start.which, start); else hub(); } catch (e) { root.innerHTML = `<div class="card"><div class="alert bad">${esc(e.message)}</div></div>`; }
   })();
 
   return {

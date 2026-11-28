@@ -75,7 +75,7 @@ export function mountSpace(host, { code }) {
       ${data.groups.length > 1 ? switchHtml(data.groups, data.group) : ''}
       ${data.stories.length ? `<div class="sp-stories" aria-label="Friends practising">${data.stories.map((s) => `<div class="sp-story">${avatarEl(s.avatar, 52)}<small>${s.id === m.id ? 'You' : esc(s.name.split(' ')[0])}${s.streak > 1 ? ` 🔥${s.streak}` : ''}</small></div>`).join('')}</div>` : ''}
       ${challengeHtml(data.challenge)}
-      <div class="sp-feed">${data.feed.length ? data.feed.map(postHtml).join('') : '<div class="card muted">Nothing here yet. Practise in Games and your streaks and long practice days will show up for your friends to cheer.</div>'}</div>
+      <div class="sp-feed">${data.feed.length ? data.feed.map(postHtml).join('') : '<div class="card muted">Nothing here yet. Practise in Learn and your streaks and long practice days will show up for your friends to cheer.</div>'}</div>
       ${studio()}
       <div class="sp-safe">🛡 Safe by design: no chat, no photos and no voice recordings. Only short posts, cheers and stickers.</div>`;
   }
@@ -93,7 +93,7 @@ export function mountSpace(host, { code }) {
       root.querySelectorAll('.sp-seg').forEach((b) => { const on = b === gb; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
       group = gb.dataset.group; try { localStorage.setItem('choir-space-group', group); } catch { /* ignore */ } load(); return; }
     const go = e.target.closest('[data-go]');
-    if (go) { document.querySelector(`nav.tabbar [data-tab="${go.dataset.go}"]`)?.click(); return; }
+    if (go) { const t = go.dataset.go === 'games' ? 'sing' : go.dataset.go; if (window.choirGo) window.choirGo(t); else document.querySelector(`nav.tabbar [data-tab="${go.dataset.go}"]`)?.click(); return; }
     const r = e.target.closest('[data-react]');
     if (r) {
       const post = r.closest('[data-post]');

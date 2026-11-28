@@ -3,7 +3,7 @@ import {
   statsHtml, historyHtml, leaveAlertHtml,
 } from './common.js';
 import { icon } from './icons.js';
-import { greetBarHtml, quickGridHtml, storiesHtml, wireHome, homeBoardHtml, leaveMeterHtml, nextCardHtml, daysFoldHtml, remarksFoldHtml, guestHomeHtml, eventBoardHtml, occasionPracticesHtml } from './home.js';
+import { greetBarHtml, storiesHtml, wireHome, homeBoardHtml, leaveMeterHtml, nextCardHtml, daysFoldHtml, remarksFoldHtml, guestHomeHtml, eventBoardHtml, occasionPracticesHtml } from './home.js';
 import { pickPhotos } from './photo.js';
 import { applyLook, lookCardHtml, wireLook, configure } from './theme.js';
 import { initBack, noteVisit, onBackFirst } from './nav.js';
@@ -58,23 +58,26 @@ function clearSaved() {
 
 const app = $('#app');
 
-const TABS = [['home', 'Home', 'home'], ['space', 'Space', 'orbit'], ['board', 'Rank', 'trophy'], ['games', 'Music Lab', 'gamepad'], ['hymns', 'Hymns', 'hymns'], ['child', 'Me', 'user']];
+// Design A: one job per tab. Home is the feed (Choir Space lives there), Learn is Music Lab, the big centre button
+// starts singing, Songs holds the hymns and the Chord Book, Me holds the profile and the one leaderboard.
+const TABS = [['home', 'Home', 'home'], ['games', 'Learn', 'gamepad'], ['sing', 'Sing', 'mic'], ['hymns', 'Songs', 'hymns'], ['child', 'Me', 'user']];
+const SECTIONS = ['home', 'meSeg', 'child', 'board', 'ach', 'hymns', 'games'];
 
 function shell() {
   app.innerHTML = `
     ${headerHtml("Children's Choir ZD", "Our Lady of Lourdes, Kalyan West")}
     <main>
       <div class="net" id="net" role="status"></div>
-      <section id="home"><div id="homeCode"></div><div id="homeCards"><div class="empty">Loading…</div></div></section>
-      <section id="space" hidden></section>
+      <section id="home"><div id="homeCode"></div><div id="homeCards"><div class="empty">Loading…</div></div><div id="homeSpace"></div></section>
+      <section id="meSeg" hidden></section>
+      <section id="child" hidden></section>
       <section id="board" hidden></section>
       <section id="ach" hidden></section>
       <section id="hymns" hidden></section>
       <section id="games" hidden></section>
-      <section id="child" hidden></section>
     </main>
     ${footerHtml()}
-    <nav class="tabbar" aria-label="Main">${TABS.map(([id, label, ic]) => `<button data-tab="${id}"${id === 'games' ? ' id="gamesTab" hidden' : id === 'space' ? ' id="spaceTab" hidden' : ''}>${icon(ic)}${label}</button>`).join('')}</nav>`;
+    <nav class="tabbar" aria-label="Main">${TABS.map(([id, label, ic]) => `<button data-tab="${id}"${id === 'games' ? ' id="gamesTab" hidden' : id === 'sing' ? ' id="singTab" class="fab" hidden aria-label="Sing now"' : ''}>${id === 'sing' ? `<span class="fab-in">${icon(ic)}</span>` : icon(ic)}<span class="tl">${label}</span></button>`).join('')}</nav>`;
   app.querySelectorAll('nav.tabbar button').forEach((b) => b.addEventListener('click', () => { show(b.dataset.tab); scrollTo(0, 0); }));
 }
 
@@ -100,7 +103,7 @@ async function loadHomeExtras() {
   if (!me || me.guest || !code || extrasFor === code) return;
   extrasFor = code;
   const out = [];
-  try { const { newestTip } = await import('./voicetips.js'); const t = await newestTip(code); if (t?.isNew) out.push({ id: 'games', icon: 'drop', kicker: 'NEW VOICE TIP', title: 'Look after your voice', sub: 'Tap to read it in Games', a: 200, b: 230 }); } catch { /* optional */ }
+  try { const { newestTip } = await import('./voicetips.js'); const t = await newestTip(code); if (t?.isNew) out.push({ id: 'games', icon: 'drop', kicker: 'NEW VOICE TIP', title: 'Look after your voice', sub: 'Tap to read it in Learn', a: 200, b: 230 }); } catch { /* optional */ }
   if (overview?.settings?.spaceEnabled) {
     try {
       const s = await api('me/space', { code });
@@ -129,8 +132,6 @@ function drawHome() {
     });
     return;
   }
-  const ICONS = { games: ['mic', 'Sing', 285], space: ['orbit', 'Space', 45], board: ['trophy', 'Rank', 90], hymns: ['hymns', 'Hymns', 330], child: ['user', 'Me', 200] };
-  const quick = me ? quickGridHtml([...app.querySelectorAll('nav.tabbar button')].filter((b) => !b.hidden && ICONS[b.dataset.tab]).map((b) => ({ id: b.dataset.tab, icon: ICONS[b.dataset.tab][0], label: ICONS[b.dataset.tab][1], hue: ICONS[b.dataset.tab][2] }))) : '';
   const hour = new Date().getHours();
   const xv = me && code ? xpFor(code).view() : null;
   const stories = me ? [
@@ -144,42 +145,67 @@ function drawHome() {
     + (overview.monthBoard ? homeBoardHtml(overview, me?.id, homeBoardRange) : '')
     + occasionPracticesHtml(me)
     + (me ? trioHtml(me, overview.schedule) : '')
-    + quick
     + daysFoldHtml(overview.schedule, me ? me.history || [] : null, days)
     + (me ? remarksFoldHtml(me, rem) : '');
-  wireHome(box, { onQuick: (id) => { show(id); scrollTo(0, 0); }, onStory: (id) => { show(id); scrollTo(0, 0); } });
+  wireHome(box, { onQuick: go, onStory: go });
   box.querySelectorAll('[data-hb]').forEach((b) => b.addEventListener('click', () => { homeBoardRange = b.dataset.hb; try { localStorage.setItem('choir-hb', homeBoardRange); } catch { /* ignore */ } drawHome(); }));
   loadHomeExtras();
 }
 
 let gameCtl = null, spaceCtl = null;
-function openGame() {
+function openGame(start = null) {
   const box = $('#games');
   gameCtl?.destroy?.(); gameCtl = null;
   if (!code) { box.innerHTML = '<div class="card"><h2 style="margin-top:0">Music Lab</h2><p class="muted">Enter your child\'s code in <b>Me</b> first. Scores belong to your child.</p><button class="btn primary" id="gameToChild">Go to My child</button></div>'; $('#gameToChild').addEventListener('click', () => show('child')); return; }
   box.innerHTML = '<div class="empty">Loading…</div>';
   // loaded only now, so a problem in the game can never stop the rest of the app
-  import('./games.js').then((m) => { gameCtl = m.mountGames(box, { code }); }).catch(() => { box.innerHTML = '<div class="alert bad">The game could not load. Please try again.</div>'; });
+  import('./games.js').then((m) => { gameCtl = m.mountGames(box, { code, start }); }).catch(() => { box.innerHTML = '<div class="alert bad">The game could not load. Please try again.</div>'; });
 }
 
-// Choir Space: loaded only when opened, so a problem there can never stop the rest of the app
-function openSpace() {
-  spaceCtl?.destroy?.(); spaceCtl = null;
-  const box = $('#space');
-  import('./space.js').then((m) => { spaceCtl = m.mountSpace(box, { code }); }).catch(() => { box.innerHTML = '<div class="alert bad">Choir Space could not load. Please try again.</div>'; });
+// Choir Space is part of Home (below the next practice and the highlights). Loaded only when Home is open, so a problem
+// there can never stop the rest of the app. Guests too: they see only their event's group.
+function paintHomeSpace() {
+  const box = $('#homeSpace');
+  if (!box) return;
+  const on = Boolean(overview?.settings?.spaceEnabled && code && me) && tab === 'home';
+  if (!on) { spaceCtl?.destroy?.(); spaceCtl = null; box.innerHTML = ''; return; }
+  if (spaceCtl) return;
+  spaceCtl = { destroy() {} }; // a placeholder while it loads, so it is not loaded twice
+  import('./space.js').then((m) => { if (tab !== 'home') { spaceCtl = null; return; } spaceCtl = m.mountSpace(box, { code }); })
+    .catch(() => { spaceCtl = null; box.innerHTML = '<div class="alert bad">Choir Space could not load. Please try again.</div>'; });
 }
-const paintSpaceTab = () => { const t = $('#spaceTab'); if (!t) return; const was = t.hidden; t.hidden = !(overview?.settings?.spaceEnabled && code && me); /* guests too: they see only their event's group */ if (was !== t.hidden) drawHome(); }; // the home's quick links follow the tabs
+
+// The Me tab: profile, the leaderboard and the achievers, one at a time, with a switch on top
+let meSub = 'child', lastNav = 'home';
+function paintMeSeg() {
+  const items = [['child', 'Profile'], ['board', 'Leaderboard'], ...(me?.guest ? [] : [['ach', 'Achievers']])];
+  if (!items.some(([v]) => v === meSub)) meSub = 'child';
+  $('#meSeg').innerHTML = `<div class="me-seg" role="tablist" aria-label="Me">${items.map(([v, l]) => `<button type="button" role="tab" data-me="${v}" class="${meSub === v ? 'on' : ''}" aria-selected="${meSub === v}">${l}</button>`).join('')}</div>`;
+  $('#meSeg').querySelectorAll('[data-me]').forEach((b) => b.addEventListener('click', () => go(b.dataset.me)));
+}
+
+// Every link inside the app (story cards, the Space "Sing now" button, the Music Lab board) comes through here,
+// including the names of the old tabs, so nothing points to a page that is gone.
+function go(t) { show(t); scrollTo(0, 0); if (t === 'space') setTimeout(() => $('#homeSpace')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80); }
+window.choirGo = go;
 
 function show(t, fromBack = false) {
+  let navOn = t, sing = false;
+  if (t === 'board' || t === 'ach' || t === 'child') { meSub = t; t = 'child'; navOn = 'child'; }
+  if (t === 'space') { t = 'home'; navOn = 'home'; }
+  if (t === 'sing') { t = 'games'; sing = true; }
+  if (!SECTIONS.includes(t)) { t = 'home'; navOn = 'home'; }
   if (!fromBack) noteVisit(t);
-  if (tab === 'games' && t !== 'games') { gameCtl?.destroy?.(); gameCtl = null; $('#games').innerHTML = ''; }
-  if (tab === 'space' && t !== 'space') { spaceCtl?.destroy?.(); spaceCtl = null; $('#space').innerHTML = ''; }
+  const fresh = t === 'games' && (sing || lastNav !== navOn); // Learn after Sing opens the Music Lab hub again
+  if (tab === 'games' && (t !== 'games' || fresh)) { gameCtl?.destroy?.(); gameCtl = null; $('#games').innerHTML = ''; }
+  lastNav = navOn;
   tab = t;
-  app.querySelectorAll('nav.tabbar button').forEach((b) => b.classList.toggle('on', b.dataset.tab === t));
-  const showing = t === 'board' ? (me?.guest ? ['board'] : ['board', 'ach']) : [t];
-  ['home', 'space', 'board', 'ach', 'hymns', 'games', 'child'].forEach((id) => { $(`#${id}`).hidden = !showing.includes(id); });
-  if (t === 'games') openGame();
-  if (t === 'space') openSpace();
+  app.querySelectorAll('nav.tabbar button').forEach((b) => b.classList.toggle('on', b.dataset.tab === navOn));
+  const showing = t === 'child' ? ['meSeg', meSub] : [t];
+  SECTIONS.forEach((id) => { $(`#${id}`).hidden = !showing.includes(id); });
+  if (t === 'child') paintMeSeg();
+  if (t === 'games' && (sing || !gameCtl)) openGame(sing ? { which: 'vocals', sing: true } : null);
+  paintHomeSpace();
 }
 
 // ---------- leaderboard ----------
@@ -326,12 +352,22 @@ function achTab() {
 
 // ---------- hymn library (open to everyone) ----------
 
-let hymnData = null;
+let hymnData = null, songsView = 'hymns', chordCtl = null;
 async function hymnsTab() {
+  const chords = Boolean(overview?.settings?.chordsEnabled && code);
+  if (!chords) songsView = 'hymns';
+  chordCtl?.destroy?.(); chordCtl = null;
   $('#hymns').innerHTML = `
-    <div class="hl-head"><h2>Hymns</h2><div class="muted">Hymns we have learned. Tap one to read the words and listen.</div></div>
+    <div class="hl-head"><h2>Songs</h2><div class="muted">${songsView === 'chords' ? 'Chord sheets for hymns and songs. Keep your own and build set lists.' : 'Hymns we have learned. Tap one to read the words and listen.'}</div></div>
+    ${chords ? `<div class="me-seg" role="tablist" aria-label="Songs">${[['hymns', 'Hymns'], ['chords', 'Chord Book']].map(([v, l]) => `<button type="button" role="tab" data-songs="${v}" class="${songsView === v ? 'on' : ''}" aria-selected="${songsView === v}">${l}</button>`).join('')}</div>` : ''}
     <div id="hlist"><div class="empty">Loading…</div></div>`;
+  $('#hymns').querySelectorAll('[data-songs]').forEach((b) => b.addEventListener('click', () => { songsView = b.dataset.songs; hymnsTab(); }));
   try {
+    if (songsView === 'chords') {
+      const [access, m] = await Promise.all([api('me/access', { code }), import('./chordbook.js')]);
+      chordCtl = m.mountChordBook($('#hlist'), { code, access });
+      return;
+    }
     hymnData = await cachedApi('hymns');
     const { mountHymnBrowser } = await import('./hymnlist.js');
     mountHymnBrowser($('#hlist'), hymnData);
@@ -370,7 +406,9 @@ async function loadMe() {
     childView();
     drawHome();
     drawBoard();
-    paintSpaceTab();
+    paintHomeSpace();
+    if (tab === 'child') paintMeSeg();
+    if (overview?.settings?.chordsEnabled) hymnsTab();
     if (!me.consent) askConsent();
   } catch (e) {
     me = null;
@@ -483,8 +521,8 @@ show(tab);
 cachedApi('public')
   .then((o) => {
     overview = o;
-    paintSpaceTab();
     $('#gamesTab').hidden = !(o.settings?.gameEnabled || o.settings?.staffEnabled || o.settings?.chordsEnabled);
+    $('#singTab').hidden = !o.settings?.gameEnabled;
     boardTab();
     achTab();
     hymnsTab();
